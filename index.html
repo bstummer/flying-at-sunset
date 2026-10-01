@@ -63,6 +63,8 @@ const DEBUG = Q.has('debug') || TEST;
 const VIEW = parseInt(Q.get('view') || '0', 10);
 const DBG_MODE = parseInt(Q.get('dbg') || '0', 10);
 const TONEMAP = parseInt(Q.get('tm') || '1', 10);
+const CONTRAST = Q.has('con') ? parseFloat(Q.get('con')) : 1.0;
+const HAZE_K = Q.has('haze') ? parseFloat(Q.get('haze')) : 2.8e-5;
 if (TEST) document.documentElement.classList.add('test');
 
 const canvas = document.getElementById('view');
@@ -85,6 +87,7 @@ if (!gl) { fail('This piece needs WebGL 2. Please open it in a recent version of
 const extCBF = gl.getExtension('EXT_color_buffer_float');
 const extCBHF = gl.getExtension('EXT_color_buffer_half_float');
 gl.getExtension('OES_texture_float_linear');
+const extParallel = gl.getExtension('KHR_parallel_shader_compile');
 const extTimer = gl.getExtension('EXT_disjoint_timer_query_webgl2');
 if (!extCBF && !extCBHF) { fail('Your browser cannot render to floating point textures, which this piece needs.'); return; }
 
@@ -989,7 +992,7 @@ float cloudSDF(vec3 wp, float h, vec2 sea, Tower tw, float lod) {
     d = smin(d, dt, 280.0);
   }
   // near the camera: an extra pair of small billow octaves (crisp cauliflower texture when skimming)
-  if (lod < 0.1) {
+  if (lod < 0.1 && abs(d) < 60.0) {   // only matters right at the surface
     float wn = 1.0 - smoothstep(0.03, 0.1, lod);
     vec4 sn = textureLod(uShape, (wp + uShapeOff * 1.7) * (8.0 / SHAPE_TILE), 0.0) * 2.0 - 1.0;
     d = octave(d, sn.y * 80.0, 14.0 * wn, 16.0);
@@ -1175,7 +1178,8 @@ void main() {
     float h = h0 + rel.y + dot(rel.xz, rel.xz) * INV2R;
     vec3 wp = uCamPos + rel;
     wp.y = h;
-    float minStep = 4.0 + t * 0.026;
+    // stride floor grows with distance, faster beyond 8 km (far detail is softened by haze anyway)
+    float minStep = 6.0 + t * 0.026 + max(t - 8000.0, 0.0) * 0.03;
     float rj = fract(jit + float(i) * 0.61803399);
     // empty space skipping. Sea: skip its lookup when above the highest possible billow.
     vec2 sea = vec2(uSeaMax, 1.0);
@@ -1198,7 +1202,7 @@ void main() {
     nSdf += 1.0;
     float d = cloudSDF(wp, h, sea, tw, lod);
     // approach the surface with a per-pixel/per-step jittered stride: avoids "wood grain" banding
-    if (d > 0.0) { tPrev = t; dPrev = d; t += max(d * 0.7, minStep * (0.35 + rj)); continue; }
+    if (d > 0.0) { tPrev = t; dPrev = d; t += max(d * 0.75, minStep * (0.35 + rj)); continue; }
     if (dPrev > 0.0) {
       // just crossed the surface: step back to the estimated crossing (secant), so dense clouds
       // always start integrating right at their boundary instead of at a random depth
@@ -1210,7 +1214,8 @@ void main() {
     dPrev = -1.0;
     float detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
     float edgeW = mix(32.0, EDGE_W, smoothstep(250.0, 4000.0, t));
-    float nearW = 1.0 - smoothstep(150.0, 900.0, t);
+    float nearW = (1.0 - smoothstep(150.0, 900.0, t)) * max(uInCloud, 1.0 - smoothstep(40.0, 120.0, -d));
+#ifdef DBG
     if (uDbgMode > 0 && uDbgMode < 4) {
       vec3 nrm;
       float e = 4.0 + t * 0.002;
@@ -1228,6 +1233,7 @@ void main() {
       oDepth = vec4(t * 0.001, 0.0, 0.0, 1.0);
       return;
     }
+#endif
     float dens = densityFromSDF(d, wp, detailW, edgeW, nearW);
     // inside a cloud the air right around the camera is kept thin: drifting mist, not a white wall
     dens *= mix(1.0, mix(0.22, 1.0, smoothstep(12.0, 160.0, t)), uInCloud);
@@ -1236,11 +1242,12 @@ void main() {
     float sigma = dens * SIGMA;
     float dtMin = 3.0 + t * 0.002;
     float dt = clamp((0.45 + 1.6 * (1.0 - T)) / max(sigma, 0.004), dtMin, 8.0 + t * 0.016);
-    dt = min(dt, max(edgeW * 0.4, -d * 0.6 + dtMin)) * (0.75 + 0.5 * jit2);
+    dt = min(dt, max(edgeW * 0.55, -d * 0.6 + dtMin)) * (0.75 + 0.5 * jit2);
     if (dens > 0.003) {
       nIn += 1.0;
       // once little light gets through, deeper samples reuse the light of the previous one
-      float tau = T > 0.22 ? lightTau(wp, h, tw, jit2, lod + 0.5) : lastTau + (-d - lastDepth) * SIGMA * 2.0;
+      bool reuse = T < 0.22 || (T < 0.65 && mod(nIn, 2.0) > 0.5);
+      float tau = reuse ? lastTau + max(-d - lastDepth, 0.0) * SIGMA * 2.0 : lightTau(wp, h, tw, jit2, lod + 0.5);
       lastTau = tau; lastDepth = -d;
       // distant occluders (towers) block all scattering orders: their shadow is a plain multiplier
       float farT = exp(-tsvTau(wp, h));
@@ -1251,18 +1258,22 @@ void main() {
       float diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depthIn / 80.0));
       // in the shadow of distant towers only a soft, isotropic fill bounced off sunlit clouds remains
       vec3 sunL = sunColorAt(h) * ((msScatterP(tau, phase) * pw + diffu) * farT + 0.007 * (1.0 - farT));
+#ifdef DBG
       if (uDbgMode >= 5) {
         vec4 e = exp(-tau * vec4(1.0, 0.5, 0.25, 0.125));
         float ms = dot(e * vec4(1.0, 0.55, 0.3025, 0.166375), phase) * pw;
         float df = diffu;
         sunL = sunColorAt(h) * farT * (uDbgMode == 5 ? ms : uDbgMode == 6 ? df : 0.0);
       }
+#endif
       float up = sat((h - sea.x + 250.0) / 1400.0);
       // sky light only reaches the first few tens of metres (short scale also hides the
       // discontinuous interior of the distance field)
       float ao = mix(0.5, 1.0, exp(-depthIn / 55.0));
       vec3 amb = (ambSky * 1.95 * mix(0.45, 1.0, up) + uAmbSea * (1.0 - up) * 0.7) * ao;
+#ifdef DBG
       if (uDbgMode == 5 || uDbgMode == 6) amb *= 0.0;
+#endif
       vec3 S = sigma * 0.985 * (sunL + amb);
       float st = exp(-sigma * dt);
       vec3 Sint = (S - S * st) / sigma;
@@ -1286,7 +1297,9 @@ void main() {
     zSum += T * t; zW += T;
     T = 0.0;
   }
+#ifdef DBG
   if (uDbgMode == 4) { oCol = vec4(vec3(nIter / 200.0, nSdf / 100.0, nIn / 40.0) * 0.12, 0.0); oDepth = vec4(1.0, 0.0, 0.0, 1.0); return; }
+#endif
   oCol = vec4(L, T);
   oDepth = vec4(zW > 1e-4 ? (zSum / zW) * 0.001 : 9000.0, 0.0, 0.0, 1.0);
 }`;
@@ -1406,7 +1419,7 @@ void main() {
     vec2 fd = lp - lpr;
     float wcur = exp(-2.2 * dot(fd, fd));
     float motion = length((puv - uv) * uRes);
-    float alpha = mix(0.07, 0.2, sat(motion / 12.0)) * (0.55 + 0.45 * wcur);
+    float alpha = mix(0.07, 0.38, sat(motion / 18.0)) * (0.55 + 0.45 * wcur);
     res = mix(hc, cur, alpha);
   }
   oHist = res;
@@ -1456,6 +1469,10 @@ void main() {
     float sc = sigmaAt(uCamPos, uCamPos.y, sdfC);
     float sb = sigmaAt(bwp, bh, sdfB);
     o = vec4(sc, sb, sdfB, sea.x);
+  } else if (px == 5) {
+    // distance to the sea of clouds alone (towers excluded): drives the gentle floor
+    float b = bh - (sea.x + 330.0 * sea.y + 95.0);
+    o = vec4(b > 0.0 ? b : cloudSDF(bwp, bh, sea, NO_TOWER, 0.0), 0.0, 0.0, 1.0);
   } else {
     // in-cloud mist radiance near the camera
     float tau = lightTau(uCamPos, uCamPos.y, getTower(uCamPos.xz), 0.5, 0.0) + tsvTau(uCamPos, uCamPos.y);
@@ -1592,7 +1609,8 @@ float shadowAt(vec4 sp) {
   return acc / 9.0;
 }
 void main() {
-  vec3 N = normalize(cross(dFdx(vPos), dFdy(vPos)));
+  vec3 Nr = cross(dFdx(vPos), dFdy(vPos));
+  vec3 N = dot(Nr, Nr) > 1e-20 ? normalize(Nr) : vec3(0.0, 1.0, 0.0);
   vec3 V = normalize(-vPos);
   if (dot(N, V) < 0.0) N = -N;
   vec4 sun = texelFetch(uProbe, ivec2(0, 0), 0);
@@ -1645,6 +1663,7 @@ uniform sampler2D uBird;
 uniform vec4 uBirdBox;
 uniform vec2 uSrcTexel;
 uniform int uFirst;
+uniform float uClampHi;
 out vec4 o;
 vec3 src(vec2 uv) {
   vec3 c = textureLod(uSrc, uv, 0.0).rgb;
@@ -1652,7 +1671,8 @@ vec3 src(vec2 uv) {
     vec4 b = textureLod(uBird, uv, 0.0);
     c = c * (1.0 - b.a) + b.rgb;
   }
-  return min(c, vec3(6.0e4));
+  if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0);
+  return min(c, vec3(uClampHi));
 }
 void main() {
   vec2 uv = (floor(gl_FragCoord.xy) * 2.0 + 1.0) * uSrcTexel;
@@ -1661,15 +1681,8 @@ void main() {
   vec3 d = src(uv + t * vec2(-2, 0)), e = src(uv), f = src(uv + t * vec2(2, 0));
   vec3 g = src(uv + t * vec2(-2, -2)), h = src(uv + t * vec2(0, -2)), i = src(uv + t * vec2(2, -2));
   vec3 j = src(uv + t * vec2(-1, 1)), k = src(uv + t * vec2(1, 1)), l = src(uv + t * vec2(-1, -1)), m = src(uv + t * vec2(1, -1));
-  vec3 r;
-  if (uFirst == 1) {
-    // Karis average on the first level to tame fireflies
-    vec3 g0 = (a + b + d + e) * 0.25, g1 = (b + c + e + f) * 0.25, g2 = (d + e + g + h) * 0.25, g3 = (e + f + h + i) * 0.25, g4 = (j + k + l + m) * 0.25;
-    float w0 = 1.0 / (1.0 + luma(g0)), w1 = 1.0 / (1.0 + luma(g1)), w2 = 1.0 / (1.0 + luma(g2)), w3 = 1.0 / (1.0 + luma(g3)), w4 = 1.0 / (1.0 + luma(g4));
-    r = (g0 * w0 * 0.125 + g1 * w1 * 0.125 + g2 * w2 * 0.125 + g3 * w3 * 0.125 + g4 * w4 * 0.5) / (w0 * 0.125 + w1 * 0.125 + w2 * 0.125 + w3 * 0.125 + w4 * 0.5);
-  } else {
-    r = e * 0.125 + (a + c + g + i) * 0.03125 + (b + d + f + h) * 0.0625 + (j + k + l + m) * 0.125;
-  }
+  // 13-tap downsample (no Karis average: the sun is a big stable disk and must bloom fully)
+  vec3 r = e * 0.125 + (a + c + g + i) * 0.03125 + (b + d + f + h) * 0.0625 + (j + k + l + m) * 0.125;
   o = vec4(r, 1.0);
 }`;
 
@@ -1714,17 +1727,18 @@ uniform vec2 uSunUv;
 uniform vec2 uDstTexel;
 uniform float uStepScale;
 out vec4 o;
+uniform float uDecay;
 void main() {
+  // radial blur toward the sun; run twice (short then long strides) for smooth, noise-free rays
   vec2 uv = gl_FragCoord.xy * uDstTexel;
   vec2 d = (uSunUv - uv) * uStepScale;
-  float n = ign(gl_FragCoord.xy);
-  vec2 p = uv + d * n;
+  vec2 p = uv;
   vec3 acc = vec3(0.0);
   float w = 1.0, ws = 0.0;
-  for (int i = 0; i < 40; i++) {
+  for (int i = 0; i < 24; i++) {
     acc += textureLod(uSrc, p, 0.0).rgb * w;
     ws += w;
-    w *= 0.965;
+    w *= uDecay;
     p += d;
   }
   o = vec4(acc / ws, 1.0);
@@ -1737,13 +1751,15 @@ uniform sampler2D uBloom;
 uniform sampler2D uRays;
 uniform vec4 uBirdBox;
 uniform float uExposure;
-uniform float uBloomK;
+uniform float uBloomMix;
+uniform float uBloomScale;
 uniform vec3 uRayCol;
 uniform float uFade;
 uniform float uTime;
 uniform vec2 uRes;
 uniform int uView;
 uniform int uTM;
+uniform float uContrast;
 uniform sampler2D uDbg;
 uniform sampler2D uDbg2;
 uniform vec2 uDbgScale;
@@ -1762,15 +1778,21 @@ void main() {
   if (uView == 1) { o = vec4(vec3(textureLod(uDbg, uv, 0.0).a), 1.0); return; }
   if (uView == 2) { o = vec4(toSRGB(sat(textureLod(uDbg, uv, 0.0).rgb * uExposure * 0.5)), 1.0); return; }
   if (uView == 3) { float d = textureLod(uDbg2, uv * uDbgScale, 0.0).r; o = vec4(vec3(sat(log2(1.0 + d) / 8.0)), 1.0); return; }
+  if (uView == 4) { o = vec4(toSRGB(sat(textureLod(uRays, uv, 0.0).rgb * uRayCol * uExposure)), 1.0); return; }
+  if (uView == 5) { o = vec4(toSRGB(sat(textureLod(uBloom, uv, 0.0).rgb * uExposure * 0.25)), 1.0); return; }
   vec3 c = textureLod(uScene, uv, 0.0).rgb;
   if (uv.x > uBirdBox.x && uv.y > uBirdBox.y && uv.x < uBirdBox.z && uv.y < uBirdBox.w) {
     vec4 b = textureLod(uBird, uv, 0.0);
     c = c * (1.0 - b.a) + b.rgb;
   }
+  if (any(isnan(c))) c = vec3(0.0);
   vec3 bloom = textureLod(uBloom, uv, 0.0).rgb;
-  c = mix(c, bloom, uBloomK);
+  c = c * (1.0 - uBloomMix) + bloom * uBloomScale;   // energy-conserving mix with the normalised bloom
   c += textureLod(uRays, uv, 0.0).rgb * uRayCol;
   c *= uExposure;
+  // gentle contrast around middle grey (pre-curve)
+  float lc = max(luma(c), 1e-6);
+  c *= pow(lc / 0.18, uContrast - 1.0);
   if (uTM == 0) {
     float l = luma(c);
     c = mix(c, c * vec3(0.95, 0.985, 1.07), 0.35 * (1.0 - sat(l * 2.0)));
@@ -1812,7 +1834,7 @@ const P = {
   noise: makeProgram('noise3d', FS_NOISE3D),
   cirrus: makeProgram('cirrus', FS_CIRRUS),
   tsv: makeProgram('tsv', FS_TSV),
-  trace: makeProgram('trace', FS_TRACE),
+  trace: makeProgram('trace', DBG_MODE ? FS_TRACE.replace('#version 300 es', '#version 300 es\n#define DBG') : FS_TRACE),
   taau: makeProgram('taau', FS_TAAU),
   probe: makeProgram('probe', FS_PROBE),
   bird: makeProgram('bird', FS_BIRD, VS_BIRD),
@@ -1824,7 +1846,6 @@ const P = {
   final: makeProgram('final', FS_FINAL),
   mist: makeProgram('mist', FS_MIST, VS_MIST),
 };
-try { checkPrograms(); } catch (e) { fail('Shader error — ' + e.message); return; }
 
 // --- static textures
 const T = {};
@@ -1865,6 +1886,10 @@ function renderVolume(tex, n, depth, uniformsFor) {
   }
 }
 
+const sunColUniform = { v3: sunColTable };
+
+// one-off generation of all static GPU data (runs once the shaders are compiled)
+function generateStatic() {
 // noise volumes
 renderVolume(T.shape, SHAPE_N, SHAPE_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / SHAPE_N, uSize: SHAPE_N, uCells: [4, 8, 16, 32], uMode: { i: 0 } } }));
 renderVolume(T.detail, DETAIL_N, DETAIL_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / DETAIL_N, uSize: DETAIL_N, uCells: [4, 8, 16, 24], uMode: { i: 1 } } }));
@@ -1875,11 +1900,11 @@ pass(P.trans, FB.trans, 256, 64, {});
 pass(P.ms, FB.ms, 32, 32, { uTrans: T.trans });
 
 // tower shadow volume
-const sunColUniform = { v3: sunColTable };
 renderVolume(T.tsv, TSV_N, TSV_NH, z => ({
   prog: P.tsv,
   uniforms: { uTowerMap: T.towerMap, uShape: T.shape, uSliceH: (z + 0.5) / TSV_NH * TSV_H, uN: TSV_N, uSunDir: SUN_DIR },
 }));
+}
 
 // =====================================================================================
 //                                   PAPER BIRD MESH
@@ -1891,10 +1916,10 @@ const bird = (() => {
     A: [0, 0.055, -0.13], B: [0, 0.055, 0.13], K: [0, -0.068, 0.0], S: [0.034, -0.002, 0.0],
     Nb: [0, -0.022, -0.105], Tb: [0, -0.022, 0.105],
     // neck spike rising forward, head folded down into a beak
-    Nm: [0.017, 0.018, -0.215], Nt: [0, 0.168, -0.405],
-    Hc: [0, 0.188, -0.418], Hs: [0.007, 0.158, -0.435], Hb: [0, 0.118, -0.492],
+    Nm: [0.017, 0.016, -0.215], Nt: [0, 0.128, -0.415],
+    Hc: [0, 0.148, -0.43], Hs: [0.007, 0.118, -0.446], Hb: [0, 0.08, -0.5],
     // tail spike rising behind
-    Tm: [0.018, 0.014, 0.215], Tt: [0, 0.128, 0.44],
+    Tm: [0.018, 0.012, 0.215], Tt: [0, 0.085, 0.45],
     // wings: broad triangles with a centre crease and a flex line at 45% span
     Wa: [0.008, 0.06, -0.122], Wm: [0.008, 0.071, 0.0], Wb: [0.008, 0.06, 0.122],
     La: [0.23, 0.089, -0.052], Lm: [0.23, 0.101, 0.018], Lb: [0.23, 0.085, 0.084],
@@ -2057,6 +2082,7 @@ function readPreset() {
     skim: { y: sea0 + 70, yaw: 0.35, gamma: -0.02 },
     high: { y: 6200, yaw: -0.4, gamma: -0.25 },
     bank: { y: 2500, yaw: 0.6, gamma: 0, bank: 0.7 },
+    fastdive: { y: sea0 + 420, yaw: 0.5, gamma: -0.55, speed: 150 },
     tower: { x: 900, z: -3200, y: 3000, yaw: 0.35, gamma: 0.05 },
     inside: { x: 2600, z: -5700, y: 2900, yaw: 0.0, gamma: 0.0 },
     approach: { x: 2600, z: -4200, y: 2900, yaw: 0.0, gamma: 0.0 },
@@ -2065,6 +2091,7 @@ function readPreset() {
   if (!p) return;
   bird_.pos = [p.x || 0, p.y, p.z || 0];
   bird_.yaw = p.yaw; bird_.gamma = p.gamma; bird_.bank = p.bank || 0;
+  if (p.speed) bird_.speed = p.speed;
 }
 readPreset();
 if (Q.has('pose')) {
@@ -2139,13 +2166,14 @@ function updateInput(dt) {
     const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     if (Math.hypot(ax, ay) > 0.15) { tx = shaping(ax, 0.12); ty = -shaping(ay, 0.12); kind = 'pad'; input.lastActive = performance.now(); }
   }
-  if (TEST) {
+  if (TEST && !Q.has('live')) {
     tx = 0; ty = 0;
     const sc = Q.get('script'), t = clock;
     if (sc === 'dive') { ty = t > 1 && t < 9 ? -1 : 0; }
     else if (sc === 'climb') { ty = t > 1 && t < 12 ? 1 : 0; }
     else if (sc === 'turn') { tx = t > 1 && t < 12 ? 1 : 0; }
     else if (sc === 'divedeep') { ty = t > 0.5 ? -1 : 0; }
+    else if (sc === 'holddive') { ty = -1; }
     else if (sc === 'weave') { tx = Math.sin(t * 0.7); ty = 0.4 * Math.sin(t * 0.45); }
   }
   // smooth: keys ramp in gently; analog inputs follow a little faster
@@ -2162,7 +2190,7 @@ function updateInput(dt) {
   } else touchEl.classList.remove('on');
 }
 
-let probeData = null; // async readback: [sigmaCam, sigmaBird, sdfBird, seaTop]
+let probeData = null; // async readback: [sigmaCam, sigmaBird, sdfBird, seaTop, sdfSeaOnlyBird]
 let inCloud = 0;      // smoothed: is the camera inside cloud?
 let lastFloorPush = 0;
 function updateFlight(dt, time) {
@@ -2172,18 +2200,16 @@ function updateFlight(dt, time) {
   const climbAuth = smoothstep(F.vStall, F.vStall + 24, v);
   let gammaT = input.sy >= 0 ? input.sy * F.maxClimb * climbAuth : input.sy * F.maxDive;
   if (climbAuth < 1) gammaT = Math.min(gammaT, lerp(-0.16, gammaT, climbAuth));
-  // keep the bird near the cloud tops: gentle lift when sinking into the sea
+  // keep the bird skimming the cloud tops: a gentle lift as it sinks into the sea of clouds.
+  // The GPU probe reports the distance to the real billowy surface (towers excluded, those
+  // you may fly through); the base height map is the fallback and the hard limit.
   const seaTop = seaTopAt(b.pos[0], b.pos[2]);
-  let depth = seaTop + 40 - b.pos[1];
-  if (probeData && probeData[2] < 0 && probeData[3] > 0) {
-    // the real (billowy) surface from the GPU probe; only use it near the sea, not inside towers
-    const inSea = Math.abs(probeData[3] - seaTop) < 400;
-    if (inSea) depth = Math.max(depth, -probeData[2] - 120);
-  }
-  if (depth > -150) {
-    const k = smoothstep(-150, 220, depth);
-    gammaT = Math.max(gammaT, lerp(-0.25, 0.32, k));
-    if (depth > 0) bankT *= 1 - 0.35 * sat(depth / 200);
+  let depth = seaTop - 60 - b.pos[1];
+  if (probeData && isFinite(probeData[4])) depth = Math.max(depth, 40 - probeData[4]);
+  if (depth > -140) {
+    const k = smoothstep(-140, 140, depth);
+    gammaT = Math.max(gammaT, lerp(-0.32, 0.3, k));
+    if (depth > 60) bankT *= 1 - 0.3 * sat((depth - 60) / 150);
   }
   if (b.pos[1] > 8600) gammaT = Math.min(gammaT, -(b.pos[1] - 8600) * 0.0015);
   // turbulence: gentle, livelier in and near cloud
@@ -2244,7 +2270,7 @@ function updateCamera(dt, snap) {
   if (!cam.fwdSmooth || snap) cam.fwdSmooth = flatFwd;
   cam.fwdSmooth = norm(mix3(cam.fwdSmooth, flatFwd, 1 - Math.exp(-2.1 * dt)));
   const dist = 4.1 + 1.3 * sp + clamp(b.accel, -6, 8) * 0.08;
-  const desired = add(scl(cam.fwdSmooth, -dist), [0, 0.78 + 0.25 * sp, 0]);
+  const desired = add(scl(cam.fwdSmooth, -dist), [0, 1.3 + 0.25 * sp, 0]);
   if (!cam.offset || snap) { cam.offset = desired; cam.offV = [0, 0, 0]; }
   for (let i = 0; i < 3; i++) {
     const [x, v] = spring(cam.offset[i], cam.offV[i], desired[i], 3.2, dt);
@@ -2253,7 +2279,7 @@ function updateCamera(dt, snap) {
   cam.prevPos = cam.pos;
   cam.pos = add(b.pos, cam.offset);
   // never let the camera sink deep into the sea (keeps the mist pleasant)
-  const target = add(add(b.pos, scl(b.vel, 7.0)), [0, 0.32, 0]);
+  const target = add(add(b.pos, scl(b.vel, 7.0)), [0, 0.55, 0]);
   let fwd = norm(sub(target, cam.pos));
   cam.roll = snap ? b.bank * 0.42 : damp(cam.roll, b.bank * 0.42, 3.0, dt);
   // subtle shake at speed and in cloud
@@ -2384,7 +2410,7 @@ function render(time, dt) {
   pass(P.trace, FB.trace, R.lowW, R.lowH, Object.assign({}, common, {
     uSky: T.sky, uAmb: T.amb, uRes: [R.lowW, R.lowH], uJitter: jitter, uCamPos: camWrap,
     uCamRight: cam.right, uCamUp: cam.up, uCamFwd: cam.fwd, uTanHalf: [tanX, tanY], uFrame: frame,
-    uAmbSea: ambSea, uHazeK: 0.000028, uDbgMode: { i: DBG_MODE }, uInCloud: inCloud,
+    uAmbSea: ambSea, uHazeK: HAZE_K, uDbgMode: { i: DBG_MODE }, uInCloud: inCloud,
   }));
 
   tEnd();
@@ -2430,14 +2456,14 @@ function render(time, dt) {
   let src = T.scene, sw = w, sh = h;
   for (let i = 0; i < bloomLevels.length; i++) {
     const L = bloomLevels[i];
-    pass(P.down, L.fb, L.w, L.h, { uSrc: src, uBird: T.birdTex, uBirdBox: birdBox, uSrcTexel: [1 / sw, 1 / sh], uFirst: { i: i === 0 ? 1 : 0 } });
+    pass(P.down, L.fb, L.w, L.h, { uSrc: src, uBird: T.birdTex, uBirdBox: birdBox, uSrcTexel: [1 / sw, 1 / sh], uFirst: { i: i === 0 ? 1 : 0 }, uClampHi: BLOOM_CLAMP });
     src = L.tex; sw = L.w; sh = L.h;
   }
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE);
   for (let i = bloomLevels.length - 1; i > 0; i--) {
     const S = bloomLevels[i], D = bloomLevels[i - 1];
-    pass(P.up, D.fb, D.w, D.h, { uSrc: S.tex, uSrcTexel: [1 / S.w, 1 / S.h], uDstTexel: [1 / D.w, 1 / D.h], uWeight: 0.8 });
+    pass(P.up, D.fb, D.w, D.h, { uSrc: S.tex, uSrcTexel: [1 / S.w, 1 / S.h], uDstTexel: [1 / D.w, 1 / D.h], uWeight: BLOOM_UP_W });
   }
   gl.disable(gl.BLEND);
 
@@ -2452,24 +2478,29 @@ function render(time, dt) {
   }
   if (rayStrength > 0.001) {
     pass(P.raymask, FB.rayA, R.rayW, R.rayH, { uHist: histTex, uBird: T.birdTex, uBirdBox: birdBox, uCamRight: cam.right, uCamUp: cam.up, uCamFwd: cam.fwd, uTanHalf: [tanX, tanY], uSunDir: SUN_DIR, uDstTexel: [1 / R.rayW, 1 / R.rayH] });
-    pass(P.rayblur, FB.rayB, R.rayW, R.rayH, { uSrc: T.rayA, uSunUv: sunUv, uDstTexel: [1 / R.rayW, 1 / R.rayH], uStepScale: 1 / 40 * 0.9 });
+    pass(P.rayblur, FB.rayB, R.rayW, R.rayH, { uSrc: T.rayA, uSunUv: sunUv, uDstTexel: [1 / R.rayW, 1 / R.rayH], uStepScale: 1 / 24 / 24 * 0.95, uDecay: 1.0 });
+    pass(P.rayblur, FB.rayA, R.rayW, R.rayH, { uSrc: T.rayB, uSunUv: sunUv, uDstTexel: [1 / R.rayW, 1 / R.rayH], uStepScale: 1 / 24 * 0.95, uDecay: 0.93 });
   } else {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.rayB);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.rayA);
     gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
   }
 
   // --- final
-  const fade = TEST ? 1 : smoothstep(0.2, 3.5, time);
   const sunC = sunColorAt(cam.pos[1]);
   pass(P.final, null, w, h, {
-    uScene: T.scene, uBird: T.birdTex, uBloom: bloomLevels[0].tex, uRays: T.rayB, uBirdBox: birdBox,
-    uExposure: exposure, uBloomK: 0.055, uRayCol: scl(sunC, 0.16 * rayStrength), uFade: fade, uTime: time % 1000, uRes: [w, h], uView: { i: VIEW }, uTM: { i: TONEMAP }, uDbg: histTex, uDbg2: T.cloudDepth, uDbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
+    uScene: T.scene, uBird: T.birdTex, uBloom: bloomLevels[0].tex, uRays: T.rayA, uBirdBox: birdBox,
+    uExposure: exposure, uBloomMix: BLOOM_MIX, uBloomScale: BLOOM_MIX / BLOOM_NORM, uRayCol: scl(sunC, RAYS_K * rayStrength), uFade: 1, uTime: time % 1000, uRes: [w, h], uView: { i: VIEW }, uTM: { i: TONEMAP }, uContrast: CONTRAST, uDbg: histTex, uDbg2: T.cloudDepth, uDbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
   });
   tEnd();
   frame++;
 }
 
 let exposure = Q.has('exp') ? parseFloat(Q.get('exp')) : 14.0;
+const RAYS_K = Q.has('rays') ? parseFloat(Q.get('rays')) : 0.18;
+const BLOOM_UP_W = Q.has('bloomw') ? parseFloat(Q.get('bloomw')) : 0.6;                                         // weight of each coarser bloom level
+const BLOOM_NORM = (1 - Math.pow(BLOOM_UP_W, 7)) / (1 - BLOOM_UP_W); // total weight of the 7-level chain
+const BLOOM_MIX = Q.has('bloom') ? parseFloat(Q.get('bloom')) : 0.09;
+const BLOOM_CLAMP = Q.has('bclamp') ? parseFloat(Q.get('bclamp')) : 3000;
 
 function renderBird(time, VP, birdRel) {
   const b = bird_;
@@ -2547,7 +2578,7 @@ function readProbeAsync() {
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, probePBO);
     gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, probeBuf);
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    probeData = [probeBuf[12], probeBuf[13], probeBuf[14], probeBuf[15]];
+    probeData = [probeBuf[12], probeBuf[13], probeBuf[14], probeBuf[15], probeBuf[20]];
   }
   if (!probePBO) { probePBO = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, probePBO); gl.bufferData(gl.PIXEL_PACK_BUFFER, 8 * 16, gl.STREAM_READ); }
   gl.bindFramebuffer(gl.FRAMEBUFFER, FB.probe);
@@ -2560,7 +2591,7 @@ function readProbeAsync() {
 // =====================================================================================
 //                                   HINT & MAIN LOOP
 // =====================================================================================
-const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+const isTouch = matchMedia('(pointer: coarse)').matches;   // primary pointer is a finger
 hintEl.innerHTML = isTouch ? 'Touch and drag to steer<small>dive to gather speed · climb to soar</small>'
   : 'Move the mouse to steer<small>dive to gather speed · climb to soar · arrow keys work too</small>';
 let hintShown = false, hintHidden = false;
@@ -2619,8 +2650,10 @@ function downgradePixels() {
   R.scale = 0.32;
 }
 
+let startWall = -1;
 function loop(now) {
   if (window.__done) return;
+  if (startWall < 0) startWall = now;
   requestAnimationFrame(loop);
   const t = now * 0.001;
   let dt = last < 0 ? 1 / 60 : Math.min(t - last, 0.1);
@@ -2636,10 +2669,11 @@ function loop(now) {
   inCloud = damp(inCloud, probeData ? sat(probeData[0] / 0.012) : 0, 3.0, dt);
   render(clock, dt);
   if (frame === 2) canvas.classList.add('on');
-  // hint
+  // hint (wall-clock timing so it behaves the same at any frame rate)
   if (!TEST) {
-    if (!hintShown && clock > 1.6) { hintEl.classList.add('on'); hintShown = true; }
-    if (hintShown && !hintHidden && (clock > 9.5 || input.activeTime > 3.2)) { hintEl.classList.remove('on'); hintHidden = true; }
+    const wall = (now - startWall) * 0.001;
+    if (!hintShown && wall > 1.8) { hintEl.classList.add('on'); hintShown = true; }
+    if (hintShown && !hintHidden && (wall > 10 || input.activeTime > 3.2)) { hintEl.classList.remove('on'); hintHidden = true; }
   }
   if (frame > 3) adaptResolution(dtMs);
   fpsAcc += dtMs; fpsN++;
@@ -2659,9 +2693,32 @@ function loop(now) {
   if (TEST && frame >= TEST_FRAMES) { gl.finish(); window.__done = true; }
 }
 
-window.addEventListener('resize', () => { /* resize() is polled each frame */ });
+// GPU reset (driver update, sleep, too many contexts): rebuild everything by reloading
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); window.__done = true; });
+canvas.addEventListener('webglcontextrestored', () => location.reload());
+// quiet extras: double-click or F toggles fullscreen
+function toggleFullscreen() {
+  const d = document;
+  if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+  else { const el = d.documentElement; const req = el.requestFullscreen || el.webkitRequestFullscreen; if (req) { const pr = req.call(el); if (pr && pr.catch) pr.catch(() => {}); } }
+}
+canvas.addEventListener('dblclick', toggleFullscreen);
+window.addEventListener('keydown', e => { if (e.code === 'KeyF' && !e.repeat) toggleFullscreen(); });
 document.addEventListener('visibilitychange', () => { last = -1; });
-requestAnimationFrame(loop);
+// Boot: let the driver compile all shaders in parallel without blocking the page, then
+// generate the static data and start flying.
+function programsReady() {
+  if (!extParallel) return true;
+  for (const p of programs) if (!gl.getProgramParameter(p.p, extParallel.COMPLETION_STATUS_KHR)) return false;
+  return true;
+}
+function boot() {
+  if (!programsReady()) { requestAnimationFrame(boot); return; }
+  try { checkPrograms(); } catch (e) { fail('Shader error — ' + e.message); return; }
+  generateStatic();
+  requestAnimationFrame(loop);
+}
+boot();
 window.__debug = {
   bird: bird_, cam, R, towers, seaTopAt,
   probe: () => {
