@@ -26,15 +26,21 @@ softly kept from sinking deep into the cloud sea.
 * **Sky** — a physically based atmosphere (Rayleigh, Mie and ozone) computed into transmittance,
   multiple-scattering and sky-view lookup tables (after Hillaire 2020). The same model colours
   the low sun at every altitude and the haze between you and distant clouds.
-* **Clouds** — raymarched volumes defined by signed distance fields: a curved sea of clouds
-  (it drops away with the Earth's curvature to a real horizon) and procedurally placed towering
-  cumulus, each sculpted from leaning columns, domes, turrets and satellite columns. Their
-  billows are an *fbm of spheres* — fields of random spheres baked into tileable 3D textures and
-  smoothly merged onto the base shapes octave by octave — which gives rounded cauliflower tops;
-  detail noise erodes the soft rims into wisps.
+* **Clouds** — raymarched volumes defined by signed distance fields, all generated (nothing is
+  placed by hand). A curved sea of clouds drops away with the Earth's curvature to a real
+  horizon. Towering cumulus of every size rise out of it, from low humps to a few giants; a
+  convection field of loose clusters and wind-aligned lines decides where they grow, with wide
+  open stretches between. Each tower is a cluster of turrets stacked like a cauliflower on a
+  broad base that swells out of the sea; some lean with the wind and a few are torn off
+  downwind at the top. Smaller cumulus float freely at many heights, flat underneath and lumpy
+  on top, and a few thin, wind-stretched layers drift higher up. Billows and bulges are an *fbm
+  of spheres* (fields of random spheres baked into tileable 3D textures and merged onto the
+  base shapes octave by octave); detail noise frays the thinnest edges into wisps.
 * **Light** — a short light march toward the sun with multiple-scattering octaves and a two-lobe
-  phase function (golden lit faces, bright silver linings when backlit), slow diffusion inside
-  the clouds, blue sky light in the shadows, and a precomputed *tower shadow volume* so towers
+  phase function (golden lit faces, bright silver linings when backlit), light diffusing through
+  the clouds (golden in thin parts, cooler where it has travelled far), sky light that depends on
+  which way each bulge faces (deep blue zenith, warm bounce from the sea below, golden or violet
+  sky on the sides), and a precomputed *shadow volume* so towers and the larger floating clouds
   cast long shadows across the cloud sea.
 * **Speed** — empty space skipping (two coarse "max-top" grids plus the distance field),
   optical-depth driven steps, clouds traced at a reduced, dynamically adjusted resolution and
@@ -58,7 +64,7 @@ These are for working on the piece and are not needed to enjoy it.
 | parameter | effect |
 |---|---|
 | `?debug` | frame-rate / resolution / GPU-time overlay |
-| `?test&preset=start\|sun\|away\|side\|skim\|high\|bank\|approach\|inside\|fastdive&frames=N&w=W&h=H&scale=S` | deterministic render: fixed time step, stops after `N` frames (for screenshots) |
+| `?test&preset=start\|sun\|away\|side\|skim\|high\|high2\|bank\|tower\|giant\|torn\|humps\|floats\|upward\|approach\|inside\|fastdive&frames=N&w=W&h=H&scale=S` | deterministic render: fixed time step, stops after `N` frames (for screenshots); `tower`, `giant` and `torn` look at the nearest generated tower of that kind, `approach` and `inside` at a floating cloud |
 | `?test&pose=x,y,z,yaw,pitch,bank` | start the bird at an exact pose |
 | `?test&closeup=right,up,forward` | fixed camera offset in the bird's frame |
 | `?test&script=dive\|climb\|turn\|weave&log` | scripted input; per-frame flight state in `window.__log` |

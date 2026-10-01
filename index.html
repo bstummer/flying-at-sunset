@@ -148,99 +148,161 @@ const SEA_MAP_N = 512;
 const TOWER_MAP_N = 1024;
 const TSV_N = 256, TSV_NH = 32, TSV_H = 10500;
 const SHAPE_N = 128, DETAIL_N = 64;
-const TOWER_EXT = 2.2;         // lateral extent of a tower incl. lobes & satellites, in units of R
+const TOWER_EXT = 2.1;         // lateral extent of a tower (flaring base, turrets, bulges), in units of R
+const FLOAT_EXT = 1.75;        // the same for a cloud floating freely in the air
+const fract = x => x - Math.floor(x);
+const floatThick = (R, seed) => R * (0.5 + 0.55 * fract(seed * 7.31));   // matches the shader
 
-// ------------------------------------------------------------------ CPU side world: sea of clouds & towers
+// ------------------------------------------------------------------ CPU side world: sea of clouds, towers & floating clouds
 const rng = mulberry32(0x5eed1e5);
 
-function makeNoise2D(seedRng, period) {
-  const g = new Float32Array(period * period);
+function makeNoise2D(seedRng, px, py = px) {   // tileable value noise, px by py cells
+  const g = new Float32Array(px * py);
   for (let i = 0; i < g.length; i++) g[i] = seedRng();
   return (x, y) => {
     const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
     const ux = fx * fx * fx * (fx * (fx * 6 - 15) + 10), uy = fy * fy * fy * (fy * (fy * 6 - 15) + 10);
-    const x0 = ((xi % period) + period) % period, x1 = (x0 + 1) % period;
-    const y0 = ((yi % period) + period) % period, y1 = (y0 + 1) % period;
-    const a = g[y0 * period + x0], b = g[y0 * period + x1], c = g[y1 * period + x0], d = g[y1 * period + x1];
+    const x0 = ((xi % px) + px) % px, x1 = (x0 + 1) % px;
+    const y0 = ((yi % py) + py) % py, y1 = (y0 + 1) % py;
+    const a = g[y0 * px + x0], b = g[y0 * px + x1], c = g[y1 * px + x0], d = g[y1 * px + x1];
     return lerp(lerp(a, b, ux), lerp(c, d, ux), uy);
   };
+}
+const wrapD = (a, b) => { let d = a - b; d -= TILE * Math.round(d / TILE); return d; };
+const dist2 = (x0, z0, x1, z1) => Math.hypot(wrapD(x0, x1), wrapD(z0, z1));
+
+// sea of clouds: base height and lumpiness (the sea map adds soft mounds around the towers)
+const seaN = [makeNoise2D(rng, 8), makeNoise2D(rng, 16), makeNoise2D(rng, 32), makeNoise2D(rng, 64), makeNoise2D(rng, 12)];
+function seaBase(u, v) {   // u, v in tile units
+  const f = seaN[0](u * 8, v * 8) * 0.55 + seaN[1](u * 16, v * 16) * 0.27 + seaN[2](u * 32, v * 32) * 0.12 + seaN[3](u * 64, v * 64) * 0.06;
+  return [1520 + (f - 0.5) * 760, 0.45 + 0.85 * smoothstep(0.25, 0.75, seaN[4](u * 12, v * 12))];
+}
+const seaBaseAt = (x, z) => seaBase(fmod(x, TILE) / TILE, fmod(z, TILE) / TILE);
+const moundOf = (R, rise) => Math.min(300, 40 + 0.05 * R + 0.025 * rise);   // sea raised around a tower
+
+// Where towers grow: loose lines (streets along the wind) and clusters, with wide open stretches.
+const convN = [makeNoise2D(rng, 4, 11), makeNoise2D(rng, 9), makeNoise2D(rng, 5), makeNoise2D(rng, 18)];
+function convection(x, z) {
+  const u = fmod(x, TILE) / TILE, v = fmod(z, TILE) / TILE;
+  const wu = u + 0.05 * (convN[3](u * 18, v * 18) - 0.5), wv = v + 0.05 * (convN[3](u * 18 + 9.5, v * 18 + 4.5) - 0.5);
+  const lines = Math.pow(1 - Math.abs(2 * convN[0](wu * 4, wv * 11) - 1), 7);
+  const clusters = smoothstep(0.58, 0.8, convN[1](wu * 9, wv * 9));
+  const active = smoothstep(0.3, 0.62, convN[2](u * 5, v * 5));
+  return Math.max(lines * 0.9, clusters) * active;
 }
 
 function generateTowers() {
   const towers = [];
-  const wrapD = (a, b) => { let d = a - b; d -= TILE * Math.round(d / TILE); return d; };
-  const dist2 = (x0, z0, x1, z1) => Math.hypot(wrapD(x0, x1), wrapD(z0, z1));
-  const EXT = TOWER_EXT;
-  const fits = (x, z, R) => {
-    if (dist2(x, z, 0, 0) < EXT * R + 2600) return false; // keep the start clear
-    for (const t of towers) if (dist2(x, z, t.x, t.z) < EXT * (t.R + R) + 700) return false;
+  const fits = (x, z, R, gap, rise) => {
+    if (dist2(x, z, 0, 0) < TOWER_EXT * R + 2600) return false; // keep the start clear
+    // and the view of the low sun from the start (the sun sits toward -z)
+    const sx = wrapD(x, 0), sz = wrapD(z, 0);
+    if (rise > 600 && sz < 0 && sz > -80000 && Math.abs(sx) < TOWER_EXT * R + 3000) return false;
+    for (const t of towers) {
+      const dd = dist2(x, z, t.x, t.z);
+      if (dd < TOWER_EXT * (t.R + R) + gap) return false;
+      if (R > 2400 && t.R > 2400 && dd < 26000) return false;   // giants stand apart
+    }
     return true;
   };
-  const push = (x, z, R, top) => towers.push({ x: fmod(x, TILE), z: fmod(z, TILE), R: Math.round(R), top, seed: rng() * 0.999 });
-  // hero towers framing the opening view (start at origin heading slightly right of the sun)
-  push(-7200, -17500, 2900, 9300);
-  push(7800, -12500, 1750, 6300);
-  push(2600, -6400, 780, 3700);
-  push(-3600, -8600, 950, 4400);
-  push(11500, -3500, 1150, 5000);
-  push(-9800, -4200, 700, 3400);
-  const clusters = [];
-  for (let i = 0; i < 16; i++) clusters.push([rng() * TILE, rng() * TILE, 5000 + rng() * 9000]);
-  const place = (count, rMin, rMax, tMin, tMax, bias) => {
-    let n = 0;
-    for (let a = 0; a < count * 600 && n < count; a++) {
-      let x, z;
-      if (rng() < bias) {
-        const c = clusters[Math.floor(rng() * clusters.length)];
-        const ang = rng() * 2 * PI, d = Math.sqrt(rng()) * c[2];
-        x = c[0] + Math.cos(ang) * d; z = c[1] + Math.sin(ang) * d;
-      } else { x = rng() * TILE; z = rng() * TILE; }
-      x = fmod(x, TILE); z = fmod(z, TILE);
-      const k = Math.pow(rng(), 1.3);
+  // rise: height of the top above the sea around it
+  const push = (x, z, R, rise) => {
+    x = fmod(x, TILE); z = fmod(z, TILE); R = Math.round(R);
+    towers.push({ x, z, R, top: Math.round(seaBaseAt(x, z)[0] + moundOf(R, rise) + rise), rise, seed: rng() * 0.999 });
+  };
+  const place = (count, rMin, rMax, riseMin, riseMax, fMin, gap, riseOfR = false) => {
+    for (let a = 0, n = 0; a < count * 500 && n < count; a++) {
+      const x = rng() * TILE, z = rng() * TILE;
+      const f = fMin < 0 ? 1 : convection(x, z);
+      if (f < fMin || rng() > f) continue;
+      const k = Math.pow(rng(), 1.5) * (0.45 + 0.55 * f);   // bigger where convection is strong
       const R = lerp(rMin, rMax, k);
-      const top = lerp(tMin, tMax, 0.55 * k + 0.45 * rng());
-      if (fits(x, z, R)) { push(x, z, R, top); n++; }
+      const rise = riseOfR ? R * lerp(riseMin, riseMax, rng()) : lerp(riseMin, riseMax, 0.6 * k + 0.4 * rng());
+      if (fits(x, z, R, gap, rise)) { push(x, z, R, rise); n++; }
     }
   };
-  place(7, 2300, 3200, 8000, 10000, 0.35);
-  place(18, 1250, 2200, 5000, 7600, 0.55);
-  place(46, 520, 1200, 2900, 5200, 0.6);
-  place(80, 230, 520, 2150, 3100, 0.45);
+  place(5, 2700, 3800, 7000, 8800, 0.5, 3000);            // a few giants that dominate the view
+  place(9, 1500, 2500, 3000, 5000, 0.45, 1500);
+  place(60, 650, 1500, 1100, 3000, 0.3, 700);             // many medium towers
+  place(240, 260, 700, 0.35, 1.6, 0.12, 250, true);       // humps barely rising above the sea
+  place(14, 300, 900, 0.5, 2.5, -1, 400, true);           // the odd loner out in the open
   return towers;
 }
 const towers = generateTowers();
 
-// Tower lookup map (nearest tower per 125 m texel, exact centers, NEAREST sampled) +
-// sea height map (smooth, shared with the CPU for the gentle "floor").
+// Sea height map (smooth, shared with the CPU for the gentle "floor"): base noise + mounds on
+// which the towers stand.
 const seaMap = new Float32Array(SEA_MAP_N * SEA_MAP_N * 2);
-const towerMap = new Float32Array(TOWER_MAP_N * TOWER_MAP_N * 4);
-(function buildMaps() {
-  const n1 = makeNoise2D(rng, 8), n2 = makeNoise2D(rng, 16), n3 = makeNoise2D(rng, 32), n4 = makeNoise2D(rng, 64), n5 = makeNoise2D(rng, 12);
+(function buildSeaMap() {
   const N = SEA_MAP_N, cell = TILE / N;
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const u = i / N, v = j / N;
-    const f = n1(u * 8, v * 8) * 0.55 + n2(u * 16, v * 16) * 0.27 + n3(u * 32, v * 32) * 0.12 + n4(u * 64, v * 64) * 0.06;
-    let top = 1520 + (f - 0.5) * 760;
-    const lump = 0.45 + 0.85 * smoothstep(0.25, 0.75, n5(u * 12, v * 12));
+    const [top, lump] = seaBase(i / N, j / N);
     seaMap[(j * N + i) * 2] = top;
     seaMap[(j * N + i) * 2 + 1] = lump;
   }
-  // raise the sea around towers: their bases sit on soft mounds
   for (const t of towers) {
-    const rad = t.R * 4.0, r0 = Math.ceil(rad / cell);
+    const rad = t.R * 4.0, r0 = Math.ceil(rad / cell), mound = moundOf(t.R, t.rise);
     const ci = Math.floor(t.x / cell), cj = Math.floor(t.z / cell);
     for (let dj = -r0; dj <= r0; dj++) for (let di = -r0; di <= r0; di++) {
       const i = ((ci + di) % N + N) % N, j = ((cj + dj) % N + N) % N;
-      let dx = (i + 0.5) * cell - t.x, dz = (j + 0.5) * cell - t.z;
-      dx -= TILE * Math.round(dx / TILE); dz -= TILE * Math.round(dz / TILE);
-      const d = Math.hypot(dx, dz) / t.R;
+      const d = dist2((i + 0.5) * cell, (j + 0.5) * cell, t.x, t.z) / t.R;
       if (d > 4) continue;
       const k = Math.exp(-Math.pow(Math.max(d - 0.7, 0) / 1.5, 2));
-      seaMap[(j * N + i) * 2] += k * Math.min(320, 120 + t.R * 0.09);
-      seaMap[(j * N + i) * 2 + 1] = Math.max(seaMap[(j * N + i) * 2 + 1], 0.55 + 0.5 * k);
+      seaMap[(j * N + i) * 2] += k * mound;
+      seaMap[(j * N + i) * 2 + 1] = Math.max(seaMap[(j * N + i) * 2 + 1], 0.55 + 0.4 * k);
     }
   }
-  // towers: nearest by distance to the extent cylinder (TOWER_EXT * R)
+})();
+
+function seaTopAt(x, z) { // bilinear, matches GPU LINEAR filtering of the sea map
+  const N = SEA_MAP_N;
+  const u = fmod(x, TILE) / TILE * N - 0.5, v = fmod(z, TILE) / TILE * N - 0.5;
+  const i0 = Math.floor(u), j0 = Math.floor(v), fu = u - i0, fv = v - j0;
+  const at = (i, j) => seaMap[((((j % N) + N) % N) * N + (((i % N) + N) % N)) * 2];
+  return lerp(lerp(at(i0, j0), at(i0 + 1, j0), fu), lerp(at(i0, j0 + 1), at(i0 + 1, j0 + 1), fu), fv);
+}
+
+// Clouds floating freely in the air: small puffs near the bird's usual altitude, larger cumulus,
+// and a few higher, flatter ones. Never hugging a tower, never touching the sea.
+function generateFloats() {
+  const floats = [];
+  const fieldN = makeNoise2D(rng, 10);
+  const fits = (x, z, R, margin) => {
+    if (dist2(x, z, 0, 0) < FLOAT_EXT * R + 700) return false;          // not on top of the start
+    for (const t of towers) if (dist2(x, z, t.x, t.z) < TOWER_EXT * t.R + FLOAT_EXT * R + margin) return false;
+    for (const f of floats) if (dist2(x, z, f.x, f.z) < FLOAT_EXT * (f.R + R) + 200) return false;
+    return true;
+  };
+  // lowest base: clear of the highest billows of the sea below
+  const clearance = (x, z) => seaTopAt(x, z) + 330 * seaBaseAt(x, z)[1] + 150;
+  const push = (x, z, R, base, margin = 1500) => {
+    x = fmod(x, TILE); z = fmod(z, TILE); R = Math.round(R);
+    if (!fits(x, z, R, margin)) return false;
+    floats.push({ x, z, R, base: Math.round(Math.max(base, clearance(x, z))), seed: rng() * 0.999 });
+    return true;
+  };
+  const place = (count, rMin, rMax, hMin, hMax) => {
+    for (let a = 0, n = 0; a < count * 300 && n < count; a++) {
+      const x = rng() * TILE, z = rng() * TILE;
+      if (rng() > 0.2 + 0.8 * smoothstep(0.42, 0.72, fieldN(x / TILE * 10, z / TILE * 10))) continue;
+      if (push(x, z, lerp(rMin, rMax, Math.pow(rng(), 1.7)), lerp(hMin, hMax, rng()))) n++;
+    }
+  };
+  place(230, 110, 380, 1900, 3300);    // small puffs, many around the bird's usual altitude
+  place(100, 320, 850, 2300, 4300);    // larger cumulus: these shadow the sea below
+  place(60, 150, 450, 4000, 5600);     // higher up, smaller and flatter
+  return floats;
+}
+const floats = generateFloats();
+
+// Object map: per 125 m texel the nearest tower or floating cloud (they never overlap), exact
+// centres, NEAREST sampled. z = R + seed (negative for floating clouds), w = top of a tower or
+// base of a floating cloud.
+const towerMap = new Float32Array(TOWER_MAP_N * TOWER_MAP_N * 4);
+const objects = towers.map(t => ({ x: t.x, z: t.z, ext: TOWER_EXT * t.R, packed: t.R + t.seed, w: t.top, topExt: t.top + 0.55 * t.R + 200 }))
+  .concat(floats.map(f => ({ x: f.x, z: f.z, ext: FLOAT_EXT * f.R, packed: -(f.R + f.seed), w: f.base,
+    topExt: f.base + floatThick(f.R, f.seed) + 0.3 * f.R + 160 })));
+(function buildObjectMap() {
   const M = TOWER_MAP_N, tc = TILE / M, MARGIN = 7000;
   const best = new Float32Array(M * M).fill(1e9);
   for (let p = 0; p < M * M; p++) {
@@ -250,73 +312,49 @@ const towerMap = new Float32Array(TOWER_MAP_N * TOWER_MAP_N * 4);
     towerMap[p * 4 + 2] = 1000;
     towerMap[p * 4 + 3] = 0;
   }
-  for (const t of towers) {
-    const rad = TOWER_EXT * t.R + MARGIN, r0 = Math.ceil(rad / tc);
-    const ci = Math.floor(t.x / tc), cj = Math.floor(t.z / tc);
-    for (let dj = -r0; dj <= r0; dj++) for (let di = -r0; di <= r0; di++) {
-      const i = ((ci + di) % M + M) % M, j = ((cj + dj) % M + M) % M;
-      let dx = (i + 0.5) * tc - t.x, dz = (j + 0.5) * tc - t.z;
-      dx -= TILE * Math.round(dx / TILE); dz -= TILE * Math.round(dz / TILE);
-      const v = Math.hypot(dx, dz) - TOWER_EXT * t.R;
-      const p = j * M + i;
+  for (const o of objects) {
+    const r0 = Math.ceil((o.ext + MARGIN) / tc);
+    const ci = Math.floor(o.x / tc), cj = Math.floor(o.z / tc);
+    for (let dj = -r0; dj <= r0; dj++) {
+      const j = ((cj + dj) % M + M) % M, dz = (cj + dj + 0.5) * tc - o.z, row = j * M;
+      for (let di = -r0; di <= r0; di++) {
+      const dx = (ci + di + 0.5) * tc - o.x;
+      const v = Math.sqrt(dx * dx + dz * dz) - o.ext;
+      const p = row + ((ci + di) % M + M) % M;
       if (v < best[p]) {
         best[p] = v;
-        towerMap[p * 4] = t.x; towerMap[p * 4 + 1] = t.z; towerMap[p * 4 + 2] = t.R + t.seed; towerMap[p * 4 + 3] = t.top;
+        towerMap[p * 4] = o.x; towerMap[p * 4 + 1] = o.z; towerMap[p * 4 + 2] = o.packed; towerMap[p * 4 + 3] = o.w;
+      }
       }
     }
   }
 })();
 
-// coarse grid (2 km cells): highest cloud top of any tower whose extent comes within 2 km of the cell
-const TOP_N = 64;
-const topMap = new Float32Array(TOP_N * TOP_N);
-(function buildTopMap() {
-  const cell = TILE / TOP_N, D = 2000;
-  for (const t of towers) {
-    const reach = TOWER_EXT * t.R + 160 + D;
-    const topExt = t.top + 0.55 * t.R + 200;
+// coarse grids: highest cloud top of any object whose extent comes within D of the cell
+function buildTopMap(n, D) {
+  const map = new Float32Array(n * n), cell = TILE / n;
+  for (const o of objects) {
+    const reach = o.ext + 160 + D;
     const r0 = Math.ceil(reach / cell) + 1;
-    const ci = Math.floor(t.x / cell), cj = Math.floor(t.z / cell);
+    const ci = Math.floor(o.x / cell), cj = Math.floor(o.z / cell);
     for (let dj = -r0; dj <= r0; dj++) for (let di = -r0; di <= r0; di++) {
-      // distance from the tower centre to the cell rectangle
+      // distance from the object centre to the cell rectangle
       const x0 = (ci + di) * cell, z0 = (cj + dj) * cell;
-      const dx = Math.max(x0 - t.x, 0, t.x - (x0 + cell)), dz = Math.max(z0 - t.z, 0, t.z - (z0 + cell));
+      const dx = Math.max(x0 - o.x, 0, o.x - (x0 + cell)), dz = Math.max(z0 - o.z, 0, o.z - (z0 + cell));
       if (Math.hypot(dx, dz) > reach) continue;
-      const i = ((ci + di) % TOP_N + TOP_N) % TOP_N, j = ((cj + dj) % TOP_N + TOP_N) % TOP_N;
-      topMap[j * TOP_N + i] = Math.max(topMap[j * TOP_N + i], topExt);
+      const i = ((ci + di) % n + n) % n, j = ((cj + dj) % n + n) % n;
+      map[j * n + i] = Math.max(map[j * n + i], o.topExt);
     }
   }
-})();
-
-// coarser level: 8 km cells, guarantee distance 8 km
-const TOP2_N = 16;
-const topMap2 = new Float32Array(TOP2_N * TOP2_N);
-(function buildTopMap2() {
-  const cell = TILE / TOP2_N, D = 8000;
-  for (const t of towers) {
-    const reach = TOWER_EXT * t.R + 160 + D, topExt = t.top + 0.55 * t.R + 200;
-    const r0 = Math.ceil(reach / cell) + 1, ci = Math.floor(t.x / cell), cj = Math.floor(t.z / cell);
-    for (let dj = -r0; dj <= r0; dj++) for (let di = -r0; di <= r0; di++) {
-      const x0 = (ci + di) * cell, z0 = (cj + dj) * cell;
-      const dx = Math.max(x0 - t.x, 0, t.x - (x0 + cell)), dz = Math.max(z0 - t.z, 0, t.z - (z0 + cell));
-      if (Math.hypot(dx, dz) > reach) continue;
-      const i = ((ci + di) % TOP2_N + TOP2_N) % TOP2_N, j = ((cj + dj) % TOP2_N + TOP2_N) % TOP2_N;
-      topMap2[j * TOP2_N + i] = Math.max(topMap2[j * TOP2_N + i], topExt);
-    }
-  }
-})();
+  return map;
+}
+const TOP_N = 64, TOP2_N = 16;
+const topMap = buildTopMap(TOP_N, 2000);     // 2 km cells, guaranteed distance 2 km
+const topMap2 = buildTopMap(TOP2_N, 8000);   // 8 km cells, guaranteed distance 8 km
 // highest point the sea of clouds can reach (base height + billows), for skipping its lookup
 let SEA_MAX = 0;
 for (let i = 0; i < SEA_MAP_N * SEA_MAP_N; i++) SEA_MAX = Math.max(SEA_MAX, seaMap[i * 2] + 330 * seaMap[i * 2 + 1] + 95);
 SEA_MAX += 10;
-
-function seaTopAt(x, z) { // bilinear, matches GPU LINEAR filtering of the sea map
-  const N = SEA_MAP_N;
-  const u = fmod(x, TILE) / TILE * N - 0.5, v = fmod(z, TILE) / TILE * N - 0.5;
-  const i0 = Math.floor(u), j0 = Math.floor(v), fu = u - i0, fv = v - j0;
-  const at = (i, j) => seaMap[((((j % N) + N) % N) * N + (((i % N) + N) % N)) * 2];
-  return lerp(lerp(at(i0, j0), at(i0 + 1, j0), fu), lerp(at(i0, j0 + 1), at(i0 + 1, j0 + 1), fu), fv);
-}
 
 // ------------------------------------------------------------------ atmosphere (CPU copy for sun colors)
 const ATM = {
@@ -694,7 +732,8 @@ void main() {
   o = vec4(L, 1.0);
 }`;
 
-// ambient: px0 = cosine weighted sky irradiance / PI (upper hemisphere), px1 = mean radiance near horizon
+// ambient: px0 = cosine weighted sky irradiance / PI (upper hemisphere), px1 = mean radiance near
+// horizon, px2 / px3 = sky irradiance / PI on a vertical face turned toward / away from the sun
 const FS_AMBIENT = GLSL_COMMON + GLSL_ATMO + `
 uniform sampler2D uSky;
 uniform vec3 uSunDir;
@@ -703,6 +742,7 @@ out vec4 o;
 void main() {
   int px = int(gl_FragCoord.x);
   vec3 acc = vec3(0.0); float w = 0.0;
+  vec3 face = normalize(vec3(uSunDir.x, 0.0, uSunDir.z)) * (px == 2 ? 1.0 : -1.0);
   for (int i = 0; i < 24; i++) for (int j = 0; j < 10; j++) {
     float ph = 2.0 * PI * (float(i) + 0.5) / 24.0;
     float ct = (float(j) + 0.5) / 10.0;
@@ -710,11 +750,11 @@ void main() {
     float st = sqrt(1.0 - ct * ct);
     vec3 d = vec3(st * cos(ph), ct, st * sin(ph));
     vec3 L = skyLookup(uSky, d, uSunDir, uCamH);
-    float wt = px == 0 ? ct : 1.0;
+    float wt = px == 0 ? ct : px == 1 ? 1.0 : max(dot(d, face), 0.0);
     acc += L * wt; w += wt;
   }
   // px0: irradiance/PI = mean(L cos)/mean(cos) * ... ; uniform-in-cos sampling -> E = 2PI * mean(L cos)
-  vec3 r = px == 0 ? acc / float(240) * 2.0 : acc / w;
+  vec3 r = px == 1 ? acc / w : acc / float(240) * 2.0;
   o = vec4(r, 1.0);
 }`;
 
@@ -827,6 +867,38 @@ void main() {
   o = vec4(sat(c * patchy), streak, base, 1.0);
 }`;
 
+// thin high layers: r, g = density of the two layers (a few long patches drawn out along the
+// wind, streaky inside), b = fine streaks. Tiles over 64 km.
+const FS_LAYERS = GLSL_COMMON + `
+uniform float uSize;
+out vec4 o;
+float vnoise(vec2 p, vec2 per, uint seed) {
+  vec2 i = floor(p), f = p - i;
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  float a = hash33(uvec3(uvec2(mod(i, per)), seed)).x;
+  float b = hash33(uvec3(uvec2(mod(i + vec2(1, 0), per)), seed)).x;
+  float c = hash33(uvec3(uvec2(mod(i + vec2(0, 1), per)), seed)).x;
+  float d = hash33(uvec3(uvec2(mod(i + vec2(1, 1), per)), seed)).x;
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+float fbm(vec2 p, vec2 per, uint seed) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 6; i++) { s += a * vnoise(p * per, per, seed + uint(i)); a *= 0.5; per *= 2.0; }
+  return s;
+}
+float layer(vec2 p, uint seed) {
+  vec2 w = vec2(fbm(p, vec2(3.0, 6.0), seed + 60u), fbm(p + 0.31, vec2(3.0, 6.0), seed + 70u)) - 0.5;
+  vec2 q = p + w * vec2(0.05, 0.03);
+  float patchy = smoothstep(0.62, 0.76, fbm(q, vec2(2.0, 5.0), seed));         // a few long patches
+  float body = smoothstep(0.32, 0.72, fbm(q, vec2(3.0, 20.0), seed + 20u));     // stretched along x
+  float streak = fbm(q, vec2(6.0, 64.0), seed + 40u);
+  return patchy * body * (0.45 + 0.75 * streak);
+}
+void main() {
+  vec2 p = gl_FragCoord.xy / uSize;
+  o = vec4(sat(layer(p, 101u)), sat(layer(p + vec2(0.43, 0.27), 151u)), fbm(p, vec2(8.0, 96.0), 211u), 1.0);
+}`;
+
 // ------------------------------------------------------------------ clouds: shared world functions
 const GLSL_CLOUD = `
 uniform sampler2D uSeaMap;
@@ -851,26 +923,38 @@ const float DETAIL_TILE = 512.0;
 const float TSV_H = 10500.0;
 const float SIGMA = 0.035;        // extinction inside clouds (1/m)
 const float EDGE_W = 80.0;        // soft boundary thickness (m)
-const float EXT = 2.2;            // tower lateral extent factor (TOWER_EXT in JS)
-const float TOWER_BASE = 650.0;
+const float EXT = 2.1;            // tower lateral extent factor (TOWER_EXT in JS)
+const float FEXT = 1.75;          // floating cloud lateral extent factor (FLOAT_EXT in JS)
+const vec2 WIND_DIR = vec2(0.9162, 0.4009);
 
-struct Tower { vec2 rel; float R; float seed; float top; };
-const Tower NO_TOWER = Tower(vec2(1.0e6, 0.0), 1.0, 0.0, 0.0);
+// One object per map texel: a cumulus tower rising out of the sea (kind 0, top = its highest
+// point) or a cloud floating freely in the air (kind 1, top = height of its flat base).
+struct Obj { vec2 rel; float R; float seed; float top; float kind; };
+const Obj NO_OBJ = Obj(vec2(1.0e6, 0.0), 1.0, 0.0, 0.0, 0.0);
 uniform sampler2D uTopMap2;
 uniform float uSeaMax;
 
-Tower getTower(vec2 wxz) {
+Obj getObj(vec2 wxz) {
   vec2 tp = wxz - TILE * floor(wxz * INV_TILE);
   ivec2 ij = ivec2(tp * (1024.0 * INV_TILE)) & 1023;
   vec4 m = texelFetch(uTowerMap, ij, 0);
-  Tower tw;
+  Obj o;
   vec2 r = tp - m.xy;
   r -= TILE * floor(r * INV_TILE + 0.5);
-  tw.rel = r;
-  tw.R = floor(m.z);
-  tw.seed = fract(m.z);
-  tw.top = m.w;
-  return tw;
+  o.rel = r;
+  float a = abs(m.z);
+  o.R = floor(a);
+  o.seed = fract(a);
+  o.top = m.w;
+  o.kind = m.z < 0.0 ? 1.0 : 0.0;
+  return o;
+}
+float objExt(Obj o) { return (o.kind > 0.5 ? FEXT : EXT) * o.R; }
+float floatThick(Obj o) { return o.R * (0.5 + 0.55 * fract(o.seed * 7.31)); }
+// conservative vertical distance to an object's slab (valid inside its extent cylinder)
+float objVBound(Obj o, float h) {
+  if (o.kind > 0.5) return max(h - (o.top + floatThick(o) + 0.3 * o.R + 110.0), (o.top - 70.0) - h);
+  return h - (o.top + 0.55 * o.R + 150.0);
 }
 
 vec3 sunColorAt(float h) {
@@ -879,54 +963,9 @@ vec3 sunColorAt(float h) {
   return mix(uSunCol[i], uSunCol[i + 1], f - float(i));
 }
 
-// Analytic macro shape of a cumulus tower: leaning column + domed crown + turret lobes.
-float towerBase(Tower tw, float h) {
-  float R = tw.R, top = tw.top, s = tw.seed;
-  float H = max(top - TOWER_BASE, 1.0);
-  float hn = (h - TOWER_BASE) / H;
-  float a = s * 6.2831853;
-  vec2 lean = vec2(cos(a), sin(a));
-  vec2 axis = lean * (0.16 * R * hn * hn) + 0.09 * R * vec2(sin(hn * 4.7 + s * 41.0), sin(hn * 3.9 + s * 23.0 + 1.5708));
-  vec2 q = tw.rel - axis;
-  float r = length(q);
-  // broad base flowing into the sea, gently tapering column
-  float prof = 1.08 - 0.26 * smoothstep(0.0, 1.0, hn) + 0.25 * (1.0 - smoothstep(0.0, 0.18, hn));
-  float capH = min(0.9 * R, 0.45 * H);
-  float hc = top - capH;
-  float sdCol = max(r - R * prof, h - hc);
-  // dome matches the column radius where they meet (no mushroom crown)
-  float Rc = R * (1.08 - 0.26 * smoothstep(0.0, 1.0, (hc - TOWER_BASE) / H));
-  vec3 pe = vec3(q.x, (h - hc) * (Rc / capH), q.y);
-  float sdDome = (length(pe) - Rc) * min(capH / Rc, 1.0);
-  float d = min(sdCol, sdDome);
-  // turrets: a few rounded lobes around the crown (directions step by the golden angle)
-  vec2 ld = vec2(lean.y, -lean.x);
-  const mat2 GOLDEN = mat2(-0.7373688, 0.6754903, -0.6754903, -0.7373688);
-  for (int k = 0; k < 3; k++) {
-    float fk = float(k);
-    float lr = R * (0.48 - 0.06 * fk);
-    float lh = hc - capH * (0.1 + 0.6 * fk) + 0.25 * capH * fract(s * 13.0 + fk * 0.37);
-    vec2 lo = ld * R * (0.28 + 0.12 * fract(s * 7.0 + fk * 0.61));
-    vec3 lp = vec3(q.x - lo.x, h - lh, q.y - lo.y);
-    d = smin(d, length(lp) - lr, 0.35 * R);
-    ld = GOLDEN * ld;
-  }
-  // one or two shorter satellite columns merged into the main body (irregular clusters)
-  vec2 sd = vec2(-lean.x, lean.y);
-  for (int k = 0; k < 2; k++) {
-    float fk = float(k);
-    float sf = fract(s * (5.3 + 3.7 * fk));
-    if (k == 1 && sf < 0.45) break;
-    float Rs = R * (0.42 + 0.2 * sf);
-    float topS = TOWER_BASE + H * (0.5 + 0.3 * fract(s * 9.1 + fk * 0.5));
-    vec2 so = q - sd * R * (0.75 + 0.25 * sf);
-    float cy = topS - Rs * 0.8;
-    float sdSat = length(vec2(length(so), max(h - cy, 0.0) * 1.25)) - Rs;
-    d = smin(d, sdSat, 0.45 * R);
-    sd = GOLDEN * GOLDEN * sd;
-  }
-  return d;
-}
+vec2 rot2(vec2 v, float a) { float c = cos(a), s = sin(a); return vec2(c * v.x - s * v.y, s * v.x + c * v.y); }
+// ellipsoid (a lower bound of the distance, safe for marching)
+float sdEll(vec3 p, vec3 r) { return (length(p / r) - 1.0) * min(min(r.x, r.y), r.z); }
 
 float octave(float d, float n, float shell, float k) {
   // spheres may only bulge out to "shell" beyond the current surface; the clip is wide and soft
@@ -935,15 +974,124 @@ float octave(float d, float n, float shell, float k) {
   // the union radius covers the whole shell, so no sphere is left floating detached in the air
   return smin(n, d, max(k * 0.8, shell * 1.05));
 }
+// Cauliflower bulges: spheres reaching up to "shell" out of the surface, merged with tight
+// unions so the creases between them stay defined and each bulge catches its own light.
+float bulge(float d, float n, float shell) {
+  float k = max(shell * 0.55, 1.0);
+  n = smax(n, d - shell, k * 2.0);
+  return smin(n, d, k);
+}
+// finer levels: softer unions, so they read as texture on the bulges rather than as loose balls
+float bulgeSoft(float d, float n, float shell) {
+  float k = max(shell * 0.9, 1.0);
+  n = smax(n, d - shell, k * 1.6);
+  return smin(n, d, k);
+}
+// weight of a detail octave: fades once its features shrink below about two trace pixels
+float octW(float size, float lod) { return sat(size / (40.0 * lod + 1.0) - 1.0); }
+
+// --- cumulus towers
+float towerTorn(Obj o, float rise) { return step(0.66, fract(o.seed * 5.71)) * smoothstep(1800.0, 3500.0, rise); }
+vec2 towerWind(Obj o) { return rot2(WIND_DIR, (fract(o.seed * 2.31) - 0.5) * 1.3); }
+
+// Macro shape: a cluster of turrets of different heights with rounded crowns, on a broad base that
+// swells out of the sea, leaning with the wind; a few are sheared off downwind at the top.
+// seaC: sea height at the tower centre. hn: 0 at the sea, 1 at the top.
+float towerShape(Obj o, float h, float seaC, out float hn) {
+  float R = o.R, s = o.seed, top = o.top;
+  float rise = max(top - seaC, 60.0);
+  hn = (h - seaC) / rise;
+  float hc = clamp(hn, 0.0, 1.25);
+  float lean = R * (0.04 + 0.2 * fract(s * 3.17) * fract(s * 3.17)) * hc * hc;
+  float shear = towerTorn(o, rise) * 0.6 * R * pow(smoothstep(0.45, 1.15, hn), 1.5);
+  vec2 q = o.rel - towerWind(o) * (lean + shear) - 0.05 * R * vec2(sin(hc * 4.7 + s * 41.0), sin(hc * 3.9 + s * 23.0 + 1.57));
+  // broad base
+  float d = sdEll(vec3(q.x, h - seaC + 0.12 * R, q.y), vec3(1.5 * R, 0.26 * R + 0.06 * rise, 1.5 * R));
+  // main column: tapers from the broad base to a rounded crown at the very top
+  float form = fract(s * 13.7);                     // slender .. stout
+  float rcT = R * mix(0.45, 0.68, form);
+  float taper = mix(0.4, 0.25, form) * min(R, 0.8 * rise) * pow(1.0 - sat(hn), 1.5);
+  d = smin(d, length(vec2(length(q), max(h - (top - rcT), 0.0))) - rcT - taper, 0.3 * R);
+  // turrets stacked around it: the higher ones smaller and closer in, the lower ones bigger and
+  // further out, so the crown builds up like a cauliflower
+  vec2 dir = rot2(vec2(1.0, 0.0), s * 19.0);
+  const mat2 GOLDEN = mat2(-0.7373688, 0.6754903, -0.6754903, -0.7373688);
+  for (int k = 0; k < 5; k++) {
+    float fk = float(k);
+    float r1 = fract(s * (7.13 + 3.1 * fk)), r2 = fract(s * (11.7 + 5.3 * fk));
+    float f = 0.08 + 0.13 * fk + 0.12 * r2;         // how far below the top this turret tops out
+    float rk = R * (0.26 + 0.34 * f + 0.08 * r1);
+    float tk = top - rise * f;
+    vec2 qk = q - dir * R * min(0.22 + 0.85 * f + 0.1 * r1, 0.95);
+    d = smin(d, length(vec2(length(qk), max(h - (tk - rk), 0.0))) - rk, 0.22 * rk);
+    dir = GOLDEN * dir;
+  }
+  return d;
+}
+
+float towerSDF(Obj o, vec3 wp, float h, vec4 sf, float lod, float w3, float w4) {
+  float seaC = textureLod(uSeaMap, (wp.xz - o.rel) * INV_TILE, 0.0).x;
+  float hn;
+  float d = towerShape(o, h, seaC, hn);
+  if (d > 0.5 * o.R) return d;
+  // bulges in the tower's own frame, slowly rising; larger and more pronounced up high
+  vec3 tq = vec3(o.rel.x, h - uTime * 2.5, o.rel.y) / (3.0 * o.R) + o.seed * 17.3;
+  vec4 tf = textureLod(uShape, tq, 0.0) * 2.0 - 1.0;
+  float c1 = 0.75 * o.R;
+  float crown = mix(0.4, 1.0, smoothstep(0.2, 0.75, hn));
+  d = bulge(d, tf.x * c1, 0.34 * c1 * crown);
+  d = bulgeSoft(d, tf.y * c1 * 0.5, 0.34 * c1 * 0.5 * crown);
+  d = bulgeSoft(d, tf.z * c1 * 0.25, 0.32 * c1 * 0.25 * crown * octW(c1 * 0.25, lod));
+  d = bulgeSoft(d, tf.w * c1 * 0.125, 0.3 * c1 * 0.125 * octW(c1 * 0.125, lod));
+  // fixed-size cauliflower texture shared with the sea
+  d = bulgeSoft(d, sf.z * 320.0, 34.0 * w3);
+  d = bulgeSoft(d, sf.w * 160.0, 15.0 * w4);
+  return smax(d, length(o.rel) - EXT * o.R, 0.25 * o.R);   // stays inside its map footprint
+}
+
+// --- clouds floating freely: lumps of different heights over a flat base
+float floatShape(Obj o, float h) {
+  float R = o.R, s = o.seed, th = floatThick(o);
+  vec2 ax = rot2(WIND_DIR, (fract(s * 2.77) - 0.5) * 2.2);
+  vec2 p = vec2(dot(o.rel, ax), dot(o.rel, vec2(-ax.y, ax.x)));    // along, across its long axis
+  // the base is flat but not ruler straight
+  float y = h - o.top + th * 0.05 * (sin(p.x * 2.7 / R + s * 21.0) + sin(p.y * 3.4 / R + s * 37.0));
+  float d = sdEll(vec3(p.x - 0.1 * R, y - 0.25 * th, p.y), vec3(0.85 * R, 0.7 * th, 0.65 * R));
+  // lumps of different heights; some rise above the main dome
+  for (int k = 0; k < 4; k++) {
+    float fk = float(k);
+    float r1 = fract(s * (5.1 + 2.3 * fk)), r2 = fract(s * (8.7 + 3.9 * fk)), r3 = fract(s * (3.3 + 1.9 * fk));
+    float rk = R * (0.3 + 0.24 * r3);
+    vec2 c = vec2((mod(fk, 2.0) < 0.5 ? 1.0 : -1.0) * R * (0.22 + 0.45 * r1), R * (r2 - 0.5) * 0.5);
+    float hk = th * (0.45 + 0.6 * r2);     // height of the lump's top above the base
+    d = smin(d, sdEll(vec3(p.x - c.x, y - (hk - 0.75 * rk), p.y - c.y), vec3(rk, 0.75 * rk, rk)), 0.2 * rk);
+  }
+  return smax(d, -y, 0.12 * th);           // flat underside
+}
+
+float floatSDF(Obj o, vec3 wp, float h, vec4 sf, float lod, float w3, float w4) {
+  float d = floatShape(o, h);
+  if (d > 0.5 * o.R) return d;
+  float up = smoothstep(0.08, 0.55, (h - o.top) / floatThick(o));   // bulges on top, flat below
+  vec3 tq = vec3(o.rel.x, h - uTime * 1.5, o.rel.y) / (2.4 * o.R) + o.seed * 23.1;
+  vec4 tf = textureLod(uShape, tq, 0.0) * 2.0 - 1.0;
+  float c1 = 0.6 * o.R;
+  d = bulge(d, tf.x * c1, 0.36 * c1 * up);
+  d = bulge(d, tf.y * c1 * 0.5, 0.34 * c1 * 0.5 * up);
+  d = bulgeSoft(d, tf.z * c1 * 0.25, 0.3 * c1 * 0.25 * (0.3 + 0.7 * up) * octW(c1 * 0.25, lod));
+  d = bulgeSoft(d, sf.z * 320.0, 28.0 * w3 * up);
+  d = bulgeSoft(d, sf.w * 160.0, 13.0 * w4 * (0.3 + 0.7 * up));
+  return smax(d, length(o.rel) - FEXT * o.R, 0.2 * o.R);
+}
 
 // Conservative distance bound from cheap 2D data only (no 3D fetches).
-// uTopMap holds, per 2 km cell, the highest cloud top of any tower within 2 km of the cell.
-float cloudBound(float h, vec2 sea, Tower tw, vec2 wxz) {
+// uTopMap holds, per 2 km cell, the highest cloud top of any object within 2 km of the cell.
+float cloudBound(float h, vec2 sea, Obj tw, vec2 wxz) {
   float seaB = h - (sea.x + 330.0 * sea.y + 95.0);
-  float lat = length(tw.rel) - EXT * tw.R - 160.0;
+  float lat = length(tw.rel) - objExt(tw) - 160.0;
   float towB;
   if (lat < 0.0) {
-    towB = min(h - (tw.top + 0.55 * tw.R + 150.0), -lat + 600.0);
+    towB = min(objVBound(tw, h), -lat + 600.0);
   } else {
     vec2 tp = wxz - TILE * floor(wxz * INV_TILE);
     float mt = texelFetch(uTopMap, ivec2(tp * (64.0 * INV_TILE)) & 63, 0).r;
@@ -954,7 +1102,7 @@ float cloudBound(float h, vec2 sea, Tower tw, vec2 wxz) {
 }
 
 // Signed distance (m) to the cloud surface. lod: 0 = full detail, larger = coarser.
-float cloudSDF(vec3 wp, float h, vec2 sea, Tower tw, float lod) {
+float cloudSDF(vec3 wp, float h, vec2 sea, Obj o, float lod) {
   // --- sea of clouds: base plane + two large billow octaves
   // squashed lookup: billows are wider than tall (heaps, not balls)
   vec4 sf = textureLod(uShape, (wp + uShapeOff) * (vec3(1.0, 1.7, 1.0) / SHAPE_TILE), 0.0) * 2.0 - 1.0;
@@ -970,25 +1118,15 @@ float cloudSDF(vec3 wp, float h, vec2 sea, Tower tw, float lod) {
   ds = octave(ds, sf.z * 320.0, 55.0 * w3, 90.0);
   ds = octave(ds, sf.w * 160.0, 26.0 * w4, 45.0);
   float d = ds;
-  // --- tower
-  float lat = length(tw.rel) - EXT * tw.R;
-  if (lat < 200.0 && h < tw.top + 0.6 * tw.R) {
-    float dt = towerBase(tw, h);
-    if (dt < 0.6 * tw.R && lod < 3.2) {
-      vec3 tq = vec3(tw.rel.x, h - uTime * 2.5, tw.rel.y) / (3.6 * tw.R) + tw.seed * 17.3;
-      vec4 tf = textureLod(uShape, tq, 0.0) * 2.0 - 1.0;
-      float c1 = 0.9 * tw.R;
-      dt = octave(dt, tf.x * c1, 0.38 * c1, 0.34 * c1);
-      dt = octave(dt, tf.y * c1 * 0.5, 0.3 * c1 * 0.5, 0.34 * c1 * 0.5);
-      float tw3 = 1.0 - smoothstep(1.0, 2.5, lod);
-      float tw4 = 1.0 - smoothstep(0.6, 1.6, lod);
-      dt = octave(dt, tf.z * c1 * 0.25, 0.22 * c1 * 0.25 * tw3, 0.34 * c1 * 0.25);
-      dt = octave(dt, tf.w * c1 * 0.125, 0.1 * c1 * 0.125 * tw4, 0.4 * c1 * 0.125);
-      // fixed-size cauliflower sub-lobes, so big lobes don't read as smooth balls
-      dt = octave(dt, sf.z * 320.0, 34.0 * w3, 48.0);
-      dt = octave(dt, sf.w * 160.0, 15.0 * w4, 24.0);
-    }
-    d = smin(d, dt, 280.0);
+  // --- the nearest tower or floating cloud
+  float lr = length(o.rel);
+  if (o.kind > 0.5) {
+    if (lr < FEXT * o.R + 150.0 && h > o.top - 120.0 && h < o.top + floatThick(o) + 0.4 * o.R + 120.0)
+      d = min(d, floatSDF(o, wp, h, sf, lod, w3, w4));
+  } else {
+    // towers grow out of the sea: blended, and wider blends for bigger towers
+    float kb = 0.12 * o.R + 120.0;
+    if (lr < EXT * o.R + kb + 100.0 && h < o.top + 0.6 * o.R) d = smin(d, towerSDF(o, wp, h, sf, lod, w3, w4), kb);
   }
   // near the camera: an extra pair of small billow octaves (crisp cauliflower texture when skimming)
   if (lod < 0.1 && abs(d) < 60.0) {   // only matters right at the surface
@@ -1000,12 +1138,27 @@ float cloudSDF(vec3 wp, float h, vec2 sea, Tower tw, float lod) {
   return d;
 }
 
+// how torn and wispy the cloud is here (0..1): the sheared tops of torn towers, the ragged
+// undersides of floating clouds
+float cloudWisp(float h, Obj o) {
+  if (length(o.rel) > objExt(o) + 200.0) return 0.0;
+  if (o.kind > 0.5) return h < o.top - 60.0 ? 0.0 : 0.6 * (1.0 - smoothstep(0.0, 0.35 * floatThick(o), h - o.top));
+  float rise = o.top - 1550.0;
+  float torn = towerTorn(o, rise);
+  if (torn < 0.01) return 0.0;
+  float hn = (h - 1550.0) / max(rise, 1.0);
+  return torn * smoothstep(0.62, 0.95, hn) * sat(0.5 + 1.2 * dot(o.rel, towerWind(o)) / o.R);
+}
+
 // density (0..1) from the signed distance with wispy erosion at the soft boundary.
-// edgeW: boundary softness; nearW: weight of extra-fine wisps close to the camera
-float densityFromSDF(float d, vec3 wp, float detailW, float edgeW, float nearW) {
+// edgeW: boundary softness; nearW: weight of extra-fine wisps close to the camera; wisp: torn,
+// fibrous parts; farW: coarse fraying for distant silhouettes; rel: position in the object's frame
+float densityEx(float d, vec3 wp, float detailW, float edgeW, float nearW, float wisp, float farW, vec2 rel) {
   float x = -d;
   if (x <= 0.0) return 0.0;
+  edgeW *= 1.0 + 2.5 * wisp;              // torn parts are thin and translucent
   float dens = sat(x / edgeW);
+  float er = 0.0;
   if (detailW > 0.01 && x < edgeW * 2.5) {
     vec4 dn = textureLod(uDetail, (wp + uDetailOff) * (1.0 / DETAIL_TILE), 0.0);
     float e = mix(dn.g, dn.r, sat(x / (edgeW * 1.5)));
@@ -1013,14 +1166,29 @@ float densityFromSDF(float d, vec3 wp, float detailW, float edgeW, float nearW) 
       vec4 dn2 = textureLod(uDetail, (wp + uDetailOff * 2.0) * (4.0 / DETAIL_TILE) + dn.a * 0.35, 0.0);
       e = mix(e, e * 0.6 + dn2.r * 0.55, nearW);
     }
-    float er = e * 0.45 * detailW;
-    dens = sat((dens - er) / max(1.0 - er, 0.15));
+    er = e * 0.45 * detailW;
   } else if (nearW > 0.01) {
     // inside a cloud near the camera: drifting density variations so mist visibly streams past
     vec4 dn = textureLod(uDetail, (wp + uDetailOff * 2.0) * (2.0 / DETAIL_TILE), 0.0);
     dens *= mix(1.0, 0.25 + 1.1 * dn.r * dn.r + 0.3 * dn.g, nearW);
   }
+  // far away: coarse erosion of the outermost rim only, so distant silhouettes fray instead of
+  // ending in smooth outlines (the faces themselves stay crisp)
+  if (farW > 0.01 && x < edgeW) {
+    vec4 fn = textureLod(uDetail, wp * (1.0 / 4000.0), 0.0);
+    er = max(er, (0.65 * fn.g + 0.35 * fn.r) * 0.3 * farW * (1.0 - x / edgeW));
+  }
+  // torn parts: fibrous streaks drawn out along the wind
+  if (wisp > 0.01) {
+    vec3 fp = vec3(dot(rel, WIND_DIR) / 1500.0, wp.y / 260.0, dot(rel, vec2(-WIND_DIR.y, WIND_DIR.x)) / 260.0);
+    float fib = textureLod(uDetail, fp, 0.0).r;
+    er = mix(er, max(er, 0.25 + 0.75 * fib), wisp);
+  }
+  if (er > 0.0) dens = sat((dens - er) / max(1.0 - er, 0.15));
   return dens;
+}
+float densityFromSDF(float d, vec3 wp, float detailW, float edgeW, float nearW) {
+  return densityEx(d, wp, detailW, edgeW, nearW, 0.0, 0.0, vec2(0.0));
 }
 
 float tsvTau(vec3 wp, float h) {
@@ -1040,28 +1208,24 @@ float msScatterP(float tau, vec4 ph) {
   vec4 e = exp(-tau * vec4(1.0, 0.5, 0.25, 0.125));
   return dot(e * vec4(1.0, 0.55, 0.3025, 0.166375), ph);
 }
-float msScatter(float tau, float c, float powder) {
-  float s = 0.0, a = 1.0, b = 1.0, k = 1.0;
-  for (int i = 0; i < 4; i++) {
-    float ph = mix(HG(c, -0.3 * k), HG(c, 0.8 * k), 0.62);
-    s += a * exp(-b * tau) * ph;
-    a *= 0.55; b *= 0.5; k *= 0.5;
-  }
-  return s * powder;
-}
 
-// optical depth toward the sun from a point (short march with growing steps)
-float lightTau(vec3 wp0, float h0, Tower tw0, float jit, float lod0) {
-  float tau = 0.0, s = 0.0, ds = 25.0;
+// Optical depth toward the sun from a point (short march with growing steps). nS: how much the
+// surface there faces the sun (-1..1), from the distance field along the first two steps.
+float lightTauN(vec3 wp0, float h0, Obj tw0, float jit, float lod0, out float nS) {
+  float tau = 0.0, s = 0.0, ds = 25.0, d1 = 0.0, s1 = 0.0;
+  nS = 0.0;
   vec2 sea = textureLod(uSeaMap, wp0.xz * INV_TILE, 0.0).xy;
   for (int i = 0; i < 5; i++) {
     float sm = s + ds * (0.25 + 0.5 * jit);
     vec3 wp = wp0 + uSunDir * sm;
     float h = h0 + uSunDir.y * sm;
     if (i >= 2) sea = textureLod(uSeaMap, wp.xz * INV_TILE, 0.0).xy;   // sea height varies slowly
-    Tower tw = tw0;
+    Obj tw = tw0;
     tw.rel += uSunDir.xz * sm;
-    float d = cloudSDF(wp, h, sea, tw, lod0 + float(i) * 0.9);
+    // the first steps keep the detail of the view sample: bulges shade themselves at any range
+    float d = cloudSDF(wp, h, sea, tw, lod0 + float(max(i - 1, 0)) * 0.6);
+    if (i == 0) { d1 = d; s1 = sm; }
+    else if (i == 1) nS = clamp((d - d1) / (sm - s1), -1.0, 1.0);
     // near steps: point density; long far steps: smooth coverage estimate (no contour rings)
     // the density ramp widens with the step length so long steps don't switch abruptly
     tau += sat(-d / (EDGE_W + ds * 0.35)) * ds * SIGMA;
@@ -1069,6 +1233,10 @@ float lightTau(vec3 wp0, float h0, Tower tw0, float jit, float lod0) {
     ds *= 2.4;
   }
   return tau;
+}
+float lightTau(vec3 wp0, float h0, Obj tw0, float jit, float lod0) {
+  float nS;
+  return lightTauN(wp0, h0, tw0, jit, lod0, nS);
 }
 `;
 
@@ -1080,27 +1248,37 @@ void main() {
   vec2 xz = (gl_FragCoord.xy / uN) * TILE;
   float trans = 1.0;
   float s = 1300.0;
-  for (int i = 0; i < 160; i++) {
+  for (int i = 0; i < 240; i++) {
     vec3 p = vec3(xz.x, uSliceH, xz.y) + uSunDir * s;
     if (p.y > CLOUD_TOP || s > 90000.0) break;
-    Tower tw = getTower(p.xz);
-    float lat = length(tw.rel) - 1.15 * tw.R;
+    Obj ob = getObj(p.xz);
+    float lat = length(ob.rel) - objExt(ob);
     float step = 320.0;
     if (lat > 400.0) {
       step = max(320.0, lat * 0.9);
-    } else if (p.y < tw.top + 0.3 * tw.R) {
-      float d = towerBase(tw, p.y);
-      if (d < 0.5 * tw.R) {
-        // big lobes too, so shadow outlines are organic rather than ruler straight
-        vec3 tq = vec3(tw.rel.x, p.y, tw.rel.y) / (3.6 * tw.R) + tw.seed * 17.3;
-        vec4 tf = textureLod(uShape, tq, 0.0) * 2.0 - 1.0;
-        float c1 = 0.9 * tw.R;
-        d = octave(d, tf.x * c1, 0.30 * c1, 0.34 * c1);
-        d = octave(d, tf.y * c1 * 0.5, 0.26 * c1 * 0.5, 0.34 * c1 * 0.5);
+    } else {
+      float occ = 0.0;
+      if (ob.kind > 0.5) {
+        // softer and lighter than towers; the small puffs barely shade the sea at all.
+        // Floating clouds are small: finer steps, but only at their height.
+        if (p.y > ob.top - 40.0 && p.y < ob.top + floatThick(ob) + 60.0) {
+          step = 160.0;
+          occ = sat((-floatShape(ob, p.y) + 40.0) / 260.0) * 0.4 * smoothstep(150.0, 600.0, ob.R);
+        } else step = max(320.0, lat * 0.9);
+      } else if (p.y < ob.top + 0.3 * ob.R) {
+        float seaC = textureLod(uSeaMap, (p.xz - ob.rel) * INV_TILE, 0.0).x, hn;
+        float d = towerShape(ob, p.y, seaC, hn);
+        if (d < 0.5 * ob.R) {
+          // big bulges too, so shadow outlines are organic rather than ruler straight
+          vec4 tf = textureLod(uShape, vec3(ob.rel.x, p.y, ob.rel.y) / (3.0 * ob.R) + ob.seed * 17.3, 0.0) * 2.0 - 1.0;
+          float c1 = 0.75 * ob.R, crown = mix(0.4, 1.0, smoothstep(0.2, 0.75, hn));
+          d = bulge(d, tf.x * c1, 0.34 * c1 * crown);
+          d = bulge(d, tf.y * c1 * 0.5, 0.34 * c1 * 0.5 * crown);
+        }
+        occ = sat((-d - 0.06 * ob.R) / 450.0);
       }
-      float st = exp(-SIGMA * step * sat((-d - 0.06 * tw.R) / 450.0));
       // distant occluders cast fainter shadows (sky light and haze fill them in)
-      trans *= mix(1.0, st, exp(-s / 28000.0));
+      trans *= mix(1.0, exp(-SIGMA * step * occ), exp(-s / 28000.0));
     }
     s += step;
   }
@@ -1157,7 +1335,12 @@ void main() {
   // haze colour: the sky just above the horizon for downward rays (no seam at the horizon)
   vec3 hazeDir = normalize(vec3(dir.x, max(dir.y, 0.004), dir.z));
   vec3 skyHaze = skyLookup(uSky, hazeDir, uSunDir, h0 * 0.001);
-  vec3 ambSky = texelFetch(uAmb, ivec2(0, 0), 0).rgb;
+  vec3 ambUp = texelFetch(uAmb, ivec2(0, 0), 0).rgb * 1.95;
+  // light bounced off the sunlit sea of clouds below (Lambertian deck, sun 5 degrees up)
+  vec3 seaBounce = uAmbSea * 0.38;
+  vec3 ambSunS = texelFetch(uAmb, ivec2(2, 0), 0).rgb * 1.95 + seaBounce * 0.4;
+  // (a touch of violet: the anti-sun sky at dusk; on cloud sides it reads as cool, luminous shade)
+  vec3 ambAnti = texelFetch(uAmb, ivec2(3, 0), 0).rgb * 1.95 * vec3(1.06, 0.93, 1.1) + seaBounce * 0.15;
   float cosT = dot(dir, uSunDir);
   vec4 phase = phaseOctaves(cosT);
   float powder = 1.0 - 0.28 * sat(0.5 - 0.5 * cosT);
@@ -1172,7 +1355,7 @@ void main() {
   int nRef = 0, side = 0;
   bool startIn = false;
   float nIter = 0.0, nIn = 0.0, nSdf = 0.0;
-  float lastTau = 0.0, lastDepth = 0.0;
+  float lastTau = 0.0, lastDepth = 0.0, lastNS = 0.0, lastNUp = 1.0;
   for (int i = 0; i < 300; i++) {
     nIter += 1.0;
     if (t >= tEnd || T < 0.02) { done = true; break; }
@@ -1193,10 +1376,10 @@ void main() {
     // Towers: a coarse 8 km max-top grid first; only near tall towers fetch the exact tower.
     vec2 tp = wp.xz - TILE * floor(wp.xz * INV_TILE);
     float g2 = min(h - texelFetch(uTopMap2, ivec2(tp * (16.0 * INV_TILE)) & 15, 0).r, 7800.0);
-    Tower tw = getTower(wp.xz);
-    float lat = length(tw.rel) - EXT * tw.R - 160.0;
+    Obj tw = getObj(wp.xz);
+    float lat = length(tw.rel) - objExt(tw) - 160.0;
     float towB;
-    if (lat < 0.0) towB = min(h - (tw.top + 0.55 * tw.R + 150.0), -lat + 600.0);
+    if (lat < 0.0) towB = min(objVBound(tw, h), -lat + 600.0);
     else towB = max(lat, max(g2, min(h - texelFetch(uTopMap, ivec2(tp * (64.0 * INV_TILE)) & 63, 0).r, 1900.0)));
     float bound = min(towB, seaB);
     if (bound > 0.0 && nRef == 0 && !startIn) { tPrev = t; dPrev = bound; t += max(bound * 0.95, minStep * (0.5 + rj)); continue; }
@@ -1204,6 +1387,10 @@ void main() {
     nSdf += 1.0;
     float d = cloudSDF(wp, h, sea, tw, lod);
     float edgeW = mix(14.0, EDGE_W, smoothstep(120.0, 4000.0, t));   // crisper rims up close
+    // cumulus (towers above the sea, floating clouds) have crisp outlines, only widened enough at
+    // range not to alias; the sea of clouds stays soft
+    if (lat < 0.0 && (tw.kind > 0.5 ? h > tw.top - 60.0 : h > sea.x + 150.0))
+      edgeW = min(edgeW, max(14.0 + 0.04 * tw.R, t * 0.0025));
     float dtMin = 3.0 + t * 0.002;
     // Entering a cloud: locate the boundary within the last stride (Illinois regula falsi), then
     // start integrating a jittered fraction of a rim step past it. Starting anywhere within a far
@@ -1227,12 +1414,14 @@ void main() {
     startIn = false;
     dPrev = -1.0;
     float detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
+    // (only on the object itself: not on the sea below a floating cloud)
+    float farW = lat < 0.0 && (tw.kind < 0.5 || h > tw.top - 60.0) ? smoothstep(2500.0, 9000.0, t) : 0.0;
     float nearW = (1.0 - smoothstep(150.0, 900.0, t)) * max(uInCloud, 1.0 - smoothstep(40.0, 120.0, -d));
 #ifdef DBG
     if (uDbgMode > 0 && uDbgMode < 4) {
       vec3 nrm;
       float e = 4.0 + t * 0.002;
-      Tower tx0 = tw, tx1 = tw, tz0 = tw, tz1 = tw;
+      Obj tx0 = tw, tx1 = tw, tz0 = tw, tz1 = tw;
       tx0.rel.x += e; tx1.rel.x -= e; tz0.rel.y += e; tz1.rel.y -= e;
       nrm.x = cloudSDF(wp + vec3(e, 0, 0), h, sea, tx0, lod) - cloudSDF(wp - vec3(e, 0, 0), h, sea, tx1, lod);
       nrm.y = cloudSDF(wp + vec3(0, e, 0), h + e, sea, tw, lod) - cloudSDF(wp - vec3(0, e, 0), h - e, sea, tw, lod);
@@ -1247,7 +1436,7 @@ void main() {
       return;
     }
 #endif
-    float dens = densityFromSDF(d, wp, detailW, edgeW, nearW);
+    float dens = densityEx(d, wp, detailW, edgeW, nearW, lat < 0.0 ? cloudWisp(h, tw) : 0.0, farW, tw.rel);
     // inside a cloud the air right around the camera is kept thin: drifting mist, not a white wall
     dens *= mix(1.0, mix(0.22, 1.0, smoothstep(12.0, 160.0, t)), uInCloud);
     // stride: aim for a fixed optical depth per step (larger once little light gets through),
@@ -1259,7 +1448,18 @@ void main() {
       nIn += 1.0;
       // once little light gets through, deeper samples reuse the light of the previous one
       bool reuse = T < 0.22 || (T < 0.65 && mod(nIn, 2.0) > 0.5);
-      float tau = reuse ? lastTau + max(-d - lastDepth, 0.0) * SIGMA * 2.0 : lightTau(wp, h, tw, jit2, lod + 0.5);
+      float tau;
+      if (reuse) tau = lastTau + max(-d - lastDepth, 0.0) * SIGMA * 2.0;
+      else {
+        tau = lightTauN(wp, h, tw, jit2, lod + 0.25, lastNS);
+        // which way the surface faces: up from one distance tap above, toward the sun from the
+        // light march. Each bulge then catches its own sky light, even in shadow. (Only near the
+        // visible surface; deeper samples keep the last estimate.)
+        if (T > 0.45) {
+          float S = 30.0 + t * 0.004;
+          lastNUp = clamp((cloudSDF(wp + vec3(0.0, S, 0.0), h + S, sea, tw, lod) - d) / S, -1.0, 1.0);
+        }
+      }
       lastTau = tau; lastDepth = -d;
       // distant occluders (towers) block all scattering orders: their shadow is a plain multiplier
       float farT = exp(-tsvTau(wp, h));
@@ -1268,8 +1468,13 @@ void main() {
       // diffusion: clouds barely absorb, so light soaks deep inside and glows; weaker right at
       // the surface where it leaks out (keeps shadowed sides cool)
       float diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depthIn / 80.0));
-      // in the shadow of distant towers only a soft, isotropic fill bounced off sunlit clouds remains
-      vec3 sunL = sunColorAt(h) * ((msScatterP(tau, phase) * pw + diffu) * farT + 0.007 * (1.0 - farT));
+      // light diffusing through the cloud glows golden in thin parts, cooler (blue-violet) where it
+      // has travelled far through the cloud; in the shadow of distant towers only a soft, cool
+      // isotropic fill remains
+      vec3 sc = sunColorAt(h);
+      vec3 cool = vec3(0.78, 0.8, 1.25) * luma(sc);
+      vec3 glow = mix(sc, cool, 0.6 * sat(tau / 35.0));
+      vec3 sunL = sc * (msScatterP(tau, phase) * pw * farT) + glow * diffu * farT + mix(sc, cool, 0.5) * (0.005 * (1.0 - farT));
 #ifdef DBG
       if (uDbgMode >= 5) {
         vec4 e = exp(-tau * vec4(1.0, 0.5, 0.25, 0.125));
@@ -1282,7 +1487,11 @@ void main() {
       // sky light only reaches the first few tens of metres (short scale also hides the
       // discontinuous interior of the distance field)
       float ao = mix(0.5, 1.0, exp(-depthIn / 55.0));
-      vec3 amb = (ambSky * 1.95 * mix(0.45, 1.0, up) + uAmbSea * (1.0 - up) * 0.7) * ao;
+      // sky light by orientation: the deep blue zenith on tops, the warm sunlit sea under bellies,
+      // the golden sun-side or the cool violet anti-sun sky on the sides
+      vec3 eSide = mix(ambAnti, ambSunS, sat(0.5 + 0.5 * lastNS));
+      vec3 eDir = lastNUp > 0.0 ? mix(eSide, ambUp, lastNUp) : mix(eSide, seaBounce, -lastNUp);
+      vec3 amb = (eDir * mix(0.45, 1.0, up) + uAmbSea * (1.0 - up) * 0.7) * ao;
 #ifdef DBG
       if (uDbgMode == 5 || uDbgMode == 6) amb *= 0.0;
 #endif
@@ -1337,6 +1546,9 @@ uniform vec3 uCamPos;
 uniform vec3 uSunDisk;
 uniform vec3 uCirrusCol;
 uniform vec2 uCirrusOff;
+uniform sampler2D uLayers;
+uniform vec2 uLayerOff;
+uniform vec3 uLayerCol[2];      // sunlight at the height of each high layer
 layout(location = 0) out vec4 oHist;
 layout(location = 1) out vec4 oScene;
 
@@ -1392,6 +1604,39 @@ vec3 skyColor(vec3 dir) {
   return c;
 }
 
+// --- thin high layers, drawn as sheets at fixed heights (they are thin next to the distances they
+// are seen from) and sorted against the clouds by depth
+const float LAYER_INV2R = 0.5 / 6360000.0;
+// distance along dir to height H over the curved planet (parabolic approximation), -1 if none
+float distToHeight(float h0, float dy, float H) {
+  float c = h0 - H;
+  float D = dy * dy - 4.0 * LAYER_INV2R * c;
+  if (D < 0.0) return -1.0;
+  float q = -0.5 * (dy + (dy >= 0.0 ? 1.0 : -1.0) * sqrt(D));
+  if (abs(q) < 1e-9) return -1.0;
+  float r1 = q / LAYER_INV2R, r2 = c / q;
+  float tn = min(r1, r2), tf = max(r1, r2);
+  return tn > 0.0 ? tn : (tf > 0.0 ? tf : -1.0);
+}
+// premultiplied colour + alpha of high layer k at distance tL along dir
+vec4 highLayer(int k, vec3 dir, float tL, vec3 behind) {
+  float H = k == 0 ? 6300.0 : 7700.0;
+  vec2 p = (uCamPos.xz + dir.xz * tL + uLayerOff) / 64000.0;
+  float slope = abs(dir.y + 2.0 * tL * LAYER_INV2R);        // ray slope at the layer
+  float foot = tL * 2.0 * uTanHalf.y / uRes.y / max(slope, 0.03);
+  vec4 tx = textureLod(uLayers, p, log2(max(foot / 62.5, 1.0)));
+  float dens = k == 0 ? tx.r : tx.g;
+  if (dens < 0.003) return vec4(0.0);
+  float tau = min(dens * 0.32 / max(slope, 0.12), 3.0);
+  // fade where the sheet is seen edge-on (no razor lines at the horizon) and into the far haze
+  float a = (1.0 - exp(-tau)) * exp(-tL / 75000.0) * smoothstep(0.02, 0.1, slope) * smoothstep(60.0, 450.0, abs(uCamPos.y - H));
+  // thin and translucent: forward scattering makes them glow toward the sun, golden all over
+  float cosT = dot(dir, uSunDir);
+  float g = 0.7, ph = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
+  vec3 c = uLayerCol[k] * (0.22 + 3.2 * ph) * (0.7 + 0.5 * tx.b) + behind * 0.45;
+  return vec4(c * a, a);
+}
+
 void main() {
   vec2 uv = gl_FragCoord.xy / uRes;
   vec2 ndc = uv * 2.0 - 1.0;
@@ -1433,7 +1678,17 @@ void main() {
   }
   oHist = res;
   vec3 sky = skyColor(dir);
-  oScene = vec4(sky * res.a + res.rgb, 1.0);
+  // high layers: behind the clouds they join the sky, in front of them they veil the clouds
+  float cd = dkm > 5000.0 ? 1.0e9 : dkm * 1000.0;
+  float t0 = distToHeight(uCamPos.y, dir.y, 6300.0), t1 = distToHeight(uCamPos.y, dir.y, 7700.0);
+  vec4 l0 = t0 > 0.0 ? highLayer(0, dir, t0, sky) : vec4(0.0);
+  vec4 l1 = t1 > 0.0 ? highLayer(1, dir, t1, sky) : vec4(0.0);
+  if (t1 > 0.0 && (t0 < 0.0 || t1 < t0)) { vec4 x = l0; l0 = l1; l1 = x; float y = t0; t0 = t1; t1 = y; }  // l0 nearest
+  vec3 back = sky, frontL = vec3(0.0);
+  float frontT = 1.0;
+  if (t1 > 0.0) { if (t1 < cd) { frontL = l1.rgb; frontT = 1.0 - l1.a; } else back = back * (1.0 - l1.a) + l1.rgb; }
+  if (t0 > 0.0) { if (t0 < cd) { frontL = l0.rgb + frontL * (1.0 - l0.a); frontT *= 1.0 - l0.a; } else back = back * (1.0 - l0.a) + l0.rgb; }
+  oScene = vec4(frontL + frontT * (back * res.a + res.rgb), 1.0);
 }`;
 
 // ------------------------------------------------------------------ probe: lighting at the bird & mist at the camera
@@ -1447,7 +1702,7 @@ uniform float uFrame;
 out vec4 o;
 float sigmaAt(vec3 wp, float h, out float sdf) {
   vec2 sea = textureLod(uSeaMap, wp.xz * INV_TILE, 0.0).xy;
-  Tower tw = getTower(wp.xz);
+  Obj tw = getObj(wp.xz);
   float b = cloudBound(h, sea, tw, wp.xz);
   if (b > 0.0) { sdf = b; return 0.0; }
   sdf = cloudSDF(wp, h, sea, tw, 0.0);
@@ -1458,7 +1713,7 @@ void main() {
   vec3 bwp = uCamPos + uBirdRel;
   float bh = bwp.y;
   vec2 sea = textureLod(uSeaMap, bwp.xz * INV_TILE, 0.0).xy;
-  Tower tw = getTower(bwp.xz);
+  Obj tw = getObj(bwp.xz);
   vec3 ambSky = texelFetch(uAmb, ivec2(0, 0), 0).rgb;
   if (px == 0) {
     float tau = 0.0;
@@ -1481,13 +1736,13 @@ void main() {
   } else if (px == 5) {
     // distance to the sea of clouds alone (towers excluded): drives the gentle floor
     float b = bh - (sea.x + 330.0 * sea.y + 95.0);
-    o = vec4(b > 0.0 ? b : cloudSDF(bwp, bh, sea, NO_TOWER, 0.0), 0.0, 0.0, 1.0);
+    o = vec4(b > 0.0 ? b : cloudSDF(bwp, bh, sea, NO_OBJ, 0.0), 0.0, 0.0, 1.0);
   } else {
     // in-cloud mist radiance around the camera (same light model as the cloud volume)
     float sdfC;
     sigmaAt(uCamPos, uCamPos.y, sdfC);
     float depth = max(-sdfC, 0.0);
-    float tau = lightTau(uCamPos, uCamPos.y, getTower(uCamPos.xz), 0.5, 0.0);
+    float tau = lightTau(uCamPos, uCamPos.y, getObj(uCamPos.xz), 0.5, 0.0);
     float farT = exp(-tsvTau(uCamPos, uCamPos.y));
     float diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depth / 80.0));
     vec3 sunL = sunColorAt(uCamPos.y) * ((msScatterP(tau, phaseOctaves(0.3)) + diffu) * farT + 0.007 * (1.0 - farT));
@@ -1517,7 +1772,7 @@ void main() {
   vec3 wp = uCamPos + rel;
   float h = wp.y;
   vec2 sea = textureLod(uSeaMap, wp.xz * INV_TILE, 0.0).xy;
-  Tower tw = getTower(wp.xz);
+  Obj tw = getObj(wp.xz);
   float d = cloudBound(h, sea, tw, wp.xz);
   float dens = 0.0;
   if (d <= 0.0) { d = cloudSDF(wp, h, sea, tw, 0.0); dens = densityFromSDF(d, wp, 1.0, 32.0, 1.0); }
@@ -1846,6 +2101,7 @@ const P = {
   amb: makeProgram('ambient', FS_AMBIENT),
   noise: makeProgram('noise3d', FS_NOISE3D),
   cirrus: makeProgram('cirrus', FS_CIRRUS),
+  layers: makeProgram('layers', FS_LAYERS),
   tsv: makeProgram('tsv', FS_TSV),
   trace: makeProgram('trace', DBG_MODE ? FS_TRACE.replace('#version 300 es', '#version 300 es\n#define DBG') : FS_TRACE),
   taau: makeProgram('taau', FS_TAAU),
@@ -1869,11 +2125,12 @@ T.topMap2 = texture2D(TOP2_N, TOP2_N, gl.R32F, gl.RED, gl.FLOAT, { filter: gl.NE
 T.trans = texture2D(256, 64, RGBA16F, gl.RGBA, HALF);
 T.ms = texture2D(32, 32, RGBA16F, gl.RGBA, HALF);
 T.sky = texture2D(192, 108, RGBA16F, gl.RGBA, HALF);
-T.amb = texture2D(2, 1, RGBA16F, gl.RGBA, HALF, { filter: gl.NEAREST });
+T.amb = texture2D(4, 1, RGBA16F, gl.RGBA, HALF, { filter: gl.NEAREST });
 T.shape = texture3D(SHAPE_N, SHAPE_N, SHAPE_N, gl.RGBA16F, gl.RGBA, HALF);
 T.detail = texture3D(DETAIL_N, DETAIL_N, DETAIL_N, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
 T.tsv = texture3D(TSV_N, TSV_N, TSV_NH, gl.R16F, gl.RED, HALF, { wrapR: gl.CLAMP_TO_EDGE });
 T.cirrus = texture2D(512, 512, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, { wrap: gl.REPEAT });
+T.layers = texture2D(1024, 1024, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, { wrap: gl.REPEAT });
 T.probe = texture2D(8, 1, FLOAT_RT, gl.RGBA, extCBF ? gl.FLOAT : HALF, { filter: gl.NEAREST });
 
 const FB = {};
@@ -1882,6 +2139,7 @@ FB.ms = framebuffer([T.ms]);
 FB.sky = framebuffer([T.sky]);
 FB.amb = framebuffer([T.amb]);
 FB.cirrus = framebuffer([T.cirrus]);
+FB.layers = framebuffer([T.layers]);
 FB.probe = framebuffer([T.probe]);
 const fbLayer = gl.createFramebuffer();
 
@@ -1900,6 +2158,7 @@ function renderVolume(tex, n, depth, uniformsFor) {
 }
 
 const sunColUniform = { v3: sunColTable };
+const layerColUniform = { v3: new Float32Array([...sunColorAt(6300), ...sunColorAt(7700)]) };
 
 // one-off generation of all static GPU data (runs once the shaders are compiled)
 function generateStatic() {
@@ -1907,6 +2166,10 @@ function generateStatic() {
 renderVolume(T.shape, SHAPE_N, SHAPE_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / SHAPE_N, uSize: SHAPE_N, uCells: [4, 8, 16, 32], uMode: { i: 0 } } }));
 renderVolume(T.detail, DETAIL_N, DETAIL_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / DETAIL_N, uSize: DETAIL_N, uCells: [4, 8, 16, 24], uMode: { i: 1 } } }));
 pass(P.cirrus, FB.cirrus, 512, 512, { uSize: 512 });
+pass(P.layers, FB.layers, 1024, 1024, { uSize: 1024 });
+gl.bindTexture(gl.TEXTURE_2D, T.layers.tex);           // seen at grazing angles far away: mipmaps
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+gl.generateMipmap(gl.TEXTURE_2D);
 
 // atmosphere LUTs
 pass(P.trans, FB.trans, 256, 64, {});
@@ -1915,7 +2178,7 @@ pass(P.ms, FB.ms, 32, 32, { uTrans: T.trans });
 // tower shadow volume
 renderVolume(T.tsv, TSV_N, TSV_NH, z => ({
   prog: P.tsv,
-  uniforms: { uTowerMap: T.towerMap, uShape: T.shape, uSliceH: (z + 0.5) / TSV_NH * TSV_H, uN: TSV_N, uSunDir: SUN_DIR },
+  uniforms: { uTowerMap: T.towerMap, uSeaMap: T.seaMap, uShape: T.shape, uSliceH: (z + 0.5) / TSV_NH * TSV_H, uN: TSV_N, uSunDir: SUN_DIR },
 }));
 }
 
@@ -2110,10 +2373,31 @@ function readPreset() {
     high: { y: 6200, yaw: -0.4, gamma: -0.25 },
     bank: { y: 2500, yaw: 0.6, gamma: 0, bank: 0.7 },
     fastdive: { y: sea0 + 420, yaw: 0.5, gamma: -0.55, speed: 150 },
-    tower: { x: 900, z: -3200, y: 3000, yaw: 0.35, gamma: 0.05 },
-    inside: { x: 2600, z: -5700, y: 2900, yaw: 0.0, gamma: 0.0 },
-    approach: { x: 2600, z: -4200, y: 2900, yaw: 0.0, gamma: 0.0 },
+    humps: { x: 0, z: 0, y: sea0 + 260, yaw: 0.1, gamma: -0.03 },
+    floats: { x: 0, z: 0, y: sea0 + 760, yaw: 0.05, gamma: 0.0 },
+    high2: { x: 0, z: 0, y: 5200, yaw: 0.6, gamma: -0.12 },
+    upward: { x: 0, z: 0, y: sea0 + 900, yaw: -0.5, gamma: 0.42 },
   };
+  // views of the nearest generated tower of a kind, from a few radii away with the sun to the side
+  const wr = v => v - TILE * Math.round(v / TILE);
+  const nearest = list => list.length ? list.reduce((a, t) => Math.hypot(wr(t.x), wr(t.z)) < Math.hypot(wr(a.x), wr(a.z)) ? t : a) : null;
+  const viewOf = (t, dist, gamma) => {
+    const tx = wr(t.x), tz = wr(t.z), x = tx - dist * 0.8, z = tz + dist * 0.6;
+    return { x, z, y: Math.min(t.top * 0.55, 3200), yaw: Math.atan2(tx - x, -(tz - z)), gamma };
+  };
+  const rise = t => t.top - seaTopAt(t.x, t.z);
+  const tw = nearest(towers.filter(t => rise(t) > 1500 && rise(t) < 4000)), gi = nearest(towers.filter(t => t.R > 2600));
+  const to = nearest(towers.filter(t => fract(t.seed * 5.71) > 0.66 && rise(t) > 2500));
+  if (tw) presets.tower = viewOf(tw, 3.5e3, 0.08);
+  if (gi) presets.giant = viewOf(gi, 12e3, 0.12);
+  if (to) presets.torn = viewOf(to, 22e3, 0.16);
+  // inside / approaching the floating cloud nearest the start at about the bird's altitude
+  const fl = nearest(floats.filter(f => Math.abs(f.base - (sea0 + 750)) < 500 && f.R > 300));
+  if (fl) {
+    const fmid = fl.base + floatThick(fl.R, fl.seed) * 0.4;
+    presets.inside = { x: wr(fl.x), z: wr(fl.z), y: fmid, yaw: 0.0, gamma: 0.0 };
+    presets.approach = { x: wr(fl.x) - 300, z: wr(fl.z) + 1400, y: fmid, yaw: 0.2, gamma: 0.0 };
+  }
   const p = presets[pre];
   if (!p) return;
   bird_.pos = [p.x || 0, p.y, p.z || 0];
@@ -2431,7 +2715,7 @@ function render(time, dt) {
   // --- sky view LUT for the current altitude + ambient
   tBegin('sky');
   pass(P.sky, FB.sky, 192, 108, { uTrans: T.trans, uMS: T.ms, uCamH: cam.pos[1] * 0.001, uSunDir: SUN_DIR });
-  pass(P.amb, FB.amb, 2, 1, { uSky: T.sky, uSunDir: SUN_DIR, uCamH: cam.pos[1] * 0.001 });
+  pass(P.amb, FB.amb, 4, 1, { uSky: T.sky, uSunDir: SUN_DIR, uCamH: cam.pos[1] * 0.001 });
 
   // --- probe (bird lighting, mist)
   const birdRel = sub(bird_.pos, cam.pos);
@@ -2461,6 +2745,7 @@ function render(time, dt) {
     uCamRight: cam.right, uCamUp: cam.up, uCamFwd: cam.fwd, uTanHalf: [tanX, tanY],
     uPrevVP: prevVP || curVP, uCamDelta: camDelta, uHistValid: histValid, uSunDir: SUN_DIR, uCamPos: camWrap,
     uSunDisk: sunDisk, uCirrusCol: scl(sunColorAt(9800), 1.0), uCirrusOff: [fmod(time * 6, 32000), fmod(time * 2, 32000)],
+    uLayers: T.layers, uLayerOff: [fmod(time * WIND[0] * 1.5, 64000), fmod(time * WIND[2] * 1.5, 64000)], uLayerCol: layerColUniform,
   });
   // drifting mist puffs: only while the camera is inside cloud (they float in the fog around us)
   if (inCloud > 0.02) {
@@ -2525,7 +2810,7 @@ function render(time, dt) {
   const sunC = sunColorAt(cam.pos[1]);
   pass(P.final, null, w, h, {
     uScene: T.scene, uBird: T.birdTex, uBloom: bloomLevels[0].tex, uRays: T.rayA, uBirdBox: birdBox,
-    uExposure: exposure, uBloomMix: BLOOM_MIX, uBloomScale: BLOOM_MIX / BLOOM_NORM, uRayCol: scl(sunC, RAYS_K * rayStrength), uTime: time % 1000, uRes: [w, h], uView: { i: VIEW }, uTM: { i: TONEMAP }, uContrast: CONTRAST, uDbg: histTex, uDbg2: T.cloudDepth, uDbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
+    uExposure: exposure * (1.0 + 0.45 * inCloud), uBloomMix: BLOOM_MIX, uBloomScale: BLOOM_MIX / BLOOM_NORM, uRayCol: scl(sunC, RAYS_K * rayStrength), uTime: time % 1000, uRes: [w, h], uView: { i: VIEW }, uTM: { i: TONEMAP }, uContrast: CONTRAST, uDbg: histTex, uDbg2: T.cloudDepth, uDbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
   });
   tEnd();
   frame++;
@@ -2805,9 +3090,9 @@ window.__debug = {
     const b = new Float32Array(32);
     gl.bindFramebuffer(gl.FRAMEBUFFER, FB.probe);
     gl.readPixels(0, 0, 8, 1, gl.RGBA, gl.FLOAT, b);
-    const amb = new Float32Array(8);
+    const amb = new Float32Array(16);
     gl.bindFramebuffer(gl.FRAMEBUFFER, FB.amb);
-    gl.readPixels(0, 0, 2, 1, gl.RGBA, gl.FLOAT, amb);
+    gl.readPixels(0, 0, 4, 1, gl.RGBA, gl.FLOAT, amb);
     return { sun: Array.from(b.slice(0, 4)), ambUp: Array.from(b.slice(4, 7)), ambDn: Array.from(b.slice(8, 11)), misc: Array.from(b.slice(12, 16)), mist: Array.from(b.slice(16, 19)), ambTex: Array.from(amb) };
   },
 };
