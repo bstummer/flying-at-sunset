@@ -1167,7 +1167,10 @@ void main() {
   float zSum = 0.0, zW = 0.0;
   float t = (0.2 + jit * 0.8) * 4.0;
   bool done = false;
-  float tPrev = 0.0, dPrev = -1.0;
+  float tPrev = 0.0, dPrev = -1.0;   // last point outside the clouds
+  float tIn = 0.0, dIn = 0.0;        // nearest point known to be inside, while refining an entry
+  int nRef = 0, side = 0;
+  bool startIn = false;
   float nIter = 0.0, nIn = 0.0, nSdf = 0.0;
   float lastTau = 0.0, lastDepth = 0.0;
   for (int i = 0; i < 300; i++) {
@@ -1196,23 +1199,34 @@ void main() {
     if (lat < 0.0) towB = min(h - (tw.top + 0.55 * tw.R + 150.0), -lat + 600.0);
     else towB = max(lat, max(g2, min(h - texelFetch(uTopMap, ivec2(tp * (64.0 * INV_TILE)) & 63, 0).r, 1900.0)));
     float bound = min(towB, seaB);
-    if (bound > 0.0) { tPrev = t; dPrev = bound; t += max(bound * 0.95, minStep * (0.5 + rj)); continue; }
+    if (bound > 0.0 && nRef == 0 && !startIn) { tPrev = t; dPrev = bound; t += max(bound * 0.95, minStep * (0.5 + rj)); continue; }
     float lod = t * (1.0 / 15000.0);
     nSdf += 1.0;
     float d = cloudSDF(wp, h, sea, tw, lod);
-    // approach the surface with a per-pixel/per-step jittered stride: avoids "wood grain" banding
-    if (d > 0.0) { tPrev = t; dPrev = d; t += max(d * 0.75, minStep * (0.35 + rj)); continue; }
-    if (dPrev > 0.0) {
-      // just crossed the surface: step back to the estimated crossing (secant), so dense clouds
-      // always start integrating right at their boundary instead of at a random depth
-      float ts = tPrev + (t - tPrev) * dPrev / max(dPrev - d, 1e-3);
-      ts += (t - ts) * 0.5 * jit2;
-      dPrev = -1.0;
-      if (ts < t - 0.5) { t = ts; continue; }
+    float edgeW = mix(14.0, EDGE_W, smoothstep(120.0, 4000.0, t));   // crisper rims up close
+    float dtMin = 3.0 + t * 0.002;
+    // Entering a cloud: locate the boundary within the last stride (Illinois regula falsi), then
+    // start integrating a jittered fraction of a rim step past it. Starting anywhere within a far
+    // stride (hundreds of metres deep) would light distant clouds as if from deep inside them.
+    float tol = max(edgeW * 0.15, 1.0);
+    if (nRef > 0) {
+      if (d > 0.0) { tPrev = t; dPrev = d; if (side == 1) dIn *= 0.5; side = 1; }
+      else { tIn = t; dIn = d; if (side == 2) dPrev *= 0.5; side = 2; }
+      nRef--;
+      t = tPrev + (tIn - tPrev) * dPrev / max(dPrev - dIn, 1e-3);
+      if (nRef == 0 || tIn - tPrev < tol) { nRef = 0; dPrev = -1.0; startIn = true; t += 0.5 * jit2 * max(edgeW * 0.55, dtMin); }
+      continue;
     }
+    // approach the surface with a per-pixel/per-step jittered stride: avoids "wood grain" banding
+    if (d > 0.0 && !startIn) { tPrev = t; dPrev = d; t += max(d * 0.75, minStep * (0.35 + rj)); continue; }
+    if (dPrev > 0.0 && t - tPrev > tol) {
+      tIn = t; dIn = d; nRef = 3; side = 0;
+      t = tPrev + (t - tPrev) * dPrev / max(dPrev - d, 1e-3);
+      continue;
+    }
+    startIn = false;
     dPrev = -1.0;
     float detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
-    float edgeW = mix(14.0, EDGE_W, smoothstep(120.0, 4000.0, t));   // crisper rims up close
     float nearW = (1.0 - smoothstep(150.0, 900.0, t)) * max(uInCloud, 1.0 - smoothstep(40.0, 120.0, -d));
 #ifdef DBG
     if (uDbgMode > 0 && uDbgMode < 4) {
@@ -1239,7 +1253,6 @@ void main() {
     // stride: aim for a fixed optical depth per step (larger once little light gets through),
     // but stay fine inside the soft rim where most of the visible light is scattered
     float sigma = dens * SIGMA;
-    float dtMin = 3.0 + t * 0.002;
     float dt = clamp((0.45 + 1.6 * (1.0 - T)) / max(sigma, 0.004), dtMin, 8.0 + t * 0.016);
     dt = min(dt, max(edgeW * 0.55, -d * 0.6 + dtMin)) * (0.75 + 0.5 * jit2);
     if (dens > 0.003) {
