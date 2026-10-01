@@ -144,16 +144,13 @@ const SUN_ELEV = 5.0 * DEG;
 const SUN_AZIM = 0.0;          // the sun sits toward -Z
 const SUN_DIR = norm([Math.sin(SUN_AZIM) * Math.cos(SUN_ELEV), Math.sin(SUN_ELEV), -Math.cos(SUN_AZIM) * Math.cos(SUN_ELEV)]);
 const WIND = [3.2, 0, 1.4];    // m/s, slow drift of the billows (the clouds gently evolve)
-const SEA_MAP_N = 512;
-const TOWER_MAP_N = 1024;
 const TSV_N = 256, TSV_NH = 32, TSV_H = 10500;
 const SHAPE_N = 128, DETAIL_N = 64;
-const TOWER_EXT = 2.1;         // lateral extent of a tower (flaring base, turrets, bulges), in units of R
-const FLOAT_EXT = 1.75;        // the same for a cloud floating freely in the air
-const fract = x => x - Math.floor(x);
-const floatThick = (R, seed) => R * (0.5 + 0.55 * fract(seed * 7.31));   // matches the shader
+const MAC_N = 1024;            // cloud landscape map: 125 m texels over the world tile
 
-// ------------------------------------------------------------------ CPU side world: sea of clouds, towers & floating clouds
+// ------------------------------------------------------------------ CPU side world: the cloud landscape
+// Everything is generated: noise fields decide where the air is calm or convecting, and thousands of
+// random rising domes of all sizes heap up on the sea of clouds wherever it is active.
 const rng = mulberry32(0x5eed1e5);
 
 function makeNoise2D(seedRng, px, py = px) {   // tileable value noise, px by py cells
@@ -168,193 +165,236 @@ function makeNoise2D(seedRng, px, py = px) {   // tileable value noise, px by py
     return lerp(lerp(a, b, ux), lerp(c, d, ux), uy);
   };
 }
+function makeFbm(p0, octaves, gain = 0.5, r = rng) {    // tileable fbm in tile units (u, v in 0..1)
+  const ns = [];
+  for (let i = 0; i < octaves; i++) ns.push(makeNoise2D(r, p0 << i));
+  return (u, v) => {
+    let s = 0, a = 1, w = 0;
+    for (let i = 0; i < octaves; i++) { s += a * ns[i](u * (p0 << i), v * (p0 << i)); w += a; a *= gain; }
+    return s / w;
+  };
+}
 const wrapD = (a, b) => { let d = a - b; d -= TILE * Math.round(d / TILE); return d; };
 const dist2 = (x0, z0, x1, z1) => Math.hypot(wrapD(x0, x1), wrapD(z0, z1));
+const smaxJS = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0); return Math.max(a, b) + h * h / (4 * k); };
 
-// sea of clouds: base height and lumpiness (the sea map adds soft mounds around the towers)
-const seaN = [makeNoise2D(rng, 8), makeNoise2D(rng, 16), makeNoise2D(rng, 32), makeNoise2D(rng, 64), makeNoise2D(rng, 12)];
-function seaBase(u, v) {   // u, v in tile units
-  const f = seaN[0](u * 8, v * 8) * 0.55 + seaN[1](u * 16, v * 16) * 0.27 + seaN[2](u * 32, v * 32) * 0.12 + seaN[3](u * 64, v * 64) * 0.06;
-  return [1520 + (f - 0.5) * 760, 0.45 + 0.85 * smoothstep(0.25, 0.75, seaN[4](u * 12, v * 12))];
-}
-const seaBaseAt = (x, z) => seaBase(fmod(x, TILE) / TILE, fmod(z, TILE) / TILE);
-const moundOf = (R, rise) => Math.min(300, 40 + 0.05 * R + 0.025 * rise);   // sea raised around a tower
-
-// Where towers grow: loose lines (streets along the wind) and clusters, with wide open stretches.
-const convN = [makeNoise2D(rng, 4, 11), makeNoise2D(rng, 9), makeNoise2D(rng, 5), makeNoise2D(rng, 18)];
-function convection(x, z) {
-  const u = fmod(x, TILE) / TILE, v = fmod(z, TILE) / TILE;
-  const wu = u + 0.05 * (convN[3](u * 18, v * 18) - 0.5), wv = v + 0.05 * (convN[3](u * 18 + 9.5, v * 18 + 4.5) - 0.5);
-  const lines = Math.pow(1 - Math.abs(2 * convN[0](wu * 4, wv * 11) - 1), 7);
-  const clusters = smoothstep(0.58, 0.8, convN[1](wu * 9, wv * 9));
-  const active = smoothstep(0.3, 0.62, convN[2](u * 5, v * 5));
-  return Math.max(lines * 0.9, clusters) * active;
-}
-
-function generateTowers() {
-  const towers = [];
-  const fits = (x, z, R, gap, rise) => {
-    if (dist2(x, z, 0, 0) < TOWER_EXT * R + 2600) return false; // keep the start clear
-    // and the view of the low sun from the start (the sun sits toward -z)
-    const sx = wrapD(x, 0), sz = wrapD(z, 0);
-    if (rise > 600 && sz < 0 && sz > -80000 && Math.abs(sx) < TOWER_EXT * R + 3000) return false;
-    for (const t of towers) {
-      const dd = dist2(x, z, t.x, t.z);
-      if (dd < TOWER_EXT * (t.R + R) + gap) return false;
-      if (R > 2400 && t.R > 2400 && dd < 26000) return false;   // giants stand apart
-    }
-    return true;
-  };
-  // rise: height of the top above the sea around it
-  const push = (x, z, R, rise) => {
-    x = fmod(x, TILE); z = fmod(z, TILE); R = Math.round(R);
-    towers.push({ x, z, R, top: Math.round(seaBaseAt(x, z)[0] + moundOf(R, rise) + rise), rise, seed: rng() * 0.999 });
-  };
-  const place = (count, rMin, rMax, riseMin, riseMax, fMin, gap, riseOfR = false) => {
-    for (let a = 0, n = 0; a < count * 500 && n < count; a++) {
-      const x = rng() * TILE, z = rng() * TILE;
-      const f = fMin < 0 ? 1 : convection(x, z);
-      if (f < fMin || rng() > f) continue;
-      const k = Math.pow(rng(), 1.5) * (0.45 + 0.55 * f);   // bigger where convection is strong
-      const R = lerp(rMin, rMax, k);
-      const rise = riseOfR ? R * lerp(riseMin, riseMax, rng()) : lerp(riseMin, riseMax, 0.6 * k + 0.4 * rng());
-      if (fits(x, z, R, gap, rise)) { push(x, z, R, rise); n++; }
-    }
-  };
-  place(5, 2700, 3800, 7000, 8800, 0.5, 3000);            // a few giants that dominate the view
-  place(9, 1500, 2500, 3000, 5000, 0.45, 1500);
-  place(60, 650, 1500, 1100, 3000, 0.3, 700);             // many medium towers
-  place(240, 260, 700, 0.35, 1.6, 0.12, 250, true);       // humps barely rising above the sea
-  place(14, 300, 900, 0.5, 2.5, -1, 400, true);           // the odd loner out in the open
-  return towers;
-}
-const towers = generateTowers();
-
-// Sea height map (smooth, shared with the CPU for the gentle "floor"): base noise + mounds on
-// which the towers stand.
-const seaMap = new Float32Array(SEA_MAP_N * SEA_MAP_N * 2);
-(function buildSeaMap() {
-  const N = SEA_MAP_N, cell = TILE / N;
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const [top, lump] = seaBase(i / N, j / N);
-    seaMap[(j * N + i) * 2] = top;
-    seaMap[(j * N + i) * 2 + 1] = lump;
-  }
-  for (const t of towers) {
-    const rad = t.R * 4.0, r0 = Math.ceil(rad / cell), mound = moundOf(t.R, t.rise);
-    const ci = Math.floor(t.x / cell), cj = Math.floor(t.z / cell);
-    for (let dj = -r0; dj <= r0; dj++) for (let di = -r0; di <= r0; di++) {
-      const i = ((ci + di) % N + N) % N, j = ((cj + dj) % N + N) % N;
-      const d = dist2((i + 0.5) * cell, (j + 0.5) * cell, t.x, t.z) / t.R;
-      if (d > 4) continue;
-      const k = Math.exp(-Math.pow(Math.max(d - 0.7, 0) / 1.5, 2));
-      seaMap[(j * N + i) * 2] += k * mound;
-      seaMap[(j * N + i) * 2 + 1] = Math.max(seaMap[(j * N + i) * 2 + 1], 0.55 + 0.4 * k);
-    }
+// ---- large-scale fields on a coarse grid (they vary over kilometres)
+const FLD_N = 256;
+const fld = { base: new Float32Array(FLD_N * FLD_N), act: new Float32Array(FLD_N * FLD_N),
+  hot: new Float32Array(FLD_N * FLD_N), amp: new Float32Array(FLD_N * FLD_N), rough: new Float32Array(FLD_N * FLD_N) };
+(function buildFields() {
+  const fBase = makeFbm(2, 5, 0.55), fAct = makeFbm(3, 5, 0.6), fHot = makeFbm(5, 3, 0.5);
+  const fAmp = makeFbm(6, 3), fRough = makeFbm(7, 3), fW = [makeFbm(4, 3), makeFbm(4, 3)];
+  for (let j = 0; j < FLD_N; j++) for (let i = 0; i < FLD_N; i++) {
+    const u = (i + 0.5) / FLD_N, v = (j + 0.5) / FLD_N, p = j * FLD_N + i;
+    const wu = u + 0.07 * (fW[0](u, v) - 0.5), wv = v + 0.07 * (fW[1](u, v) - 0.5);
+    fld.base[p] = 1500 + 1100 * (fBase(u, v) - 0.5);                  // the sea rises and falls
+    fld.act[p] = smoothstep(0.36, 0.68, fAct(wu, wv));                  // calm .. convecting
+    fld.hot[p] = smoothstep(0.6, 0.74, fHot(wu, wv)) * fld.act[p];      // rare: heaps that grow into towers
+    fld.amp[p] = fAmp(u, v);
+    fld.rough[p] = fRough(wu, wv);
   }
 })();
-
-function seaTopAt(x, z) { // bilinear, matches GPU LINEAR filtering of the sea map
-  const N = SEA_MAP_N;
-  const u = fmod(x, TILE) / TILE * N - 0.5, v = fmod(z, TILE) / TILE * N - 0.5;
+function fieldAt(arr, x, z) {   // bilinear, tiled
+  const u = fmod(x, TILE) / TILE * FLD_N - 0.5, v = fmod(z, TILE) / TILE * FLD_N - 0.5;
   const i0 = Math.floor(u), j0 = Math.floor(v), fu = u - i0, fv = v - j0;
-  const at = (i, j) => seaMap[((((j % N) + N) % N) * N + (((i % N) + N) % N)) * 2];
+  const at = (i, j) => arr[(((j % FLD_N) + FLD_N) % FLD_N) * FLD_N + (((i % FLD_N) + FLD_N) % FLD_N)];
   return lerp(lerp(at(i0, j0), at(i0 + 1, j0), fu), lerp(at(i0, j0 + 1), at(i0 + 1, j0 + 1), fu), fv);
 }
 
-// Clouds floating freely in the air: small puffs near the bird's usual altitude, larger cumulus,
-// and a few higher, flatter ones. Never hugging a tower, never touching the sea.
-function generateFloats() {
-  const floats = [];
-  const fieldN = makeNoise2D(rng, 10);
-  const fits = (x, z, R, margin) => {
-    if (dist2(x, z, 0, 0) < FLOAT_EXT * R + 700) return false;          // not on top of the start
-    for (const t of towers) if (dist2(x, z, t.x, t.z) < TOWER_EXT * t.R + FLOAT_EXT * R + margin) return false;
-    for (const f of floats) if (dist2(x, z, f.x, f.z) < FLOAT_EXT * (f.R + R) + 200) return false;
-    return true;
+// ---- the height of the cloud tops: valleys where it convects, then domes heaped up on top
+const MAC_CELL = TILE / MAC_N;
+const topH = new Float32Array(MAC_N * MAC_N);     // macro top height
+const ampM = new Float32Array(MAC_N * MAC_N);     // billow amplitude
+const baseM = new Float32Array(MAC_N * MAC_N);    // undisturbed sea level
+const domes = [];
+(function buildLandscape() {
+  const N = MAC_N;
+  // the sea rolls in billowy mounds with creased valleys between them, more where it convects
+  const fMound = makeFbm(14, 3, 0.55), fMound2 = makeFbm(9, 2, 0.5);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = (i + 0.5) * MAC_CELL, z = (j + 0.5) * MAC_CELL, p = j * N + i, u = x / TILE, v = z / TILE;
+    const act = fieldAt(fld.act, x, z), base = fieldAt(fld.base, x, z), rough = fieldAt(fld.rough, x, z);
+    const billow = 1 - Math.abs(2 * fMound(u, v) - 1), swell = fMound2(u, v) - 0.5;
+    baseM[p] = base;
+    topH[p] = base + (billow - 0.62) * (160 + 520 * act * (0.4 + rough)) + swell * 260;
+    ampM[p] = clamp(0.4 + 0.75 * act + 0.7 * (fieldAt(fld.amp, x, z) - 0.5), 0.32, 1.4);
+  }
+  // heaps: a random dome grows smaller domes of random sizes on its surface, a few levels deep,
+  // so domes cluster into heaps with open sea between them
+  const blocked = (x, z, r) => {
+    // keep the start clear, and the view of the low sun from it (the sun sits toward -z)
+    const sx = wrapD(x, 0), sz = wrapD(z, 0);
+    if (r > 600 && Math.hypot(sx, sz) < r * 1.7 + 2500) return true;
+    return r > 1000 && sz < 0 && sz > -60000 && Math.abs(sx) < r * 1.7 + 2500;
   };
-  // lowest base: clear of the highest billows of the sea below
-  const clearance = (x, z) => seaTopAt(x, z) + 330 * seaBaseAt(x, z)[1] + 150;
-  const push = (x, z, R, base, margin = 1500) => {
-    x = fmod(x, TILE); z = fmod(z, TILE); R = Math.round(R);
-    if (!fits(x, z, R, margin)) return false;
-    floats.push({ x, z, R, base: Math.round(Math.max(base, clearance(x, z))), seed: rng() * 0.999 });
-    return true;
-  };
-  const place = (count, rMin, rMax, hMin, hMax) => {
-    for (let a = 0, n = 0; a < count * 300 && n < count; a++) {
-      const x = rng() * TILE, z = rng() * TILE;
-      if (rng() > 0.2 + 0.8 * smoothstep(0.42, 0.72, fieldN(x / TILE * 10, z / TILE * 10))) continue;
-      if (push(x, z, lerp(rMin, rMax, Math.pow(rng(), 1.7)), lerp(hMin, hMax, rng()))) n++;
+  const FLAT_R = 400, FLAT_R0 = 800;   // domes larger than this spread out flatter (heaps are broad)
+  const addDome = (x, z, r, aspect, depth, grow, root = false, tall = false) => {
+    if (blocked(x, z, r)) return;
+    // profile: from a round cap (0.5) to a soft-shouldered hill (1.5); the body of a heap is a
+    // hill (a tower's body a steeper mass), the domes that grow on it are rounder
+    const prof = root ? (aspect > 1 ? lerp(0.6, 0.95, rng()) : lerp(0.9, 1.6, rng())) : lerp(0.45, 0.95, rng());
+    const d = { x, z, r, h: r * aspect, ex: lerp(1.0, 1.6, rng()), ang: rng() * PI, sink: lerp(0.2, 0.5, rng()), prof };
+    domes.push(d);
+    if (depth <= 0 || r < 380) return;
+    // children crowd near the top of the parent, others spill down and beyond its flanks, so a
+    // heap's outline is irregular and its top a jumble of domes
+    const n = Math.floor(lerp(1, 5 + 6 * grow, Math.pow(rng(), 0.8)) * Math.sqrt(Math.max(r / 900, 1)));
+    for (let c = 0; c < n; c++) {
+      // (a tower's turrets spread over its whole crown and down its flanks)
+      const ang = rng() * 2 * PI, dist = r * Math.pow(rng(), tall ? 0.6 : 0.8 + 0.6 * aspect) * (tall ? 1.05 : 1.0);
+      const rc = r * lerp(0.2, 0.66, Math.pow(rng(), 1.2));
+      // on a heap the big domes spread out flat and only the small ones are round; a tower's
+      // turrets climb to very different heights
+      const flat = tall ? 1 : Math.min(1, Math.pow(FLAT_R / rc, 0.45));
+      const asp = tall ? lerp(0.4, 1.5, Math.pow(rng(), 0.9)) : lerp(0.45, 1.05, rng()) * (0.8 + 0.35 * grow) * flat;
+      addDome(x + Math.cos(ang) * dist, z + Math.sin(ang) * dist, rc, asp, depth - 1, grow, false, tall);
     }
   };
-  place(230, 110, 380, 1900, 3300);    // small puffs, many around the bird's usual altitude
-  place(100, 320, 850, 2300, 4300);    // larger cumulus: these shadow the sea below
-  place(60, 150, 450, 4000, 5600);     // higher up, smaller and flatter
-  return floats;
-}
-const floats = generateFloats();
-
-// Object map: per 125 m texel the nearest tower or floating cloud (they never overlap), exact
-// centres, NEAREST sampled. z = R + seed (negative for floating clouds), w = top of a tower or
-// base of a floating cloud.
-const towerMap = new Float32Array(TOWER_MAP_N * TOWER_MAP_N * 4);
-const objects = towers.map(t => ({ x: t.x, z: t.z, ext: TOWER_EXT * t.R, packed: t.R + t.seed, w: t.top, topExt: t.top + 0.55 * t.R + 200 }))
-  .concat(floats.map(f => ({ x: f.x, z: f.z, ext: FLOAT_EXT * f.R, packed: -(f.R + f.seed), w: f.base,
-    topExt: f.base + floatThick(f.R, f.seed) + 0.3 * f.R + 160 })));
-(function buildObjectMap() {
-  const M = TOWER_MAP_N, tc = TILE / M, MARGIN = 7000;
-  const best = new Float32Array(M * M).fill(1e9);
-  for (let p = 0; p < M * M; p++) {
-    const i = p % M, j = (p / M) | 0;
-    towerMap[p * 4] = (i + 0.5) * tc + MARGIN + TOWER_EXT * 1000 + 400;  // dummy tower far away
-    towerMap[p * 4 + 1] = (j + 0.5) * tc;
-    towerMap[p * 4 + 2] = 1000;
-    towerMap[p * 4 + 3] = 0;
+  for (let k = 0; k < 9000; k++) {
+    const x = rng() * TILE, z = rng() * TILE;
+    const act = fieldAt(fld.act, x, z);
+    if (rng() > 0.01 + 0.45 * act * act * act) continue;
+    const r = 700 * Math.pow(1 - rng() * 0.9999, -1 / 1.5);
+    if (r > 1200 + 2600 * act * act) continue;
+    addDome(x, z, r, lerp(0.28, 0.7, Math.pow(rng(), 1.2)) * (0.7 + 0.5 * act) * Math.min(1, Math.pow(FLAT_R0 / r, 0.45)), 3, act, true);
   }
-  for (const o of objects) {
-    const r0 = Math.ceil((o.ext + MARGIN) / tc);
-    const ci = Math.floor(o.x / tc), cj = Math.floor(o.z / tc);
+  // rare: where it convects hardest a heap keeps climbing into a tower
+  for (let j = 0; j < FLD_N; j++) for (let i = 0; i < FLD_N; i++) {
+    const h0 = fld.hot[j * FLD_N + i];
+    if (h0 < 0.35) continue;
+    let peak = true;
+    for (let b = -3; b <= 3 && peak; b++) for (let a = -3; a <= 3; a++) {
+      if ((a || b) && fld.hot[(((j + b) % FLD_N) + FLD_N) % FLD_N * FLD_N + (((i + a) % FLD_N) + FLD_N) % FLD_N] > h0) { peak = false; break; }
+    }
+    if (!peak || rng() > 0.75) continue;
+    const x = (i + rng()) * TILE / FLD_N, z = (j + rng()) * TILE / FLD_N;
+    addDome(x, z, lerp(2400, 4600, rng()), lerp(0.85, 1.45, rng()), 4, 1.0, true, true);
+  }
+  domes.sort((p, q) => q.r - p.r);
+  // stack them: each dome rises from the cloud left by the larger domes, so heaps build up from
+  // domes of every size; domes of a similar size merge side by side instead of piling up
+  let ref = topH.slice(), level = 99;
+  for (const d of domes) {
+    const lv = Math.floor(Math.log2(d.r / 330));
+    if (lv !== level) { level = lv; ref = topH.slice(); }
+    const ci = Math.floor(fmod(d.x, TILE) / MAC_CELL), cj = Math.floor(fmod(d.z, TILE) / MAC_CELL);
+    d.base = ref[cj * N + ci] - d.sink * d.h;
+    d.top = d.base + d.h;
+    const ca = Math.cos(d.ang), sa = Math.sin(d.ang), rr = d.r * d.ex, r0 = Math.ceil(rr / MAC_CELL) + 1;
+    const k = 0.12 * d.h + 25;
     for (let dj = -r0; dj <= r0; dj++) {
-      const j = ((cj + dj) % M + M) % M, dz = (cj + dj + 0.5) * tc - o.z, row = j * M;
+      const j = ((cj + dj) % N + N) % N, dz = (cj + dj + 0.5) * MAC_CELL - fmod(d.z, TILE);
       for (let di = -r0; di <= r0; di++) {
-      const dx = (ci + di + 0.5) * tc - o.x;
-      const v = Math.sqrt(dx * dx + dz * dz) - o.ext;
-      const p = row + ((ci + di) % M + M) % M;
-      if (v < best[p]) {
-        best[p] = v;
-        towerMap[p * 4] = o.x; towerMap[p * 4 + 1] = o.z; towerMap[p * 4 + 2] = o.packed; towerMap[p * 4 + 3] = o.w;
-      }
+        const dx = (ci + di + 0.5) * MAC_CELL - fmod(d.x, TILE);
+        const a = (dx * ca + dz * sa) / d.ex, b = -dx * sa + dz * ca;     // stretched along ang
+        const u2 = (a * a + b * b) / (d.r * d.r);
+        if (u2 >= 1) continue;
+        const p = j * N + ((ci + di) % N + N) % N;
+        topH[p] = smaxJS(topH[p], d.base + d.h * Math.pow(1 - u2, d.prof), k);
       }
     }
   }
 })();
+const shellOf = a => 330 * a + 110;     // highest billows above the macro top (shader octaves)
 
-// coarse grids: highest cloud top of any object whose extent comes within D of the cell
-function buildTopMap(n, D) {
-  const map = new Float32Array(n * n), cell = TILE / n;
-  for (const o of objects) {
-    const reach = o.ext + 160 + D;
-    const r0 = Math.ceil(reach / cell) + 1;
-    const ci = Math.floor(o.x / cell), cj = Math.floor(o.z / cell);
-    for (let dj = -r0; dj <= r0; dj++) for (let di = -r0; di <= r0; di++) {
-      // distance from the object centre to the cell rectangle
-      const x0 = (ci + di) * cell, z0 = (cj + dj) * cell;
-      const dx = Math.max(x0 - o.x, 0, o.x - (x0 + cell)), dz = Math.max(z0 - o.z, 0, o.z - (z0 + cell));
-      if (Math.hypot(dx, dz) > reach) continue;
-      const i = ((ci + di) % n + n) % n, j = ((cj + dj) % n + n) % n;
-      map[j * n + i] = Math.max(map[j * n + i], o.topExt);
+// ---- derived maps: slope bound, nearby maximum, the sea level the bird skims, coarse grids
+const macroMap = new Float32Array(MAC_N * MAC_N * 4);   // T, slope bound, billow amplitude, sea level
+const floorM = new Float32Array(MAC_N * MAC_N);          // what the bird skims (heaps above it may be entered)
+const MAXM_N = 512;
+const maxMap = new Float32Array(MAXM_N * MAXM_N);        // highest cloud within ~1.2 km
+(function buildDerived() {
+  const N = MAC_N, at = (i, j) => topH[(((j % N) + N) % N) * N + (((i % N) + N) % N)];
+  // slope of the bilinear surface, dilated over +-3 texels (valid for steps up to ~300 m)
+  const g = new Float32Array(N * N), g2 = new Float32Array(N * N);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const t = at(i, j);
+    g[j * N + i] = Math.max(Math.abs(at(i + 1, j) - t), Math.abs(at(i - 1, j) - t), Math.abs(at(i, j + 1) - t), Math.abs(at(i, j - 1) - t)) / MAC_CELL * 1.42;
+  }
+  const dilate = (src, dst, R, horiz) => {
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      let m = 0;
+      for (let k = -R; k <= R; k++) m = Math.max(m, horiz ? src[j * N + ((i + k) % N + N) % N] : src[((j + k) % N + N) % N * N + i]);
+      dst[j * N + i] = m;
     }
+  };
+  dilate(g, g2, 3, true); dilate(g2, g, 3, false);
+  // the undisturbed sea level: a wide blur of the tops, never far above the base
+  const b1 = new Float32Array(N * N), b2 = new Float32Array(N * N);
+  const blur = (src, dst, R, horiz) => {
+    for (let j = 0; j < N; j++) {
+      let s = 0;
+      for (let k = -R; k <= R; k++) s += horiz ? src[j * N + ((k % N) + N) % N] : src[((k % N) + N) % N * N + j];
+      for (let i = 0; i < N; i++) {
+        if (horiz) dst[j * N + i] = s / (2 * R + 1);
+        else dst[i * N + j] = s / (2 * R + 1);
+        const a = ((i - R) % N + N) % N, b = (i + R + 1) % N;
+        s += horiz ? src[j * N + b] - src[j * N + a] : src[b * N + j] - src[a * N + j];
+      }
+    }
+  };
+  blur(topH, b1, 10, true); blur(b1, b2, 10, false); blur(b2, b1, 10, true); blur(b1, b2, 10, false);
+  for (let p = 0; p < N * N; p++) {
+    const sea = Math.min(b2[p], baseM[p] + 240);
+    macroMap[p * 4] = topH[p]; macroMap[p * 4 + 1] = g[p]; macroMap[p * 4 + 2] = ampM[p]; macroMap[p * 4 + 3] = sea;
+    floorM[p] = Math.min(topH[p], sea + 330);
+  }
+  // highest cloud (top + billows) within ~1.2 km of each 250 m texel
+  const S = MAXM_N, f = N / S, tmp = new Float32Array(S * S);
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    let m = 0;
+    for (let b = 0; b < f; b++) for (let a = 0; a < f; a++) { const p = (j * f + b) * N + i * f + a; m = Math.max(m, topH[p] + shellOf(ampM[p])); }
+    tmp[j * S + i] = m;
+  }
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    let m = 0;
+    for (let b = -5; b <= 5; b++) for (let a = -5; a <= 5; a++) m = Math.max(m, tmp[(((j + b) % S) + S) % S * S + (((i + a) % S) + S) % S]);
+    maxMap[j * S + i] = m;
+  }
+})();
+function sampleMac(arr, x, z) { // bilinear, matches GPU LINEAR filtering
+  const N = MAC_N;
+  const u = fmod(x, TILE) / TILE * N - 0.5, v = fmod(z, TILE) / TILE * N - 0.5;
+  const i0 = Math.floor(u), j0 = Math.floor(v), fu = u - i0, fv = v - j0;
+  const at = (i, j) => arr[(((j % N) + N) % N) * N + (((i % N) + N) % N)];
+  return lerp(lerp(at(i0, j0), at(i0 + 1, j0), fu), lerp(at(i0, j0 + 1), at(i0 + 1, j0 + 1), fu), fv);
+}
+// how strongly the small cauliflower billows show: it varies across the world, from smooth,
+// soft-swelling cloud to crisp, lumpy cloud (its own random stream: the landscape stays as it is)
+const FINE_N = 256;
+const fineMap = new Float32Array(FINE_N * FINE_N);
+(function buildFine() {
+  const r2 = mulberry32(0xf17e5);
+  const f1 = makeFbm(20, 3, 0.55, r2), f2 = makeFbm(7, 2, 0.5, r2);
+  for (let j = 0; j < FINE_N; j++) for (let i = 0; i < FINE_N; i++) {
+    const u = (i + 0.5) / FINE_N, v = (j + 0.5) / FINE_N;
+    const f = 0.7 * f1(u, v) + 0.3 * f2(u, v);
+    fineMap[j * FINE_N + i] = lerp(0.12, 1.3, smoothstep(0.34, 0.66, f));
+  }
+})();
+const seaTopAt = (x, z) => sampleMac(floorM, x, z);    // the surface the bird skims
+const cloudTopAt = (x, z) => sampleMac(topH, x, z);
+
+// coarse grids: highest cloud anywhere within D of the cell
+function buildTopMap(n, D) {
+  const map = new Float32Array(n * n), cell = TILE / n, f = MAC_N / n;
+  const own = new Float32Array(n * n);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    let m = 0;
+    for (let b = 0; b < f; b++) for (let a = 0; a < f; a++) { const p = (j * f + b) * MAC_N + i * f + a; m = Math.max(m, topH[p] + shellOf(ampM[p])); }
+    own[j * n + i] = m;
+  }
+  const R = Math.ceil(D / cell);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    let m = 0;
+    for (let b = -R; b <= R; b++) for (let a = -R; a <= R; a++) m = Math.max(m, own[(((j + b) % n) + n) % n * n + (((i + a) % n) + n) % n]);
+    map[j * n + i] = m;
   }
   return map;
 }
 const TOP_N = 64, TOP2_N = 16;
 const topMap = buildTopMap(TOP_N, 2000);     // 2 km cells, guaranteed distance 2 km
 const topMap2 = buildTopMap(TOP2_N, 8000);   // 8 km cells, guaranteed distance 8 km
-// highest point the sea of clouds can reach (base height + billows), for skipping its lookup
-let SEA_MAX = 0;
-for (let i = 0; i < SEA_MAP_N * SEA_MAP_N; i++) SEA_MAX = Math.max(SEA_MAX, seaMap[i * 2] + 330 * seaMap[i * 2 + 1] + 95);
-SEA_MAX += 10;
 
 // ------------------------------------------------------------------ atmosphere (CPU copy for sun colors)
 const ATM = {
@@ -901,9 +941,11 @@ void main() {
 
 // ------------------------------------------------------------------ clouds: shared world functions
 const GLSL_CLOUD = `
-uniform sampler2D uSeaMap;
-uniform sampler2D uTowerMap;
-uniform sampler2D uTopMap;
+uniform sampler2D uMacro;       // the cloud landscape (top, slope bound, billow amplitude, sea level)
+uniform sampler2D uMacroMax;    // highest cloud within ~1.1 km (nearest)
+uniform sampler2D uFine;        // strength of the small billows
+uniform sampler2D uTopMap;      // highest cloud within 2 km of each 2 km cell
+uniform sampler2D uTopMap2;     // ... within 8 km of each 8 km cell
 uniform sampler3D uShape;
 uniform sampler3D uDetail;
 uniform sampler3D uTSV;
@@ -923,49 +965,12 @@ const float DETAIL_TILE = 512.0;
 const float TSV_H = 10500.0;
 const float SIGMA = 0.035;        // extinction inside clouds (1/m)
 const float EDGE_W = 80.0;        // soft boundary thickness (m)
-const float EXT = 2.1;            // tower lateral extent factor (TOWER_EXT in JS)
-const float FEXT = 1.75;          // floating cloud lateral extent factor (FLOAT_EXT in JS)
-const vec2 WIND_DIR = vec2(0.9162, 0.4009);
-
-// One object per map texel: a cumulus tower rising out of the sea (kind 0, top = its highest
-// point) or a cloud floating freely in the air (kind 1, top = height of its flat base).
-struct Obj { vec2 rel; float R; float seed; float top; float kind; };
-const Obj NO_OBJ = Obj(vec2(1.0e6, 0.0), 1.0, 0.0, 0.0, 0.0);
-uniform sampler2D uTopMap2;
-uniform float uSeaMax;
-
-Obj getObj(vec2 wxz) {
-  vec2 tp = wxz - TILE * floor(wxz * INV_TILE);
-  ivec2 ij = ivec2(tp * (1024.0 * INV_TILE)) & 1023;
-  vec4 m = texelFetch(uTowerMap, ij, 0);
-  Obj o;
-  vec2 r = tp - m.xy;
-  r -= TILE * floor(r * INV_TILE + 0.5);
-  o.rel = r;
-  float a = abs(m.z);
-  o.R = floor(a);
-  o.seed = fract(a);
-  o.top = m.w;
-  o.kind = m.z < 0.0 ? 1.0 : 0.0;
-  return o;
-}
-float objExt(Obj o) { return (o.kind > 0.5 ? FEXT : EXT) * o.R; }
-float floatThick(Obj o) { return o.R * (0.5 + 0.55 * fract(o.seed * 7.31)); }
-// conservative vertical distance to an object's slab (valid inside its extent cylinder)
-float objVBound(Obj o, float h) {
-  if (o.kind > 0.5) return max(h - (o.top + floatThick(o) + 0.3 * o.R + 110.0), (o.top - 70.0) - h);
-  return h - (o.top + 0.55 * o.R + 150.0);
-}
 
 vec3 sunColorAt(float h) {
   float f = clamp(h / 750.0, 0.0, 14.99);
   int i = int(f);
   return mix(uSunCol[i], uSunCol[i + 1], f - float(i));
 }
-
-vec2 rot2(vec2 v, float a) { float c = cos(a), s = sin(a); return vec2(c * v.x - s * v.y, s * v.x + c * v.y); }
-// ellipsoid (a lower bound of the distance, safe for marching)
-float sdEll(vec3 p, vec3 r) { return (length(p / r) - 1.0) * min(min(r.x, r.y), r.z); }
 
 float octave(float d, float n, float shell, float k) {
   // spheres may only bulge out to "shell" beyond the current surface; the clip is wide and soft
@@ -974,160 +979,53 @@ float octave(float d, float n, float shell, float k) {
   // the union radius covers the whole shell, so no sphere is left floating detached in the air
   return smin(n, d, max(k * 0.8, shell * 1.05));
 }
-// Cauliflower bulges: spheres reaching up to "shell" out of the surface, merged with tight
-// unions so the creases between them stay defined and each bulge catches its own light.
-float bulge(float d, float n, float shell) {
-  float k = max(shell * 0.55, 1.0);
-  n = smax(n, d - shell, k * 2.0);
-  return smin(n, d, k);
-}
-// finer levels: softer unions, so they read as texture on the bulges rather than as loose balls
-float bulgeSoft(float d, float n, float shell) {
-  float k = max(shell * 0.9, 1.0);
-  n = smax(n, d - shell, k * 1.6);
-  return smin(n, d, k);
-}
-// weight of a detail octave: fades once its features shrink below about two trace pixels
-float octW(float size, float lod) { return sat(size / (40.0 * lod + 1.0) - 1.0); }
 
-// --- cumulus towers
-float towerTorn(Obj o, float rise) { return step(0.66, fract(o.seed * 5.71)) * smoothstep(1800.0, 3500.0, rise); }
-vec2 towerWind(Obj o) { return rot2(WIND_DIR, (fract(o.seed * 2.31) - 0.5) * 1.3); }
-
-// Macro shape: a cluster of turrets of different heights with rounded crowns, on a broad base that
-// swells out of the sea, leaning with the wind; a few are sheared off downwind at the top.
-// seaC: sea height at the tower centre. hn: 0 at the sea, 1 at the top.
-float towerShape(Obj o, float h, float seaC, out float hn) {
-  float R = o.R, s = o.seed, top = o.top;
-  float rise = max(top - seaC, 60.0);
-  hn = (h - seaC) / rise;
-  float hc = clamp(hn, 0.0, 1.25);
-  float lean = R * (0.04 + 0.2 * fract(s * 3.17) * fract(s * 3.17)) * hc * hc;
-  float shear = towerTorn(o, rise) * 0.6 * R * pow(smoothstep(0.45, 1.15, hn), 1.5);
-  vec2 q = o.rel - towerWind(o) * (lean + shear) - 0.05 * R * vec2(sin(hc * 4.7 + s * 41.0), sin(hc * 3.9 + s * 23.0 + 1.57));
-  // broad base
-  float d = sdEll(vec3(q.x, h - seaC + 0.12 * R, q.y), vec3(1.5 * R, 0.26 * R + 0.06 * rise, 1.5 * R));
-  // main column: tapers from the broad base to a rounded crown at the very top
-  float form = fract(s * 13.7);                     // slender .. stout
-  float rcT = R * mix(0.45, 0.68, form);
-  float taper = mix(0.4, 0.25, form) * min(R, 0.8 * rise) * pow(1.0 - sat(hn), 1.5);
-  d = smin(d, length(vec2(length(q), max(h - (top - rcT), 0.0))) - rcT - taper, 0.3 * R);
-  // turrets stacked around it: the higher ones smaller and closer in, the lower ones bigger and
-  // further out, so the crown builds up like a cauliflower
-  vec2 dir = rot2(vec2(1.0, 0.0), s * 19.0);
-  const mat2 GOLDEN = mat2(-0.7373688, 0.6754903, -0.6754903, -0.7373688);
-  for (int k = 0; k < 5; k++) {
-    float fk = float(k);
-    float r1 = fract(s * (7.13 + 3.1 * fk)), r2 = fract(s * (11.7 + 5.3 * fk));
-    float f = 0.08 + 0.13 * fk + 0.12 * r2;         // how far below the top this turret tops out
-    float rk = R * (0.26 + 0.34 * f + 0.08 * r1);
-    float tk = top - rise * f;
-    vec2 qk = q - dir * R * min(0.22 + 0.85 * f + 0.1 * r1, 0.95);
-    d = smin(d, length(vec2(length(qk), max(h - (tk - rk), 0.0))) - rk, 0.22 * rk);
-    dir = GOLDEN * dir;
-  }
-  return d;
+// --- the cloud landscape. Macro map texel: top height (random domes heaped on a rolling sea),
+// slope bound of that height field, billow amplitude, undisturbed sea level.
+vec4 landAt(vec2 xz) { return textureLod(uMacro, xz * INV_TILE, 0.0); }
+float shellOf(float a) { return 330.0 * a + 110.0; }    // highest billows above the macro top
+// distance bound from the landscape alone: height above the local top (slope corrected, valid
+// within ~300 m) or above the highest cloud within ~1.1 km
+float landBound(float h, vec4 L, vec2 xz) {
+  vec2 tp = xz - TILE * floor(xz * INV_TILE);
+  float mx = texelFetch(uMacroMax, ivec2(tp * (512.0 * INV_TILE)) & 511, 0).r;
+  return max(min((h - (L.x + shellOf(L.z))) * inversesqrt(1.0 + L.y * L.y), 300.0), min(h - mx, 1100.0));
 }
-
-float towerSDF(Obj o, vec3 wp, float h, vec4 sf, float lod, float w3, float w4) {
-  float seaC = textureLod(uSeaMap, (wp.xz - o.rel) * INV_TILE, 0.0).x;
-  float hn;
-  float d = towerShape(o, h, seaC, hn);
-  if (d > 0.5 * o.R) return d;
-  // bulges in the tower's own frame, slowly rising; larger and more pronounced up high
-  vec3 tq = vec3(o.rel.x, h - uTime * 2.5, o.rel.y) / (3.0 * o.R) + o.seed * 17.3;
-  vec4 tf = textureLod(uShape, tq, 0.0) * 2.0 - 1.0;
-  float c1 = 0.75 * o.R;
-  float crown = mix(0.4, 1.0, smoothstep(0.2, 0.75, hn));
-  d = bulge(d, tf.x * c1, 0.34 * c1 * crown);
-  d = bulgeSoft(d, tf.y * c1 * 0.5, 0.34 * c1 * 0.5 * crown);
-  d = bulgeSoft(d, tf.z * c1 * 0.25, 0.32 * c1 * 0.25 * crown * octW(c1 * 0.25, lod));
-  d = bulgeSoft(d, tf.w * c1 * 0.125, 0.3 * c1 * 0.125 * octW(c1 * 0.125, lod));
-  // fixed-size cauliflower texture shared with the sea
-  d = bulgeSoft(d, sf.z * 320.0, 34.0 * w3);
-  d = bulgeSoft(d, sf.w * 160.0, 15.0 * w4);
-  return smax(d, length(o.rel) - EXT * o.R, 0.25 * o.R);   // stays inside its map footprint
-}
-
-// --- clouds floating freely: lumps of different heights over a flat base
-float floatShape(Obj o, float h) {
-  float R = o.R, s = o.seed, th = floatThick(o);
-  vec2 ax = rot2(WIND_DIR, (fract(s * 2.77) - 0.5) * 2.2);
-  vec2 p = vec2(dot(o.rel, ax), dot(o.rel, vec2(-ax.y, ax.x)));    // along, across its long axis
-  // the base is flat but not ruler straight
-  float y = h - o.top + th * 0.05 * (sin(p.x * 2.7 / R + s * 21.0) + sin(p.y * 3.4 / R + s * 37.0));
-  float d = sdEll(vec3(p.x - 0.1 * R, y - 0.25 * th, p.y), vec3(0.85 * R, 0.7 * th, 0.65 * R));
-  // lumps of different heights; some rise above the main dome
-  for (int k = 0; k < 4; k++) {
-    float fk = float(k);
-    float r1 = fract(s * (5.1 + 2.3 * fk)), r2 = fract(s * (8.7 + 3.9 * fk)), r3 = fract(s * (3.3 + 1.9 * fk));
-    float rk = R * (0.3 + 0.24 * r3);
-    vec2 c = vec2((mod(fk, 2.0) < 0.5 ? 1.0 : -1.0) * R * (0.22 + 0.45 * r1), R * (r2 - 0.5) * 0.5);
-    float hk = th * (0.45 + 0.6 * r2);     // height of the lump's top above the base
-    d = smin(d, sdEll(vec3(p.x - c.x, y - (hk - 0.75 * rk), p.y - c.y), vec3(rk, 0.75 * rk, rk)), 0.2 * rk);
-  }
-  return smax(d, -y, 0.12 * th);           // flat underside
-}
-
-float floatSDF(Obj o, vec3 wp, float h, vec4 sf, float lod, float w3, float w4) {
-  float d = floatShape(o, h);
-  if (d > 0.5 * o.R) return d;
-  float up = smoothstep(0.08, 0.55, (h - o.top) / floatThick(o));   // bulges on top, flat below
-  vec3 tq = vec3(o.rel.x, h - uTime * 1.5, o.rel.y) / (2.4 * o.R) + o.seed * 23.1;
-  vec4 tf = textureLod(uShape, tq, 0.0) * 2.0 - 1.0;
-  float c1 = 0.6 * o.R;
-  d = bulge(d, tf.x * c1, 0.36 * c1 * up);
-  d = bulge(d, tf.y * c1 * 0.5, 0.34 * c1 * 0.5 * up);
-  d = bulgeSoft(d, tf.z * c1 * 0.25, 0.3 * c1 * 0.25 * (0.3 + 0.7 * up) * octW(c1 * 0.25, lod));
-  d = bulgeSoft(d, sf.z * 320.0, 28.0 * w3 * up);
-  d = bulgeSoft(d, sf.w * 160.0, 13.0 * w4 * (0.3 + 0.7 * up));
-  return smax(d, length(o.rel) - FEXT * o.R, 0.2 * o.R);
+// a slow, seamless warp of the billow pattern: no lattice or repeat the eye can follow
+vec3 warpLand(vec3 p) {
+  vec2 q = p.xz * (6.2831853 / 128000.0);
+  return p + vec3(240.0 * sin(q.y * 17.0 + 1.3 * sin(q.x * 7.0)) + 150.0 * sin(q.y * 5.0 + q.x * 3.0), 0.0,
+                  240.0 * sin(q.x * 19.0 + 1.3 * sin(q.y * 8.0)) + 150.0 * sin(q.x * 4.0 - q.y * 6.0));
 }
 
 // Conservative distance bound from cheap 2D data only (no 3D fetches).
-// uTopMap holds, per 2 km cell, the highest cloud top of any object within 2 km of the cell.
-float cloudBound(float h, vec2 sea, Obj tw, vec2 wxz) {
-  float seaB = h - (sea.x + 330.0 * sea.y + 95.0);
-  float lat = length(tw.rel) - objExt(tw) - 160.0;
-  float towB;
-  if (lat < 0.0) {
-    towB = min(objVBound(tw, h), -lat + 600.0);
-  } else {
-    vec2 tp = wxz - TILE * floor(wxz * INV_TILE);
-    float mt = texelFetch(uTopMap, ivec2(tp * (64.0 * INV_TILE)) & 63, 0).r;
-    float mt2 = texelFetch(uTopMap2, ivec2(tp * (16.0 * INV_TILE)) & 15, 0).r;
-    towB = max(lat, max(min(h - mt, 1900.0), min(h - mt2, 7800.0)));
-  }
-  return min(seaB, towB);
+// uTopMap holds, per 2 km cell, the highest cloud within 2 km of the cell.
+float cloudBound(float h, vec4 L, vec2 wxz) {
+  vec2 tp = wxz - TILE * floor(wxz * INV_TILE);
+  float mt = texelFetch(uTopMap, ivec2(tp * (64.0 * INV_TILE)) & 63, 0).r;
+  float mt2 = texelFetch(uTopMap2, ivec2(tp * (16.0 * INV_TILE)) & 15, 0).r;
+  return max(landBound(h, L, wxz), max(min(h - mt, 1900.0), min(h - mt2, 7800.0)));
 }
 
-// Signed distance (m) to the cloud surface. lod: 0 = full detail, larger = coarser.
-float cloudSDF(vec3 wp, float h, vec2 sea, Obj o, float lod) {
-  // --- sea of clouds: base plane + two large billow octaves
+// Signed distance (m) to the cloud surface. L: landscape sample at wp.xz. lod: 0 = full detail.
+float cloudSDF(vec3 wp, float h, vec4 L, float lod) {
+  // --- the landscape: its height field (slope corrected) with billows heaped on top;
   // squashed lookup: billows are wider than tall (heaps, not balls)
-  vec4 sf = textureLod(uShape, (wp + uShapeOff) * (vec3(1.0, 1.7, 1.0) / SHAPE_TILE), 0.0) * 2.0 - 1.0;
+  float ds = (h - L.x) * inversesqrt(1.0 + L.y * L.y);
+  vec4 sf = textureLod(uShape, (warpLand(wp) + uShapeOff) * (vec3(1.0, 1.7, 1.0) / SHAPE_TILE), 0.0) * 2.0 - 1.0;
   sf *= 1.0 / 1.7;
-  float ds = h - sea.x;
-  float A = sea.y;
+  float A = L.z;
   ds = octave(ds, sf.x * 1280.0, 230.0 * A, 300.0);
   ds = octave(ds, sf.y * 640.0, 100.0 * A, 160.0);
-  // cauliflower detail only on the upper parts of the heaps; troughs stay smooth
-  float topW = sat((h - sea.x + 40.0) / 220.0);
+  // cauliflower detail on the upper parts of the sea and on everything heaped above it; the
+  // troughs stay smooth
+  float topW = sat((h - min(L.x, L.w + 100.0) + 40.0) / 220.0);
   float w3 = (1.0 - smoothstep(2.0, 3.5, lod)) * topW;
   float w4 = (1.0 - smoothstep(1.0, 2.0, lod)) * topW;
-  ds = octave(ds, sf.z * 320.0, 55.0 * w3, 90.0);
-  ds = octave(ds, sf.w * 160.0, 26.0 * w4, 45.0);
+  float fv = textureLod(uFine, wp.xz * INV_TILE, 0.0).r;
+  ds = octave(ds, sf.z * 320.0, 55.0 * w3 * fv, 90.0);
+  ds = octave(ds, sf.w * 160.0, 26.0 * w4 * fv, 45.0);
   float d = ds;
-  // --- the nearest tower or floating cloud
-  float lr = length(o.rel);
-  if (o.kind > 0.5) {
-    if (lr < FEXT * o.R + 150.0 && h > o.top - 120.0 && h < o.top + floatThick(o) + 0.4 * o.R + 120.0)
-      d = min(d, floatSDF(o, wp, h, sf, lod, w3, w4));
-  } else {
-    // towers grow out of the sea: blended, and wider blends for bigger towers
-    float kb = 0.12 * o.R + 120.0;
-    if (lr < EXT * o.R + kb + 100.0 && h < o.top + 0.6 * o.R) d = smin(d, towerSDF(o, wp, h, sf, lod, w3, w4), kb);
-  }
   // near the camera: an extra pair of small billow octaves (crisp cauliflower texture when skimming)
   if (lod < 0.1 && abs(d) < 60.0) {   // only matters right at the surface
     float wn = 1.0 - smoothstep(0.03, 0.1, lod);
@@ -1138,25 +1036,12 @@ float cloudSDF(vec3 wp, float h, vec2 sea, Obj o, float lod) {
   return d;
 }
 
-// how torn and wispy the cloud is here (0..1): the sheared tops of torn towers, the ragged
-// undersides of floating clouds
-float cloudWisp(float h, Obj o) {
-  if (length(o.rel) > objExt(o) + 200.0) return 0.0;
-  if (o.kind > 0.5) return h < o.top - 60.0 ? 0.0 : 0.6 * (1.0 - smoothstep(0.0, 0.35 * floatThick(o), h - o.top));
-  float rise = o.top - 1550.0;
-  float torn = towerTorn(o, rise);
-  if (torn < 0.01) return 0.0;
-  float hn = (h - 1550.0) / max(rise, 1.0);
-  return torn * smoothstep(0.62, 0.95, hn) * sat(0.5 + 1.2 * dot(o.rel, towerWind(o)) / o.R);
-}
-
 // density (0..1) from the signed distance with wispy erosion at the soft boundary.
-// edgeW: boundary softness; nearW: weight of extra-fine wisps close to the camera; wisp: torn,
-// fibrous parts; farW: coarse fraying for distant silhouettes; rel: position in the object's frame
-float densityEx(float d, vec3 wp, float detailW, float edgeW, float nearW, float wisp, float farW, vec2 rel) {
+// edgeW: boundary softness; nearW: weight of extra-fine wisps close to the camera; farW: coarse
+// fraying for distant silhouettes
+float densityEx(float d, vec3 wp, float detailW, float edgeW, float nearW, float farW) {
   float x = -d;
   if (x <= 0.0) return 0.0;
-  edgeW *= 1.0 + 2.5 * wisp;              // torn parts are thin and translucent
   float dens = sat(x / edgeW);
   float er = 0.0;
   if (detailW > 0.01 && x < edgeW * 2.5) {
@@ -1178,17 +1063,11 @@ float densityEx(float d, vec3 wp, float detailW, float edgeW, float nearW, float
     vec4 fn = textureLod(uDetail, wp * (1.0 / 4000.0), 0.0);
     er = max(er, (0.65 * fn.g + 0.35 * fn.r) * 0.3 * farW * (1.0 - x / edgeW));
   }
-  // torn parts: fibrous streaks drawn out along the wind
-  if (wisp > 0.01) {
-    vec3 fp = vec3(dot(rel, WIND_DIR) / 1500.0, wp.y / 260.0, dot(rel, vec2(-WIND_DIR.y, WIND_DIR.x)) / 260.0);
-    float fib = textureLod(uDetail, fp, 0.0).r;
-    er = mix(er, max(er, 0.25 + 0.75 * fib), wisp);
-  }
   if (er > 0.0) dens = sat((dens - er) / max(1.0 - er, 0.15));
   return dens;
 }
 float densityFromSDF(float d, vec3 wp, float detailW, float edgeW, float nearW) {
-  return densityEx(d, wp, detailW, edgeW, nearW, 0.0, 0.0, vec2(0.0));
+  return densityEx(d, wp, detailW, edgeW, nearW, 0.0);
 }
 
 float tsvTau(vec3 wp, float h) {
@@ -1211,19 +1090,17 @@ float msScatterP(float tau, vec4 ph) {
 
 // Optical depth toward the sun from a point (short march with growing steps). nS: how much the
 // surface there faces the sun (-1..1), from the distance field along the first two steps.
-float lightTauN(vec3 wp0, float h0, Obj tw0, float jit, float lod0, out float nS) {
+float lightTauN(vec3 wp0, float h0, float jit, float lod0, out float nS) {
   float tau = 0.0, s = 0.0, ds = 25.0, d1 = 0.0, s1 = 0.0;
   nS = 0.0;
-  vec2 sea = textureLod(uSeaMap, wp0.xz * INV_TILE, 0.0).xy;
+  vec4 L = landAt(wp0.xz);
   for (int i = 0; i < 5; i++) {
     float sm = s + ds * (0.25 + 0.5 * jit);
     vec3 wp = wp0 + uSunDir * sm;
     float h = h0 + uSunDir.y * sm;
-    if (i >= 2) sea = textureLod(uSeaMap, wp.xz * INV_TILE, 0.0).xy;   // sea height varies slowly
-    Obj tw = tw0;
-    tw.rel += uSunDir.xz * sm;
+    if (i >= 1) L = landAt(wp.xz);
     // the first steps keep the detail of the view sample: bulges shade themselves at any range
-    float d = cloudSDF(wp, h, sea, tw, lod0 + float(max(i - 1, 0)) * 0.6);
+    float d = cloudSDF(wp, h, L, lod0 + float(max(i - 1, 0)) * 0.6);
     if (i == 0) { d1 = d; s1 = sm; }
     else if (i == 1) nS = clamp((d - d1) / (sm - s1), -1.0, 1.0);
     // near steps: point density; long far steps: smooth coverage estimate (no contour rings)
@@ -1234,9 +1111,9 @@ float lightTauN(vec3 wp0, float h0, Obj tw0, float jit, float lod0, out float nS
   }
   return tau;
 }
-float lightTau(vec3 wp0, float h0, Obj tw0, float jit, float lod0) {
+float lightTau(vec3 wp0, float h0, float jit, float lod0) {
   float nS;
-  return lightTauN(wp0, h0, tw0, jit, lod0, nS);
+  return lightTauN(wp0, h0, jit, lod0, nS);
 }
 `;
 
@@ -1248,38 +1125,22 @@ void main() {
   vec2 xz = (gl_FragCoord.xy / uN) * TILE;
   float trans = 1.0;
   float s = 1300.0;
-  for (int i = 0; i < 240; i++) {
+  bool out_ = false;     // the landscape only shades once the ray has left the cloud it started in
+  for (int i = 0; i < 260; i++) {
     vec3 p = vec3(xz.x, uSliceH, xz.y) + uSunDir * s;
     if (p.y > CLOUD_TOP || s > 90000.0) break;
-    Obj ob = getObj(p.xz);
-    float lat = length(ob.rel) - objExt(ob);
-    float step = 320.0;
-    if (lat > 400.0) {
-      step = max(320.0, lat * 0.9);
-    } else {
-      float occ = 0.0;
-      if (ob.kind > 0.5) {
-        // softer and lighter than towers; the small puffs barely shade the sea at all.
-        // Floating clouds are small: finer steps, but only at their height.
-        if (p.y > ob.top - 40.0 && p.y < ob.top + floatThick(ob) + 60.0) {
-          step = 160.0;
-          occ = sat((-floatShape(ob, p.y) + 40.0) / 260.0) * 0.4 * smoothstep(150.0, 600.0, ob.R);
-        } else step = max(320.0, lat * 0.9);
-      } else if (p.y < ob.top + 0.3 * ob.R) {
-        float seaC = textureLod(uSeaMap, (p.xz - ob.rel) * INV_TILE, 0.0).x, hn;
-        float d = towerShape(ob, p.y, seaC, hn);
-        if (d < 0.5 * ob.R) {
-          // big bulges too, so shadow outlines are organic rather than ruler straight
-          vec4 tf = textureLod(uShape, vec3(ob.rel.x, p.y, ob.rel.y) / (3.0 * ob.R) + ob.seed * 17.3, 0.0) * 2.0 - 1.0;
-          float c1 = 0.75 * ob.R, crown = mix(0.4, 1.0, smoothstep(0.2, 0.75, hn));
-          d = bulge(d, tf.x * c1, 0.34 * c1 * crown);
-          d = bulge(d, tf.y * c1 * 0.5, 0.34 * c1 * 0.5 * crown);
-        }
-        occ = sat((-d - 0.06 * ob.R) / 450.0);
-      }
-      // distant occluders cast fainter shadows (sky light and haze fill them in)
-      trans *= mix(1.0, exp(-SIGMA * step * occ), exp(-s / 28000.0));
-    }
+    // high above everything nearby: skip ahead
+    vec2 tp = p.xz - TILE * floor(p.xz * INV_TILE);
+    float gb = max(min(p.y - texelFetch(uTopMap2, ivec2(tp * (16.0 * INV_TILE)) & 15, 0).r, 7800.0),
+                   min(p.y - texelFetch(uTopMap, ivec2(tp * (64.0 * INV_TILE)) & 63, 0).r, 1900.0));
+    if (gb > 0.0) { out_ = true; s += max(320.0, gb * 0.9); continue; }
+    const float step = 320.0;
+    vec4 L = landAt(p.xz);
+    // the landscape: its heaps and the larger billows on them
+    float occ = sat((L.x + 120.0 * L.z - p.y) / 380.0);
+    if (!out_) { if (occ < 0.05) out_ = true; occ = 0.0; }
+    // distant occluders cast fainter shadows (sky light and haze fill them in)
+    trans *= mix(1.0, exp(-SIGMA * step * occ), exp(-s / 28000.0));
     s += step;
   }
   o = vec4(min(-log(max(trans, 1e-6)), 14.0), 0.0, 0.0, 1.0);
@@ -1367,30 +1228,23 @@ void main() {
     float minStep = 6.0 + t * 0.026 + max(t - 8000.0, 0.0) * 0.03;
     float rj = fract(jit + float(i) * 0.61803399);
     // empty space skipping. Sea: skip its lookup when above the highest possible billow.
-    vec2 sea = vec2(uSeaMax, 1.0);
-    float seaB = h - uSeaMax;
-    if (seaB < 2500.0) {
-      sea = textureLod(uSeaMap, wp.xz * INV_TILE, 0.0).xy;
-      seaB = h - (sea.x + 330.0 * sea.y + 95.0);
-    }
-    // Towers: a coarse 8 km max-top grid first; only near tall towers fetch the exact tower.
+    // coarse grids first: high above everything within 2 / 8 km
     vec2 tp = wp.xz - TILE * floor(wp.xz * INV_TILE);
-    float g2 = min(h - texelFetch(uTopMap2, ivec2(tp * (16.0 * INV_TILE)) & 15, 0).r, 7800.0);
-    Obj tw = getObj(wp.xz);
-    float lat = length(tw.rel) - objExt(tw) - 160.0;
-    float towB;
-    if (lat < 0.0) towB = min(objVBound(tw, h), -lat + 600.0);
-    else towB = max(lat, max(g2, min(h - texelFetch(uTopMap, ivec2(tp * (64.0 * INV_TILE)) & 63, 0).r, 1900.0)));
-    float bound = min(towB, seaB);
+    float gb = max(min(h - texelFetch(uTopMap2, ivec2(tp * (16.0 * INV_TILE)) & 15, 0).r, 7800.0),
+                   min(h - texelFetch(uTopMap, ivec2(tp * (64.0 * INV_TILE)) & 63, 0).r, 1900.0));
+    if (gb > 0.0 && nRef == 0 && !startIn) { tPrev = t; dPrev = gb; t += max(gb * 0.95, minStep * (0.5 + rj)); continue; }
+    // then the landscape here
+    vec4 lnd = landAt(wp.xz);
+    float bound = landBound(h, lnd, wp.xz);
     if (bound > 0.0 && nRef == 0 && !startIn) { tPrev = t; dPrev = bound; t += max(bound * 0.95, minStep * (0.5 + rj)); continue; }
     float lod = t * (1.0 / 15000.0);
     nSdf += 1.0;
-    float d = cloudSDF(wp, h, sea, tw, lod);
+    float d = cloudSDF(wp, h, lnd, lod);
     float edgeW = mix(14.0, EDGE_W, smoothstep(120.0, 4000.0, t));   // crisper rims up close
-    // cumulus (towers above the sea, floating clouds) have crisp outlines, only widened enough at
-    // range not to alias; the sea of clouds stays soft
-    if (lat < 0.0 && (tw.kind > 0.5 ? h > tw.top - 60.0 : h > sea.x + 150.0))
-      edgeW = min(edgeW, max(14.0 + 0.04 * tw.R, t * 0.0025));
+    // heaps piled high above the sea have crisper outlines, only widened enough at range not to
+    // alias; the sea itself stays soft
+    float crisp = smoothstep(250.0, 800.0, h - lnd.w);
+    edgeW = mix(edgeW, min(edgeW, max(30.0, t * 0.003)), crisp);
     float dtMin = 3.0 + t * 0.002;
     // Entering a cloud: locate the boundary within the last stride (Illinois regula falsi), then
     // start integrating a jittered fraction of a rim step past it. Starting anywhere within a far
@@ -1414,29 +1268,27 @@ void main() {
     startIn = false;
     dPrev = -1.0;
     float detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
-    // (only on the object itself: not on the sea below a floating cloud)
-    float farW = lat < 0.0 && (tw.kind < 0.5 || h > tw.top - 60.0) ? smoothstep(2500.0, 9000.0, t) : 0.0;
+    // (only on heaps piled above the sea)
+    float farW = h > lnd.w + 300.0 ? smoothstep(2500.0, 9000.0, t) : 0.0;
     float nearW = (1.0 - smoothstep(150.0, 900.0, t)) * max(uInCloud, 1.0 - smoothstep(40.0, 120.0, -d));
 #ifdef DBG
     if (uDbgMode > 0 && uDbgMode < 4) {
       vec3 nrm;
       float e = 4.0 + t * 0.002;
-      Obj tx0 = tw, tx1 = tw, tz0 = tw, tz1 = tw;
-      tx0.rel.x += e; tx1.rel.x -= e; tz0.rel.y += e; tz1.rel.y -= e;
-      nrm.x = cloudSDF(wp + vec3(e, 0, 0), h, sea, tx0, lod) - cloudSDF(wp - vec3(e, 0, 0), h, sea, tx1, lod);
-      nrm.y = cloudSDF(wp + vec3(0, e, 0), h + e, sea, tw, lod) - cloudSDF(wp - vec3(0, e, 0), h - e, sea, tw, lod);
-      nrm.z = cloudSDF(wp + vec3(0, 0, e), h, sea, tz0, lod) - cloudSDF(wp - vec3(0, 0, e), h, sea, tz1, lod);
+      nrm.x = cloudSDF(wp + vec3(e, 0, 0), h, landAt(wp.xz + vec2(e, 0)), lod) - cloudSDF(wp - vec3(e, 0, 0), h, landAt(wp.xz - vec2(e, 0)), lod);
+      nrm.y = cloudSDF(wp + vec3(0, e, 0), h + e, lnd, lod) - cloudSDF(wp - vec3(0, e, 0), h - e, lnd, lod);
+      nrm.z = cloudSDF(wp + vec3(0, 0, e), h, landAt(wp.xz + vec2(0, e)), lod) - cloudSDF(wp - vec3(0, 0, e), h, landAt(wp.xz - vec2(0, e)), lod);
       nrm = normalize(nrm);
       vec3 c;
       if (uDbgMode == 1) c = vec3(0.08) + vec3(1.0, 0.85, 0.6) * max(dot(nrm, uSunDir), 0.0) + vec3(0.1, 0.15, 0.3) * (nrm.y * 0.5 + 0.5);
-      else if (uDbgMode == 2) c = vec3(exp(-lightTau(wp, h, tw, jit2, lod + 0.5)));
+      else if (uDbgMode == 2) c = vec3(exp(-lightTau(wp, h, jit2, lod + 0.5)));
       else c = vec3(exp(-tsvTau(wp, h)));
       oCol = vec4(c * 0.12, 0.0);
       oDepth = vec4(t * 0.001, 0.0, 0.0, 1.0);
       return;
     }
 #endif
-    float dens = densityEx(d, wp, detailW, edgeW, nearW, lat < 0.0 ? cloudWisp(h, tw) : 0.0, farW, tw.rel);
+    float dens = densityEx(d, wp, detailW, edgeW, nearW, farW);
     // inside a cloud the air right around the camera is kept thin: drifting mist, not a white wall
     dens *= mix(1.0, mix(0.22, 1.0, smoothstep(12.0, 160.0, t)), uInCloud);
     // stride: aim for a fixed optical depth per step (larger once little light gets through),
@@ -1451,13 +1303,13 @@ void main() {
       float tau;
       if (reuse) tau = lastTau + max(-d - lastDepth, 0.0) * SIGMA * 2.0;
       else {
-        tau = lightTauN(wp, h, tw, jit2, lod + 0.25, lastNS);
+        tau = lightTauN(wp, h, jit2, lod + 0.25, lastNS);
         // which way the surface faces: up from one distance tap above, toward the sun from the
         // light march. Each bulge then catches its own sky light, even in shadow. (Only near the
         // visible surface; deeper samples keep the last estimate.)
         if (T > 0.45) {
           float S = 30.0 + t * 0.004;
-          lastNUp = clamp((cloudSDF(wp + vec3(0.0, S, 0.0), h + S, sea, tw, lod) - d) / S, -1.0, 1.0);
+          lastNUp = clamp((cloudSDF(wp + vec3(0.0, S, 0.0), h + S, lnd, lod) - d) / S, -1.0, 1.0);
         }
       }
       lastTau = tau; lastDepth = -d;
@@ -1483,7 +1335,7 @@ void main() {
         sunL = sunColorAt(h) * farT * (uDbgMode == 5 ? ms : uDbgMode == 6 ? df : 0.0);
       }
 #endif
-      float up = sat((h - sea.x + 250.0) / 1400.0);
+      float up = sat((h - lnd.w + 250.0) / 1400.0);
       // sky light only reaches the first few tens of metres (short scale also hides the
       // discontinuous interior of the distance field)
       float ao = mix(0.5, 1.0, exp(-depthIn / 55.0));
@@ -1701,23 +1553,21 @@ uniform vec3 uAmbSea;
 uniform float uFrame;
 out vec4 o;
 float sigmaAt(vec3 wp, float h, out float sdf) {
-  vec2 sea = textureLod(uSeaMap, wp.xz * INV_TILE, 0.0).xy;
-  Obj tw = getObj(wp.xz);
-  float b = cloudBound(h, sea, tw, wp.xz);
+  vec4 L = landAt(wp.xz);
+  float b = cloudBound(h, L, wp.xz);
   if (b > 0.0) { sdf = b; return 0.0; }
-  sdf = cloudSDF(wp, h, sea, tw, 0.0);
+  sdf = cloudSDF(wp, h, L, 0.0);
   return densityFromSDF(sdf, wp, 0.6, 40.0, 0.0) * SIGMA;
 }
 void main() {
   int px = int(gl_FragCoord.x);
   vec3 bwp = uCamPos + uBirdRel;
   float bh = bwp.y;
-  vec2 sea = textureLod(uSeaMap, bwp.xz * INV_TILE, 0.0).xy;
-  Obj tw = getObj(bwp.xz);
+  vec4 L = landAt(bwp.xz);
   vec3 ambSky = texelFetch(uAmb, ivec2(0, 0), 0).rgb;
   if (px == 0) {
     float tau = 0.0;
-    for (int k = 0; k < 4; k++) tau += lightTau(bwp, bh, tw, (float(k) + 0.5) / 4.0, 0.0);
+    for (int k = 0; k < 4; k++) tau += lightTau(bwp, bh, (float(k) + 0.5) / 4.0, 0.0);
     tau = tau * 0.25 * 0.6 + tsvTau(bwp, bh);
     float tr = exp(-tau);
     o = vec4(sunColorAt(bh) * tr, tr);
@@ -1732,17 +1582,20 @@ void main() {
     float sdfC, sdfB;
     float sc = sigmaAt(uCamPos, uCamPos.y, sdfC);
     float sb = sigmaAt(bwp, bh, sdfB);
-    o = vec4(sc, sb, sdfB, sea.x);
+    o = vec4(sc, sb, sdfB, L.x);
   } else if (px == 5) {
-    // distance to the sea of clouds alone (towers excluded): drives the gentle floor
-    float b = bh - (sea.x + 330.0 * sea.y + 95.0);
-    o = vec4(b > 0.0 ? b : cloudSDF(bwp, bh, sea, NO_OBJ, 0.0), 0.0, 0.0, 1.0);
+    // distance to the sea of clouds the bird skims (heaps piled high above it may be entered):
+    // drives the gentle floor
+    vec4 Lf = L;
+    Lf.x = min(L.x, L.w + 330.0);
+    float b = (bh - (Lf.x + shellOf(L.z))) * inversesqrt(1.0 + L.y * L.y);
+    o = vec4(b > 0.0 ? b : cloudSDF(bwp, bh, Lf, 0.0), 0.0, 0.0, 1.0);
   } else {
     // in-cloud mist radiance around the camera (same light model as the cloud volume)
     float sdfC;
     sigmaAt(uCamPos, uCamPos.y, sdfC);
     float depth = max(-sdfC, 0.0);
-    float tau = lightTau(uCamPos, uCamPos.y, getObj(uCamPos.xz), 0.5, 0.0);
+    float tau = lightTau(uCamPos, uCamPos.y, 0.5, 0.0);
     float farT = exp(-tsvTau(uCamPos, uCamPos.y));
     float diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depth / 80.0));
     vec3 sunL = sunColorAt(uCamPos.y) * ((msScatterP(tau, phaseOctaves(0.3)) + diffu) * farT + 0.007 * (1.0 - farT));
@@ -1771,15 +1624,14 @@ void main() {
   float dist = length(rel);
   vec3 wp = uCamPos + rel;
   float h = wp.y;
-  vec2 sea = textureLod(uSeaMap, wp.xz * INV_TILE, 0.0).xy;
-  Obj tw = getObj(wp.xz);
-  float d = cloudBound(h, sea, tw, wp.xz);
+  vec4 L = landAt(wp.xz);
+  float d = cloudBound(h, L, wp.xz);
   float dens = 0.0;
-  if (d <= 0.0) { d = cloudSDF(wp, h, sea, tw, 0.0); dens = densityFromSDF(d, wp, 1.0, 32.0, 1.0); }
+  if (d <= 0.0) { d = cloudSDF(wp, h, L, 0.0); dens = densityFromSDF(d, wp, 1.0, 32.0, 1.0); }
   float alpha = sat(dens * 1.6) * (1.0 - smoothstep(52.0, 84.0, dist)) * smoothstep(4.0, 12.0, dist) * uStrength;
   vec3 col = vec3(0.0);
   if (alpha > 0.002) {
-    float tau = lightTau(wp, h, tw, 0.5, 0.0);
+    float tau = lightTau(wp, h, 0.5, 0.0);
     float farT = exp(-tsvTau(wp, h));
     vec3 ambSky = texelFetch(uAmb, ivec2(0, 0), 0).rgb;
     float cosT = dot(rel / max(dist, 1e-3), uSunDir);
@@ -2118,8 +1970,9 @@ const P = {
 
 // --- static textures
 const T = {};
-T.seaMap = texture2D(SEA_MAP_N, SEA_MAP_N, gl.RG16F, gl.RG, gl.FLOAT, { filter: gl.LINEAR, wrap: gl.REPEAT, data: seaMap });
-T.towerMap = texture2D(TOWER_MAP_N, TOWER_MAP_N, gl.RGBA32F, gl.RGBA, gl.FLOAT, { filter: gl.NEAREST, wrap: gl.REPEAT, data: towerMap });
+T.macro = texture2D(MAC_N, MAC_N, RGBA16F, gl.RGBA, gl.FLOAT, { filter: gl.LINEAR, wrap: gl.REPEAT, data: macroMap });
+T.macroMax = texture2D(MAXM_N, MAXM_N, gl.R16F, gl.RED, gl.FLOAT, { filter: gl.NEAREST, wrap: gl.REPEAT, data: maxMap });
+T.fine = texture2D(FINE_N, FINE_N, gl.R16F, gl.RED, gl.FLOAT, { filter: gl.LINEAR, wrap: gl.REPEAT, data: fineMap });
 T.topMap = texture2D(TOP_N, TOP_N, gl.R32F, gl.RED, gl.FLOAT, { filter: gl.NEAREST, wrap: gl.REPEAT, data: topMap });
 T.topMap2 = texture2D(TOP2_N, TOP2_N, gl.R32F, gl.RED, gl.FLOAT, { filter: gl.NEAREST, wrap: gl.REPEAT, data: topMap2 });
 T.trans = texture2D(256, 64, RGBA16F, gl.RGBA, HALF);
@@ -2175,10 +2028,10 @@ gl.generateMipmap(gl.TEXTURE_2D);
 pass(P.trans, FB.trans, 256, 64, {});
 pass(P.ms, FB.ms, 32, 32, { uTrans: T.trans });
 
-// tower shadow volume
+// shadow volume (heaps and towers shading the sea)
 renderVolume(T.tsv, TSV_N, TSV_NH, z => ({
   prog: P.tsv,
-  uniforms: { uTowerMap: T.towerMap, uSeaMap: T.seaMap, uShape: T.shape, uSliceH: (z + 0.5) / TSV_NH * TSV_H, uN: TSV_N, uSunDir: SUN_DIR },
+  uniforms: { uMacro: T.macro, uTopMap: T.topMap, uTopMap2: T.topMap2, uShape: T.shape, uSliceH: (z + 0.5) / TSV_NH * TSV_H, uN: TSV_N, uSunDir: SUN_DIR },
 }));
 }
 
@@ -2369,34 +2222,42 @@ function readPreset() {
     sun: { y: 2400, yaw: 0.0, gamma: -0.06 },
     away: { y: 2400, yaw: PI, gamma: -0.06 },
     side: { y: 2300, yaw: PI / 2, gamma: -0.05 },
-    skim: { y: sea0 + 70, yaw: 0.35, gamma: -0.02 },
+    skim: { y: sea0 + 170, yaw: 0.35, gamma: -0.03 },
     high: { y: 6200, yaw: -0.4, gamma: -0.25 },
     bank: { y: 2500, yaw: 0.6, gamma: 0, bank: 0.7 },
     fastdive: { y: sea0 + 420, yaw: 0.5, gamma: -0.55, speed: 150 },
     humps: { x: 0, z: 0, y: sea0 + 260, yaw: 0.1, gamma: -0.03 },
-    floats: { x: 0, z: 0, y: sea0 + 760, yaw: 0.05, gamma: 0.0 },
     high2: { x: 0, z: 0, y: 5200, yaw: 0.6, gamma: -0.12 },
     upward: { x: 0, z: 0, y: sea0 + 900, yaw: -0.5, gamma: 0.42 },
   };
-  // views of the nearest generated tower of a kind, from a few radii away with the sun to the side
+  // views of the nearest generated heap or tower, from a few radii away with the sun to the side
   const wr = v => v - TILE * Math.round(v / TILE);
   const nearest = list => list.length ? list.reduce((a, t) => Math.hypot(wr(t.x), wr(t.z)) < Math.hypot(wr(a.x), wr(a.z)) ? t : a) : null;
   const viewOf = (t, dist, gamma) => {
     const tx = wr(t.x), tz = wr(t.z), x = tx - dist * 0.8, z = tz + dist * 0.6;
-    return { x, z, y: Math.min(t.top * 0.55, 3200), yaw: Math.atan2(tx - x, -(tz - z)), gamma };
+    return { x, z, y: Math.max(seaTopAt(x, z) + 550, cloudTopAt(x, z) + 700, Math.min(t.top * 0.6, 3200)), yaw: Math.atan2(tx - x, -(tz - z)), gamma };
   };
-  const rise = t => t.top - seaTopAt(t.x, t.z);
-  const tw = nearest(towers.filter(t => rise(t) > 1500 && rise(t) < 4000)), gi = nearest(towers.filter(t => t.R > 2600));
-  const to = nearest(towers.filter(t => fract(t.seed * 5.71) > 0.66 && rise(t) > 2500));
-  if (tw) presets.tower = viewOf(tw, 3.5e3, 0.08);
-  if (gi) presets.giant = viewOf(gi, 12e3, 0.12);
-  if (to) presets.torn = viewOf(to, 22e3, 0.16);
-  // inside / approaching the floating cloud nearest the start at about the bird's altitude
-  const fl = nearest(floats.filter(f => Math.abs(f.base - (sea0 + 750)) < 500 && f.R > 300));
-  if (fl) {
-    const fmid = fl.base + floatThick(fl.R, fl.seed) * 0.4;
-    presets.inside = { x: wr(fl.x), z: wr(fl.z), y: fmid, yaw: 0.0, gamma: 0.0 };
-    presets.approach = { x: wr(fl.x) - 300, z: wr(fl.z) + 1400, y: fmid, yaw: 0.2, gamma: 0.0 };
+  const heap = nearest(domes.filter(d => d.r > 1400 && d.h < 1800)), tower = nearest(domes.filter(d => d.h > 2500));
+  if (heap) presets.heap = viewOf(heap, 7e3, 0.03);
+  if (tower) { presets.tower = viewOf(tower, 18e3, 0.1); presets.giant = viewOf(tower, 34e3, 0.08); }
+  // approaching / inside the nearest heap that rises well above the sea the bird skims, with a
+  // clear run in toward it
+  const runIn = (d, y) => {
+    const ax = wr(d.x) - 300, az = wr(d.z) + d.r + 1400;
+    for (let k = 0; k <= 8; k++) {
+      const f = k / 8 * 0.75, px = lerp(ax, wr(d.x), f), pz = lerp(az, wr(d.z), f);
+      if (cloudTopAt(px, pz) + 350 > y && Math.hypot(px - wr(d.x), pz - wr(d.z)) > d.r * 0.8) return null;
+    }
+    return { x: ax, z: az, y, yaw: Math.atan2(wr(d.x) - ax, -(wr(d.z) - az)), gamma: 0.0 };
+  };
+  const cands = domes.filter(d => d.r > 500 && d.r < 1600 && d.top - seaTopAt(d.x, d.z) > 350)
+    .sort((a, b) => Math.hypot(wr(a.x), wr(a.z)) - Math.hypot(wr(b.x), wr(b.z)));
+  for (const fl of cands.slice(0, 200)) {
+    const fmid = lerp(seaTopAt(fl.x, fl.z) + 120, fl.top, 0.4), run = runIn(fl, fmid);
+    if (!run) continue;
+    presets.inside = { x: wr(fl.x), z: wr(fl.z), y: fmid, yaw: run.yaw, gamma: 0.0 };
+    presets.approach = run;
+    break;
   }
   const p = presets[pre];
   if (!p) return;
@@ -2521,8 +2382,8 @@ function updateFlight(dt, time) {
   let gammaT = input.sy >= 0 ? input.sy * F.maxClimb * climbAuth : input.sy * F.maxDive;
   if (climbAuth < 1) gammaT = Math.min(gammaT, lerp(-0.16, gammaT, climbAuth));
   // keep the bird skimming the cloud tops: a gentle lift as it sinks into the sea of clouds.
-  // The GPU probe reports the distance to the real billowy surface (towers excluded, those
-  // you may fly through); the base height map is the fallback and the hard limit.
+  // The GPU probe reports the distance to the real billowy surface (heaps piled high excluded,
+  // those you may fly through); the floor height map is the fallback and the hard limit.
   const seaTop = seaTopAt(b.pos[0], b.pos[2]);
   let depth = seaTop - 60 - b.pos[1];
   if (probeData && isFinite(probeData[4])) depth = Math.max(depth, 40 - probeData[4]);
@@ -2708,7 +2569,7 @@ function render(time, dt) {
   const detailOff = [fmod(WIND[0] * time * 1.6, 512), fmod(-time * 2.2, 512), fmod(WIND[2] * time * 1.6, 512)];
   const ambSea = scl(sunColorAt(1500), 0.065);
   const common = {
-    uSeaMap: T.seaMap, uTowerMap: T.towerMap, uTopMap: T.topMap, uTopMap2: T.topMap2, uSeaMax: SEA_MAX, uShape: T.shape, uDetail: T.detail, uTSV: T.tsv,
+    uMacro: T.macro, uMacroMax: T.macroMax, uFine: T.fine, uTopMap: T.topMap, uTopMap2: T.topMap2, uShape: T.shape, uDetail: T.detail, uTSV: T.tsv,
     uShapeOff: shapeOff, uDetailOff: detailOff, uTime: time % 1e5, uSunDir: SUN_DIR, uSunCol: sunColUniform,
   };
 
@@ -3085,7 +2946,7 @@ function boot() {
 }
 boot();
 window.__debug = {
-  bird: bird_, cam, R, towers, seaTopAt, input, DR,
+  bird: bird_, cam, R, domes, seaTopAt, cloudTopAt, input, DR,
   probe: () => {
     const b = new Float32Array(32);
     gl.bindFramebuffer(gl.FRAMEBUFFER, FB.probe);

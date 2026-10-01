@@ -18,30 +18,34 @@ mobile browser with WebGL 2 (Chrome, Edge, Firefox, Safari 15+). It works straig
 | **Fullscreen** | double-click or press **F** |
 
 Diving gathers speed, climbing trades it back for height; when the bird runs out of speed it
-gently lowers its nose. You can skim the cloud tops and fly through clouds, but the bird is
-softly kept from sinking deep into the cloud sea.
+gently lowers its nose. You can skim the cloud tops and fly through the heaps and towers that rise
+above the sea, but the bird is softly kept from sinking deep into the cloud sea.
 
 ## How it is made
 
 * **Sky** — a physically based atmosphere (Rayleigh, Mie and ozone) computed into transmittance,
   multiple-scattering and sky-view lookup tables (after Hillaire 2020). The same model colours
   the low sun at every altitude and the haze between you and distant clouds.
-* **Clouds** — raymarched volumes defined by signed distance fields, all generated (nothing is
-  placed by hand). A curved sea of clouds drops away with the Earth's curvature to a real
-  horizon. Towering cumulus of every size rise out of it, from low humps to a few giants; a
-  convection field of loose clusters and wind-aligned lines decides where they grow, with wide
-  open stretches between. Each tower is a cluster of turrets stacked like a cauliflower on a
-  broad base that swells out of the sea; some lean with the wind and a few are torn off
-  downwind at the top. Smaller cumulus float freely at many heights, flat underneath and lumpy
-  on top, and a few thin, wind-stretched layers drift higher up. Billows and bulges are an *fbm
-  of spheres* (fields of random spheres baked into tileable 3D textures and merged onto the
-  base shapes octave by octave); detail noise frays the thinnest edges into wisps.
+* **Clouds** — raymarched volumes defined by signed distance fields, all generated at random
+  (nothing is placed by hand, and there is no kit of set shapes). Slow noise fields decide where
+  the air is calm and where it convects. The sea of clouds is thick and uneven: rolling mounds,
+  deep valleys between them, and a surface that rises and falls across the landscape. Where the
+  air convects, it heaps up into domes of random sizes, which are piled into irregular masses
+  that are mostly wider than tall. Each dome sprouts a random number of smaller domes, some of
+  which sprout again, and every dome gets its own profile and stretch. Rarely, where the
+  convection peaks, a heap grows into a huge tower. Sea, heaps and towers are one height field,
+  so there is no line where one ends and the next begins. On top of it, billows and bulges come
+  from an *fbm of spheres*: fields of random spheres baked into tileable 3D textures, merged onto
+  the surface octave by octave, with their strength varying across the world. A slow analytic
+  warp keeps any pattern from repeating. Detail noise frays the far silhouettes, and the curved
+  sea drops away with the Earth's curvature to a real horizon. Two thin, wind-stretched layers
+  drift high above everything and catch the golden light.
 * **Light** — a short light march toward the sun with multiple-scattering octaves and a two-lobe
   phase function (golden lit faces, bright silver linings when backlit), light diffusing through
   the clouds (golden in thin parts, cooler where it has travelled far), sky light that depends on
   which way each bulge faces (deep blue zenith, warm bounce from the sea below, golden or violet
-  sky on the sides), and a precomputed *shadow volume* so towers and the larger floating clouds
-  cast long shadows across the cloud sea.
+  sky on the sides), and a precomputed *shadow volume* so heaps and towers cast long
+  shadows across the cloud sea and into its valleys.
 * **Speed** — empty space skipping (two coarse "max-top" grids plus the distance field),
   optical-depth driven steps, clouds traced at a reduced, dynamically adjusted resolution and
   reconstructed with temporal upsampling (reprojection + variance clipping). Dynamic
@@ -64,11 +68,11 @@ These are for working on the piece and are not needed to enjoy it.
 | parameter | effect |
 |---|---|
 | `?debug` | frame-rate / resolution / GPU-time overlay |
-| `?test&preset=start\|sun\|away\|side\|skim\|high\|high2\|bank\|tower\|giant\|torn\|humps\|floats\|upward\|approach\|inside\|fastdive&frames=N&w=W&h=H&scale=S` | deterministic render: fixed time step, stops after `N` frames (for screenshots); `tower`, `giant` and `torn` look at the nearest generated tower of that kind, `approach` and `inside` at a floating cloud |
+| `?test&preset=start\|sun\|away\|side\|skim\|high\|high2\|bank\|heap\|tower\|giant\|humps\|upward\|approach\|inside\|fastdive&frames=N&w=W&h=H&scale=S` | deterministic render: fixed time step, stops after `N` frames (for screenshots); `heap` looks at the nearest broad heap, `tower` and `giant` at the nearest tower, `approach` and `inside` fly into a heap that rises above the sea |
 | `?test&pose=x,y,z,yaw,pitch,bank` | start the bird at an exact pose |
 | `?test&closeup=right,up,forward` | fixed camera offset in the bird's frame |
 | `?test&script=dive\|climb\|turn\|weave&log` | scripted input; per-frame flight state in `window.__log` |
 | `?view=1..5` | show cloud transmittance, raw cloud light, depth, sun rays or bloom |
-| `?dbg=1..7` | cloud debug: normals, sun visibility, tower shadows, march cost, lighting terms |
+| `?dbg=1..7` | cloud debug: normals, sun visibility, shadow volume, march cost, lighting terms |
 | `?exp=`, `?con=`, `?haze=`, `?bloom=`, `?rays=` | exposure, contrast, haze density, bloom and sun-ray strength |
 | `?cpuprof` | per-pass timing on software GL (fences every pass) |
