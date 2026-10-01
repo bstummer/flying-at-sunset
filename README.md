@@ -39,7 +39,8 @@ softly kept from sinking deep into the cloud sea.
 * **Speed** — empty space skipping (two coarse "max-top" grids plus the distance field),
   optical-depth driven steps, clouds traced at a reduced, dynamically adjusted resolution and
   reconstructed with temporal upsampling (reprojection + variance clipping). Dynamic
-  resolution uses GPU timer queries when available and falls back to frame times otherwise.
+  resolution uses GPU timer queries when available and falls back to frame times otherwise,
+  recognising displays and browsers that cap the frame rate (50 Hz screens, 30 fps power saving).
 * **The bird** — an origami crane mesh with flat-shaded crisp creases, a procedural paper fibre
   texture, translucent paper (it glows when the sun is behind it), a self-shadow map in which
   paper layers let some light through, flexing wings, and mist when flying through cloud.
