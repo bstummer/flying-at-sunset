@@ -1327,10 +1327,6 @@ uniform vec2 uCirrusOff;
 layout(location = 0) out vec4 oHist;
 layout(location = 1) out vec4 oScene;
 
-vec4 fetchLow(ivec2 p) {
-  p = clamp(p, ivec2(0), ivec2(uLowRes) - 1);
-  return texelFetch(uCur, p, 0);
-}
 vec4 sampleHist(vec2 uv) {
   // Catmull-Rom with 9 taps (5 bilinear) for a sharp, stable history
   vec2 pos = uv * uRes;
@@ -1394,10 +1390,12 @@ void main() {
   vec2 cuv = (lp + 0.5) / uLowTex;
   cuv = clamp(cuv, 0.5 / uLowTex, (uLowRes - 0.5) / uLowTex);
   vec4 cur = textureLod(uCur, cuv, 0.0);
-  // neighbourhood statistics (3x3 of low-res samples)
+  // neighbourhood statistics: 3x3 bilinear taps centred on this pixel's exact position, so the
+  // clamp box varies smoothly between output pixels (no blocky grid from the low-res lattice)
   vec4 m1 = vec4(0.0), m2 = vec4(0.0);
+  vec2 lo2 = 0.5 / uLowTex, hi2 = (uLowRes - 0.5) / uLowTex;
   for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
-    vec4 s = fetchLow(ivec2(lpr) + ivec2(x, y));
+    vec4 s = textureLod(uCur, clamp(cuv + vec2(x, y) / uLowTex, lo2, hi2), 0.0);
     m1 += s; m2 += s * s;
   }
   m1 /= 9.0; m2 /= 9.0;
