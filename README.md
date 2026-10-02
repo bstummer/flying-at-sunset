@@ -74,7 +74,7 @@ These are for working on the piece and are not needed to enjoy it.
 | parameter | effect |
 |---|---|
 | `?debug` | frame-rate / resolution / GPU-time overlay |
-| `?test&preset=start\|sun\|away\|side\|skim\|high\|high2\|bank\|tower\|giant\|anvil\|close\|approach\|inside\|humps\|upward\|fastdive&frames=N&w=W&h=H&scale=S` | deterministic render: fixed time step, stops after `N` frames (for screenshots); `tower`, `giant`, `anvil`, `close`, `approach` and `inside` look at (or fly into) generated towers near the start |
+| `?test&preset=start\|sun\|away\|side\|skim\|high\|high2\|bank\|tower\|giant\|anvil\|close\|under\|approach\|inside\|humps\|upward\|fastdive&frames=N&w=W&h=H&scale=S` | deterministic render: fixed time step, stops after `N` frames (for screenshots); `tower`, `giant`, `anvil`, `close`, `under`, `approach` and `inside` look at, under or into generated towers near the start |
 | `?seed=N`, `?towers=K` | another world; tower density multiplier (default 0.75) |
 | `?test&pose=x,y,z,yaw,pitch,bank` | start the bird at an exact pose |
 | `?test&closeup=right,up,forward` | fixed camera offset in the bird's frame |

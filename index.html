@@ -358,12 +358,14 @@ function growTower(rng, T, bub) {
     }
   }
   // some towers push big domes out over their flanks, wider than what is below them
+  T.ov = [];
   if (rng() < T.overhang) {
     const n = 1 + Math.floor(rng() * 3);
     for (let i = 0; i < n; i++) {
       const f = lerp(0.3, 0.85, rng()), y = T.y0 + H * f, w = widthAt(f), [ax, az] = axisAt(y), a = rng() * 2 * PI;
-      const r = w * lerp(0.45, 0.7, rng()), d = w * lerp(0.75, 1.1, rng());
-      addBubble(bub, ax + Math.cos(a) * d, y, az + Math.sin(a) * d, r, r * lerp(0.6, 0.8, rng()), r * lerp(0.35, 0.9, rng()), lerp(1.0, 1.5, rng()), a);
+      const r = w * lerp(0.45, 0.7, rng()), d = w * lerp(0.75, 1.1, rng()), ryD = r * lerp(0.35, 0.9, rng());
+      addBubble(bub, ax + Math.cos(a) * d, y, az + Math.sin(a) * d, r, r * lerp(0.6, 0.8, rng()), ryD, lerp(1.0, 1.5, rng()), a);
+      T.ov.push({ x: ax + Math.cos(a) * d, y, z: az + Math.sin(a) * d, a, bottom: y - ryD });
     }
   }
   // the tallest may spread out at the top into a wide, flat anvil, drawn out downwind, its
@@ -2691,6 +2693,21 @@ function readPreset() {
     const w = clearOf(bt, sideDir(bt), bt.y0 + 1500, 5000);
     if (w) presets.approach = Object.assign(w, { gamma: 0.0 });
     presets.inside = { x: bt.x, z: bt.z, y: bt.y0 + (bt.top - bt.y0) * 0.4, yaw: 0.3, gamma: 0.0 };
+  }
+  // under an overhang: out from the tower beneath a dome that juts over its flank, looking up at it
+  for (const t of ts) {
+    const o = t.ov && t.ov.find(o => o.bottom > seaTopAt(o.x, o.z) + 1200);
+    if (!o) continue;
+    let found = null;
+    for (let d = 0; d < 6000 && !found; d += 250) {
+      const x = o.x + Math.cos(o.a) * d, z = o.z + Math.sin(o.a) * d;
+      let top = cloudTopAt(x, z);
+      for (let q = 0; q < 8; q++) top = Math.max(top, cloudTopAt(x + Math.cos(q * 0.785) * 900, z + Math.sin(q * 0.785) * 900));
+      const y = Math.max(top + 800, o.bottom - 1500);
+      if (y > o.bottom - 700 || towerDistAt(x, y, z, 2500) < 1000) continue;
+      found = { x, z, y, yaw: Math.atan2(t.x - x, -(t.z - z)), gamma: 0.42 };
+    }
+    if (found) { presets.under = found; break; }
   }
   const p = presets[pre];
   if (!p) return;
