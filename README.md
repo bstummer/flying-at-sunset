@@ -18,35 +18,41 @@ mobile browser with WebGL 2 (Chrome, Edge, Firefox, Safari 15+). It works straig
 | **Fullscreen** | double-click or press **F** |
 
 Diving gathers speed, climbing trades it back for height; when the bird runs out of speed it
-gently lowers its nose. You can skim the cloud tops and fly through the heaps and towers that rise
-above the sea, but the bird is softly kept from sinking deep into the cloud sea.
+gently lowers its nose. You can skim the cloud tops, fly under overhangs and through the heaps and towers that
+rise above the sea, but the bird is softly kept from sinking deep into the cloud sea.
 
 ## How it is made
 
 * **Sky** — a physically based atmosphere (Rayleigh, Mie and ozone) computed into transmittance,
   multiple-scattering and sky-view lookup tables (after Hillaire 2020). The same model colours
   the low sun at every altitude and the haze between you and distant clouds.
-* **Clouds** — raymarched volumes defined by signed distance fields, all generated at random
-  (nothing is placed by hand, and there is no kit of set shapes). Slow noise fields decide where
-  the air is calm and where it convects. The sea of clouds is thick and uneven: rolling mounds,
-  deep valleys between them, and a surface that rises and falls across the landscape. Where the
-  air convects, it heaps up into domes of random sizes, which are piled into irregular masses
-  that are mostly wider than tall. Each dome sprouts a random number of smaller domes, some of
-  which sprout again, and every dome gets its own profile and stretch. Rarely, where the
-  convection peaks, a heap grows into a huge tower. Sea, heaps and towers are one height field,
-  so there is no line where one ends and the next begins. On top of it, billows and bulges come
-  from an *fbm of spheres*: fields of random spheres baked into tileable 3D textures, merged onto
-  the surface octave by octave, with their strength varying across the world. A slow analytic
-  warp keeps any pattern from repeating. Detail noise frays the far silhouettes, and the curved
-  sea drops away with the Earth's curvature to a real horizon. Two thin, wind-stretched layers
-  drift high above everything and catch the golden light.
+* **Clouds** — raymarched volumes defined by signed distance fields. The world is endless and
+  never repeats: every feature is drawn from a hash of where it is, generated as you fly toward
+  it. Nothing is placed by hand, and there is no kit of set shapes.
+  * *The sea of clouds* is thick and uneven. Broad swells, hills, narrow deep valleys and rolling
+    billowy mounds raise and lower it across the landscape, and random domes heap up on it
+    wherever the air convects.
+  * *Towers.* Here and there a storm grows towers out of it: lone giants, loose groups, or long
+    walls whose feet merge into one range. Each tower is built in true 3D from rising thermal
+    bubbles. Plumes climb from a broad, heaped shoulder that swells out of the sea, drift with
+    the wind and outward, and stall at different heights in domes crowned by smaller domes. Some
+    push big domes out over their flanks, leaving overhangs and gaps to fly under. Size, width,
+    lean and shape all vary freely, and now and then the tallest of a storm spreads into a wide,
+    flat anvil drawn out downwind.
+  * *Billows.* On all of this, billows of an *fbm of spheres* (random spheres baked into tileable
+    3D textures, merged octave by octave with crisp creases, behind a slow, never-repeating warp)
+    add the cauliflower detail.
+  * *Streaming.* The large shapes are baked on the GPU into three camera-centred 3D distance
+    volumes (128 m, 512 m and 2 km cells, reaching about 260 km). They are addressed toroidally,
+    so as you fly only the strips that come into view are generated and baked. Rendering happens
+    around a moving origin, so precision holds on endless flights.
 * **Light** — a short light march toward the sun with multiple-scattering octaves and a two-lobe
   phase function (golden lit faces, bright silver linings when backlit), light diffusing through
   the clouds (golden in thin parts, cooler where it has travelled far), sky light that depends on
   which way each bulge faces (deep blue zenith, warm bounce from the sea below, golden or violet
-  sky on the sides), and a precomputed *shadow volume* so heaps and towers cast long
+  sky on the sides), and a camera-centred *shadow volume* so heaps and towers cast long
   shadows across the cloud sea and into its valleys.
-* **Speed** — empty space skipping (two coarse "max-top" grids plus the distance field),
+* **Speed** — empty space skipping (the baked distance volumes, coarse to fine),
   optical-depth driven steps, clouds traced at a reduced, dynamically adjusted resolution and
   reconstructed with temporal upsampling (reprojection + variance clipping). Dynamic
   resolution uses GPU timer queries when available and falls back to frame times otherwise,
@@ -68,7 +74,8 @@ These are for working on the piece and are not needed to enjoy it.
 | parameter | effect |
 |---|---|
 | `?debug` | frame-rate / resolution / GPU-time overlay |
-| `?test&preset=start\|sun\|away\|side\|skim\|high\|high2\|bank\|heap\|tower\|giant\|humps\|upward\|approach\|inside\|fastdive&frames=N&w=W&h=H&scale=S` | deterministic render: fixed time step, stops after `N` frames (for screenshots); `heap` looks at the nearest broad heap, `tower` and `giant` at the nearest tower, `approach` and `inside` fly into a heap that rises above the sea |
+| `?test&preset=start\|sun\|away\|side\|skim\|high\|high2\|bank\|tower\|giant\|anvil\|close\|approach\|inside\|humps\|upward\|fastdive&frames=N&w=W&h=H&scale=S` | deterministic render: fixed time step, stops after `N` frames (for screenshots); `tower`, `giant`, `anvil`, `close`, `approach` and `inside` look at (or fly into) generated towers near the start |
+| `?seed=N`, `?towers=K` | another world; tower density multiplier (default 0.75) |
 | `?test&pose=x,y,z,yaw,pitch,bank` | start the bird at an exact pose |
 | `?test&closeup=right,up,forward` | fixed camera offset in the bird's frame |
 | `?test&script=dive\|climb\|turn\|weave&log` | scripted input; per-frame flight state in `window.__log` |
