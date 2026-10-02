@@ -49,14 +49,21 @@ rise above the sea, but the bird is softly kept from sinking deep into the cloud
       the wind of its height and evaporates, ice high up lingering longest. Outflows set off new
       cells nearby, while the air sinking around a strong tower holds weaker cells next to it
       down.
-    * Out of this come heaps on a lumpy, swelling sea, lone giants, clusters and long walls,
-      leaning and sheared towers, overhangs and gaps to fly under, decaying towers torn by the
-      wind, and now and then a far storm spreading into a wide, flat anvil. Weak pulses lie on the
-      sea as domes of its surface; tall ones are true 3D bubbles, so the sea and the towers are
-      one system.
-  * *Billows.* On all of this, billows of an *fbm of spheres* (random spheres baked into tileable
-    3D textures, merged octave by octave with crisp creases, behind a slow, never-repeating warp)
-    add the cauliflower detail.
+    * Out of this come heaps on a lumpy, swelling sea, lone giants rising 10 km and more above
+      it, clusters and long walls, leaning and sheared towers, overhangs and gaps to fly under,
+      decaying towers torn by the wind and crumbling from the top, and storms that hit the
+      ceiling and spread into wide, flat anvils. Weak pulses lie on the sea as domes of its
+      surface; tall ones are true 3D bubbles, so the sea and the towers are one system. A piece
+      of cloud cut off from the rest evaporates first, so nothing floats free.
+    * *Where you start.* The restless air is drawn again and again (each draw as random as any
+      other) until one leaves the air around the bird calm and open toward the sun, with strong
+      cells off to the right of it, lit from the side.
+  * *Billows.* The sea itself is always overturning, so it is billowy everywhere: big rolling
+    mounds covered in smaller bulges, covered in even smaller ones. They are an *fbm of spheres*
+    (random spheres baked into tileable 3D textures, the large ones packed close, merged octave
+    by octave into rounded bulges with crisp creases, behind a slow, never-repeating warp), the
+    largest standing out most; the finest fade with distance, and the rolling mounds of the sea
+    are rounded on top and creased between, never ridged.
   * *Streaming.* The large shapes are baked on the GPU into three camera-centred 3D distance
     volumes (128 m, 512 m and 2 km cells, reaching about 260 km). They are addressed toroidally,
     so as you fly only the strips that come into view are generated and baked. Rendering happens

@@ -204,10 +204,12 @@ function warpOf(x, z, o) {
 }
 // how restless the air is: calm (0) .. ready to boil up into storms (1). Broad patches of unstable
 // air, and long winding bands where air streams converge
+let REST_O = [0, 0];
 function restOf(wx, wz) {
+  wx += REST_O[0]; wz += REST_O[1];
   const patch = fbm(wx * 2.4e-5, wz * 2.4e-5, 4, F_REST, 0.55);
   const band = 1 - Math.abs(2 * fbm(wx * 9e-6 + 3.1, wz * 9e-6 - 1.7, 3, F_BAND, 0.45) - 1);
-  return smoothstep(0.5, 0.95, patch + 0.25 * Math.pow(band, 6));
+  return smoothstep(0.4, 0.85, patch + 0.25 * Math.pow(band, 6));
 }
 const _aw = {};
 const restAt = (x, z) => { warpOf(x, z, _aw); return restOf(_aw.wx, _aw.wz); };
@@ -224,12 +226,12 @@ function columnFields(x, z, lod, o) {
   const vr = 1 - Math.abs(2 * fbm(wx * 1.2e-4, wz * 1.2e-4, 2, F_VAL) - 1);
   const valley = -700 * vr * vr * vr * vr * vr * vr;
   const mo = lod >= 2 ? 1 : lod === 1 ? 2 : 3;
-  const billow = 1 - Math.abs(2 * fbm(x * 1.25e-4, z * 1.25e-4, mo, F_MOUND, 0.55) - 1);
+  const billow = Math.abs(2 * fbm(x * 1.25e-4, z * 1.25e-4, mo, F_MOUND, 0.55) - 1);
   const rough = fbm(wx * 5.5e-5, wz * 5.5e-5, 2, F_ROUGH);
   o.rest = rest;
-  const hb = 1650 + swell + hills + valley + 250 * rest + (billow - 0.62) * (220 + 700 * rest * (0.4 + rough));
+  const hb = 1650 + swell + hills + valley + 250 * rest + (billow - 0.38) * (220 + 700 * rest * (0.4 + rough));
   o.hb = hb > 1000 ? hb : 700 + 300 * Math.exp((hb - 1000) / 300);   // deep valleys level out softly
-  o.amp = clamp(0.42 + 0.75 * rest + 0.7 * (fbm(x * 4.7e-5, z * 4.7e-5, 2, F_AMP) - 0.5), 0.34, 1.4);
+  o.amp = clamp(0.92 + 0.3 * rest + 0.6 * (fbm(x * 4.7e-5, z * 4.7e-5, 2, F_AMP) - 0.5), 0.65, 1.4);
   o.fine = lerp(0.4, 1.3, smoothstep(0.34, 0.66, 0.7 * fbm(x * 1.56e-4, z * 1.56e-4, 3, F_FINE, 0.55) + 0.3 * fbm(x * 5.5e-5, z * 5.5e-5, 2, F_FINE + 4)));
   return o;
 }
@@ -249,12 +251,12 @@ function airAt(x, z) {
   const turn = WIND_ANG + 2.0 * (fbm(x * 6e-6 + 4.4, z * 6e-6 - 2.1, 2, F_TURN) - 0.5);
   const capN = fbm(x * 3e-5 + 0.4, z * 3e-5 + 2.2, 2, F_CAP), moist = fbm(x * 1.4e-5 + 1.9, z * 1.4e-5 - 3.3, 2, F_MOIST);
   // (how high up the unstable air reaches varies on its own: in some restless air only halfway)
-  const deep = lerp(0.55, 1, smoothstep(0.35, 0.65, fbm(x * 9e-6 - 1.1, z * 9e-6 + 3.7, 2, F_DEEP)));
+  const deep = lerp(0.65, 1, smoothstep(0.35, 0.65, fbm(x * 9e-6 - 1.1, z * 9e-6 + 3.7, 2, F_DEEP)));
   return {
     I, zs, ceil, moist,
     ux: Math.cos(turn) * shear, uz: Math.sin(turn) * shear, turn,
-    dInv: 380, cap: lerp(0.2, 0.006, Math.pow(I, 0.8)) * lerp(0.7, 1.3, capN), dry: lerp(0.09, 0.05, moist),
-    bmax: 0.015 + 0.12 * Math.pow(I, 1.3), el: zs + 600 + (ceil - 1500 - zs - 600) * Math.pow(I, 1.5) * deep,
+    dInv: 380, cap: 0.2 * Math.exp(-2.6 * I) * lerp(0.7, 1.3, capN), dry: lerp(0.09, 0.05, moist) * (1 - 0.4 * I),
+    bmax: 0.015 + 0.12 * Math.pow(I, 1.3), el: zs + 600 + (ceil - 1500 - zs - 600) * Math.pow(I, 0.5) * deep,
   };
 }
 // buoyancy (m/s^2) of undiluted cloudy air risen from the sea to height y
@@ -300,7 +302,7 @@ function domeHeightAt(d, x, z) {   // its surface above (x, z), or -1e9 outside
 // if a larger one shed it; it swells as it rises and sheds smaller bubbles in turn. When its
 // strength runs out it stops; if the moment the world shows comes first, it is still rising. Its
 // wake and everything it shed go to `out`; returns its head.
-const MIX = 0.6, DRAG = 0.35, SWELL = 0.04, SHED = 0.8, ICE_Y = 8000, H_FLAT = 2200, R_TH = 2800;
+const MIX = 0.6, DRAG = 0.35, SWELL = 0.04, SHED = 0.8, ICE_Y = 8000, H_FLAT = 2200, R_TH = 3500;
 function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
   const A = C.A, hd = { head: true, x, y, z, r, t, w, depth, parent, still: false, bu: 0, seed: 0 };
   let w2 = w * w, wPeak = w, trailY = y + 0.3 * r;
@@ -332,18 +334,18 @@ function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
     if (y > trailY) {
       if (depth === C.depth) { C.path.push(t, y + 0.5 * r); C.top = Math.max(C.top, y + Math.min(0.62 * r, roofOf(A, y, r))); }
       // the wake it leaves behind: turbulent lumps of cloud around its path
-      for (let q = 0; q < 2; q++) {
+      for (let q = r > 700 ? 2 : 1; q > 0; q--) {
         const ja = rng() * 2 * PI, jr = r * lerp(0.15, 0.45, rng()), jy = r * (rng() - 0.5) * 0.3, rr = r * lerp(0.62, 0.85, rng());
         if (C.trails) out.push({ head: false, x: x + Math.cos(ja) * jr, y: y + jy, z: z + Math.sin(ja) * jr, r: rr, t, depth });
       }
       trailY = y + 0.55 * r;
     }
-    if (depth > 0 && rng() < dz / (SHED * r)) {
+    if (depth > 1 && rng() < dz / (SHED * r)) {
       // a smaller bubble breaks away from the head and crowds outward
       const a = rng() * 2 * PI, d = r * lerp(0.35, 0.8, rng()), rc = r * lerp(0.3, 0.62, rng());
       const wc = ws * lerp(0.5, 1.05, rng()), fc = f * lerp(0.7, 1.02, rng()), vo = ws * lerp(0.04, 0.2, rng());
       const yc = y + r * lerp(-0.25, 0.35, rng()), seed = (rng() * 4294967296) >>> 0;
-      if (!C.rootsOnly && rc > 150) lift(C, x + Math.cos(a) * d, yc, z + Math.sin(a) * d, rc, wc, fc, t, vx + Math.cos(a) * vo, vz + Math.sin(a) * vo, depth - 1, mulberry32(seed), out, hd);
+      if (!C.rootsOnly && rc > C.minR) lift(C, x + Math.cos(a) * d, yc, z + Math.sin(a) * d, rc, wc, fc, t, vx + Math.cos(a) * vo, vz + Math.sin(a) * vo, depth - 1, mulberry32(seed), out, hd);
     }
   }
   hd.x = x; hd.y = y; hd.z = z; hd.r = r; hd.t = t; hd.w = wPeak; hd.bu = buoyAt(A, y + 60);
@@ -353,7 +355,7 @@ function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
   for (let i = 0; i < nb; i++) {
     const a = rng() * 2 * PI, el = lerp(0.1, 1.3, rng()), rc = r * lerp(0.18, 0.5, Math.pow(rng(), 1.3)), wc = wPeak * lerp(0.15, 0.4, rng()), seed = (rng() * 4294967296) >>> 0;
     const up = Math.min(0.75 * r, 0.9 * roofOf(A, y, r));     // (on its surface, pressed as flat as it is)
-    if (!C.rootsOnly && rc > 150) lift(C, x + Math.cos(a) * Math.cos(el) * 0.92 * r, y + Math.sin(el) * up, z + Math.sin(a) * Math.cos(el) * 0.92 * r, rc, wc, 0.3, t, vx, vz, depth - 1, mulberry32(seed), out, hd);
+    if (!C.rootsOnly && rc > C.minR) lift(C, x + Math.cos(a) * Math.cos(el) * 0.92 * r, y + Math.sin(el) * up, z + Math.sin(a) * Math.cos(el) * 0.92 * r, rc, wc, 0.3, t, vx, vz, depth - 1, mulberry32(seed), out, hd);
   }
   out.push(hd);
   return hd;
@@ -374,7 +376,8 @@ function settle(c, e, out) {
   // (the air is moist just above the sea and dry higher up; ice lingers; and what is high up does
   // not outlast the column that holds it up for long: dying towers crumble from the top down)
   const sq = Math.sqrt(r / 1000), col = lerp(450, 1600, A.moist) * sq;
-  let life = (e.y > ICE_Y ? 1700 * sq : col * (1 + 2.5 * smoothstep(2500, 0, hgt))) * (e.head ? 1 : 0.8);
+  // (while the cell still sends air up, its column stays saturated)
+  let life = (e.y > ICE_Y ? 1700 * sq : col * (1 + 2.5 * smoothstep(2500, 0, hgt))) * (e.head ? 1 : c.age < c.life ? 1.5 : 0.8);
   if (e.head && hgt > 2500) life = Math.min(life, 0.75 * col);
   const ev = age / life;
   if (ev >= 1) return null;
@@ -413,11 +416,12 @@ function settle(c, e, out) {
 // (sea: the sea level near it as a plane [level, slope x, slope z, x, z])
 const surfAt = (pd, sea, x, z) => Math.max(pd ? domeHeightAt(pd, x, z) : -1e9, sea[0] + sea[1] * (x - sea[3]) + sea[2] * (z - sea[4]));
 function placeDome(p, sea, out) {
-  if (p.rh < 150 || nearStart(p.x, p.z, p.rh)) return;
+  if (p.rh < 150) return;
   const pd = p.parent && p.parent.dome, under = surfAt(pd, sea, p.x, p.z), top = p.y + p.ryU;
   if (top < under + 30) return;
-  // never taller than it is wide (its skirt spreads to hold it up)
-  const r = Math.max(p.rh, (top - under) / 0.65);
+  // never steeper than cloud can stand (its skirt spreads to hold it up)
+  const r = Math.max(p.rh, (top - under) / 0.5);
+  if (top > START_Y - 350 && nearStart(p.x, p.z, 1.2 * r * p.an)) return;
   let base = under - 0.3 * (top - under), h = top - base;
   if (pd) {
     // where it reaches beyond its parent its flank comes down to meet what is there
@@ -430,7 +434,7 @@ function placeDome(p, sea, out) {
     if (low < base) { h += base - low; base = low; }
   }
   const seaHere = sea[0] + sea[1] * (p.x - sea[3]) + sea[2] * (p.z - sea[4]);
-  const d = makeDome(p.x, p.z, r, h, base, p.kind === 2 ? 1.3 : lerp(0.9, 1.5, sat(p.age / 900)), p.an, p.ang, seaHere, !p.parent);
+  const d = makeDome(p.x, p.z, r, h, base, p.kind === 2 ? 1.1 : lerp(0.8, 1.4, sat(p.age / 1500)), p.an, p.ang, seaHere, !p.parent);
   p.dome = d;
   out.push(d);
 }
@@ -452,12 +456,15 @@ const TIERS = [
   { S: 32000, pa: 3000, pb: 8000, salt: 0x70e5, cache: new Map(), coarse: new Map(), sites: new Map() },
 ];
 const TIER_REACH = 2;   // grid cells: how far a cell's clouds may reach from its own grid cell
-const nearStart = (x, z, r) => Math.hypot(x, z) < r * 1.7 + 2500;   // keep the start clear
+// keep the start clear: nothing stands where the bird sets out
+const START_Y = seaLevelAt(0, 0) + 750;
+const nearStart = (x, z, r) => Math.hypot(x, z) < r + 600;
 // coarse: low pulses without what their bubbles shed (all the coarsest level needs of them; tall
-// ones are always grown in full, so towers look the same from every distance)
+// ones are grown in full but for the small bubbles it leaves out, so towers look the same from
+// every distance)
 function growCell(c, coarse, out3, out2) {
   const A = c.A, rng = mulberry32(c.seed);
-  const C = { A, age: c.age, depth: 3, rootsOnly: true, paths: [], heads: [] };
+  const C = { A, age: c.age, depth: c.P < 1000 ? 2 : 3, rootsOnly: true, paths: [], heads: [] };
   // the top of the cloud the earlier bubbles have built by time t (they rise through it)
   C.cloudTop = t => {
     let top = -1e9;
@@ -492,7 +499,8 @@ function growCell(c, coarse, out3, out2) {
     const tall = Math.max(C.top, hd.y + headUp(A, hd)) >= zs + H_FLAT;
     path.push(Math.max(hd.t, t + 1), hd.y + 0.5 * hd.r);
     if (tall || !coarse) {
-      Object.assign(C, { rootsOnly: false, trails: tall, path: [] });
+      // (what the coarsest level would leave out is not grown for it)
+      Object.assign(C, { rootsOnly: false, trails: tall, path: [], minR: !tall ? 150 : coarse ? 600 : 250 });
       list = [];
       hd = lift(C, lx, zs - 0.6 * r0, lz, r0, w0, 1, t, 0, 0, C.depth, mulberry32(seed), list, null);
     }
@@ -513,9 +521,10 @@ function growCell(c, coarse, out3, out2) {
         for (const p of pieces) placeDome(p, sea, out2);
       }
     } else {
-      for (const e of list) settle(c, e, pieces);
+      // (bubbles too small to matter beside the billows are left out whole, wake and all)
+      for (const e of list) if (e.r > 420) settle(c, e, pieces);
       for (const p of pieces) {
-        if (p.rh < 90 || p.y + p.ryU < zs - 150) continue;
+        if (Math.max(p.rh, p.ryU) < 200 || p.y + p.ryU < zs - 150) continue;
         const rmin = Math.min(p.rh * Math.min(p.an, 1 / p.an), p.ryU, p.ryD);
         out3.push({ x: p.x, y: p.y, z: p.z, rh: p.rh, ryU: p.ryU, ryD: p.ryD, an: p.an, ang: p.ang, k: p.kf * rmin,
           br: Math.max(p.rh * Math.max(p.an, 1 / p.an), p.ryU, p.ryD), cell: c });
@@ -532,10 +541,33 @@ function pruneBubbles(out, from) {
       const o = out[i];
       if (o.br < 1.2 * b.br) break;     // (only a clearly bigger one can hold it)
       if (Math.abs(o.x - b.x) > o.br || Math.abs(o.z - b.z) > o.br || Math.abs(o.y - b.y) > o.br) continue;
-      if (ellDist(o, b.x, b.y, b.z) < -0.85 * b.br) { inside = true; break; }
+      if (ellDist(o, b.x, b.y, b.z) < -0.5 * b.br) { inside = true; break; }
     }
     if (!inside) out.push(b);
   }
+}
+// a piece of cloud cut off from the rest, up in the air, is surrounded by dry air and evaporates
+// first: keep only the pieces (of out[from..]) that hang together, piece by piece, with the sea (zs)
+function dropAdrift(out, from, zs) {
+  const n = out.length - from, held = new Uint8Array(n), todo = [];
+  // (does the surface of b, toward the centre of o, reach o?)
+  const touch = (b, o) => {
+    const dx = o.x - b.x, dy = o.y - b.y, dz = o.z - b.z, ca = Math.cos(b.ang), sa = Math.sin(b.ang);
+    const qx = (dx * ca + dz * sa) / (b.rh * b.an), qz = (-dx * sa + dz * ca) * b.an / b.rh, qy = dy / (dy > 0 ? b.ryU : b.ryD);
+    const f = 0.95 / (Math.hypot(qx, qy, qz) || 1);
+    return f >= 1 || ellDist(o, b.x + dx * f, b.y + dy * f, b.z + dz * f) < 60;
+  };
+  for (let i = 0; i < n; i++) if (out[from + i].y - out[from + i].ryD < zs + 500) { held[i] = 1; todo.push(i); }
+  while (todo.length) {
+    const b = out[from + todo.pop()];
+    for (let j = 0; j < n; j++) {
+      const o = out[from + j];
+      if (held[j] || Math.abs(o.x - b.x) > o.br + b.br || Math.abs(o.z - b.z) > o.br + b.br || Math.abs(o.y - b.y) > o.br + b.br) continue;
+      if (touch(b, o) || touch(o, b)) { held[j] = 1; todo.push(j); }
+    }
+  }
+  const keep = out.splice(from).filter((_, i) => held[i]);
+  out.push(...keep);
 }
 // where the cells of grid cell (ci, cj) of a tier start (only where, how big, how restless the air:
 // cheap, so cells can feel their neighbours): candidates drawn as thick as in the most restless air,
@@ -572,6 +604,39 @@ function subsidenceAt(x, z, P) {
   }
   return sup;
 }
+// The bird sets out where the weather is worth seeing. The restless air is drawn again and again
+// (each draw as random as any other) until one leaves the air around the start calm and open
+// toward the sun, with strong cells off to the right of it (lit from the side, their tops drifting
+// away downwind); failing that, the best of them.
+{
+  const sector = (a0, a1, d0, d1) => {   // mean restlessness over bearings a0..a1 (0: the sun)
+    let s = 0;
+    for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) { const a = lerp(a0, a1, i / 4), d = lerp(d0, d1, j / 4); s += restAt(Math.sin(a) * d, -Math.cos(a) * d); }
+    return s / 25;
+  };
+  let best = -1e9, bo = REST_O;
+  for (let k = 0; k < 64; k++) {
+    const r = mulberry32(hashU(k, 17, 0x5eed));
+    REST_O = k ? [(r() - 0.5) * 6e6, (r() - 0.5) * 6e6] : [0, 0];
+    const sun = sector(-0.35, 0.15, 6000, 35000), near = sector(0, 6.28, 3000, 9000);
+    let big = 0;
+    for (const T of TIERS) T.sites.clear();
+    if (sun < 0.3 && near < 0.3) {
+      for (const T of TIERS.slice(1)) {
+        for (let j = Math.floor(-42000 / T.S); j <= 0; j++) for (let i = 0; i <= Math.floor(42000 / T.S); i++)
+          for (const o of tierSites(T, i, j)) {
+            const a = Math.atan2(o.x, -o.z), d = Math.hypot(o.x, o.z);
+            if (a > 0.3 && a < 0.95 && d > 12000 && d < 40000 && o.P > 2200 && o.I > 0.5 && subsidenceAt(o.x, o.z, o.P) < 0.4) big++;
+          }
+      }
+    }
+    const open = Math.max(sun - 0.3, 0) + Math.max(near - 0.3, 0), score = open > 0 ? -open : Math.min(big, 3);
+    if (score > best) { best = score; bo = REST_O; }
+    if (big >= 3 && sun < 0.3 && near < 0.3) break;
+  }
+  REST_O = bo;
+  for (const T of TIERS) T.sites.clear();
+}
 // the cells of grid cell (ci, cj) of a tier, grown
 function tierCell(T, ci, cj, coarse = false) {
   const cache = coarse ? T.coarse : T.cache, key = ci + ',' + cj;
@@ -581,7 +646,6 @@ function tierCell(T, ci, cj, coarse = false) {
   // a cell, and the cells its outflow sets off around it (younger; more where the air is restless,
   // mostly on its downwind side), and theirs in turn
   const grow = (x, z, P, age, r, gen) => {
-    if (P > 1000 && nearStart(x, z, 2 * P)) return;
     const A = airAt(x, z), life = 1400 * Math.pow(P / 1000, 0.5) * lerp(0.7, 1.3, r());
     // the sinking air strengthens the inversion and warms and dries the air above it (where an
     // outflow sets a cell off it lifts the air through half of that; small cells never rise far)
@@ -594,8 +658,13 @@ function tierCell(T, ci, cj, coarse = false) {
     const cell = { x, z, P, A, life, age: age < 0 ? life * 1.25 * r() : age, vx: A.ux * hm + Math.cos(pa) * sp, vz: A.uz * hm + Math.sin(pa) * sp, seed: (r() * 4294967296) >>> 0 };
     const n3 = bub.length;
     growCell(cell, coarse, bub, domes);
+    for (let i = n3; i < bub.length; i++) {
+      const b = bub[i];
+      if (nearStart(b.x, b.z, b.br + 2500) && Math.min(ellDist(b, 0, START_Y - 400, 0), ellDist(b, 0, START_Y + 400, 0)) < 2500) { bub.length = n3; break; }
+    }
     if (bub.length > n3) {
       pruneBubbles(bub, n3);
+      dropAdrift(bub, n3, A.zs);
       // what became of it (for the views of the test presets): its top, how far its top spread
       let top = 0, wide = 0;
       for (let i = n3; i < bub.length; i++) top = Math.max(top, bub[i].y + bub[i].ryU);
@@ -632,6 +701,7 @@ function worldGC(cx, cz) {
   }
 }
 function forEachTierCell(T, x0, z0, x1, z1, fn, coarse) {
+  if (coarse && T.small) return;     // (what small cells make is finer than the coarsest level)
   const R = T.small ? 1 : TIER_REACH;
   const i0 = Math.floor(x0 / T.S) - R, i1 = Math.floor(x1 / T.S) + R, j0 = Math.floor(z0 / T.S) - R, j1 = Math.floor(z1 / T.S) + R;
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
@@ -699,7 +769,7 @@ function fillColumns(cell, lod, gi0, gj0, ni, nj, out) {
   forEachDome(x0, z0, x1, z1, d => {
     if (d.r < minR) return;
     let r = d.r, h = d.h * (rootsOnly ? 1.25 : 1);   // (the roots stand in for whole heaps)
-    const pf = 0.6 * cell;
+    const pf = (lod ? 0.9 : 0.6) * cell;
     if (r < 2.5 * pf) { const r2 = Math.sqrt(r * r + pf * pf); h *= (r * r) / (r2 * r2); r = r2; }
     const rr = r * d.ex, k = 0.12 * h + 25;
     const i0 = Math.max(0, Math.floor((d.x - rr - x0) / cell)), i1 = Math.min(mi - 1, Math.floor((d.x + rr - x0) / cell));
@@ -1197,9 +1267,11 @@ float sphereField(vec3 p, float cells, uint seed) {
     uvec3 ci = uvec3(c);
     vec3 h = hash33(ci + uvec3(seed * 101u, seed * 211u, seed * 307u));
     vec3 h2 = hash33(ci * 3u + uvec3(seed * 13u + 7u, seed * 5u + 1u, 11u));
-    if (h2.y < 0.28) continue;
+    // (the large billows pack close; the small ones over them a little looser)
+    bool big = seed <= 2u;
+    if (h2.y < (big ? 0.1 : 0.16)) continue;
     vec3 center = o3 + 0.1 + 0.8 * h;
-    float rad = mix(0.26, 0.7, h2.x * h2.x);
+    float rad = big ? mix(0.4, 0.78, h2.x) : mix(0.36, 0.72, h2.x);
     d = min(d, length(center - f) - rad);
   }
   return d;
@@ -1368,7 +1440,7 @@ float octave(float d, float n, float shell, float k) {
   // within the shell, so none floats detached)
   return smin(n, d, mix(max(k * 0.8, shell * 1.05), shell * 0.5 + 4.0, 0.7));
 }
-float shellOf(float a) { return 330.0 * a + 110.0; }    // highest billows above the large shapes
+float shellOf(float a) { return 460.0 * a + 150.0; }    // highest billows above the large shapes
 
 bool inLv(vec2 xz, int l) { vec4 v = uLvV[l]; return xz.x > v.x && xz.y > v.y && xz.x < v.z && xz.y < v.w; }
 // the clipmap level for a sample at distance t (dithered handover); coarser outside a window
@@ -1406,18 +1478,18 @@ vec3 warpLand(vec3 p) {
 // spheres heaped on them. C: column data. lod: 0 = full detail.
 float cloudSDF(vec3 wp, float h, float dm, vec4 C, float lod) {
   // squashed lookup: billows are wider than tall (heaps, not balls)
-  vec4 sf = textureLod(uShape, (warpLand(wp) + uShapeOff) * (vec3(1.0, 1.7, 1.0) / SHAPE_TILE), 0.0) * 2.0 - 1.0;
-  sf *= 1.0 / 1.7;
+  vec4 sf = textureLod(uShape, (warpLand(wp) + uShapeOff) * (vec3(1.0, 1.35, 1.0) / SHAPE_TILE), 0.0) * 2.0 - 1.0;
+  sf *= 1.0 / 1.35;
   float A = C.y;
-  float ds = octave(dm, sf.x * 1280.0, 230.0 * A, 300.0);
-  ds = octave(ds, sf.y * 640.0, 100.0 * A, 160.0);
+  float ds = octave(dm, sf.x * 1280.0, 300.0 * A, 300.0);
+  ds = octave(ds, sf.y * 640.0, 160.0 * A, 160.0);
   // cauliflower detail on the upper parts of the sea and on everything heaped above it; the
   // troughs stay smooth
   float topW = sat((h - min(C.x, C.w + 100.0) + 40.0) / 220.0);
-  float w3 = (1.0 - smoothstep(2.0, 3.5, lod)) * topW;
-  float w4 = (1.0 - smoothstep(1.0, 2.0, lod)) * topW;
-  ds = octave(ds, sf.z * 320.0, 70.0 * w3 * C.z, 90.0);
-  ds = octave(ds, sf.w * 160.0, 34.0 * w4 * C.z, 45.0);
+  float w3 = (1.0 - smoothstep(0.8, 2.0, lod)) * topW;
+  float w4 = (1.0 - smoothstep(0.35, 1.0, lod)) * topW;
+  ds = octave(ds, sf.z * 320.0, 56.0 * w3 * C.z, 90.0);
+  ds = octave(ds, sf.w * 160.0, 26.0 * w4 * C.z, 45.0);
   float d = ds;
   // near the camera: an extra pair of small billow octaves (crisp cauliflower texture up close)
   if (lod < 0.15 && abs(d) < 80.0) {   // only matters right at the surface
@@ -1504,8 +1576,9 @@ float lightTauN(vec3 wp0, float h0, int l, vec4 C, float jit, float lod0, out fl
     if (i == 0) { d1 = d; s1 = sm; }
     else if (i == 1) nS = clamp((d - d1) / (sm - s1), -1.0, 1.0);
     // near steps: point density; long far steps: smooth coverage estimate (no contour rings)
-    // the density ramp widens with the step length so long steps don't switch abruptly
-    tau += sat(-d / (EDGE_W + ds * 0.35)) * ds * SIGMA;
+    // the density ramp widens with the step length so long steps don't switch abruptly (and is
+    // sharp right at the start, so each bulge shades the one beside it)
+    tau += sat(-d / (mix(30.0, EDGE_W, sat(s / 200.0)) + ds * 0.35)) * ds * SIGMA;
     s += ds;
     ds *= 2.4;
   }
@@ -1694,9 +1767,9 @@ void main() {
     nSdf += 1.0;
     float d = cloudSDF(wp, h, dm, C, lod);
     float edgeW = mix(14.0, EDGE_W, smoothstep(120.0, 4000.0, t));   // crisper rims up close
-    // heaps piled high above the sea have crisper outlines, only widened enough at range not to
-    // alias; the sea itself stays soft
-    float crisp = smoothstep(250.0, 800.0, h - C.w);
+    // the billowy tops of the sea and everything piled on it have crisp outlines, only widened
+    // enough at range not to alias; the deep troughs of the sea stay soft
+    float crisp = smoothstep(-150.0, 250.0, h - C.w);
     edgeW = mix(edgeW, min(edgeW, max(30.0, t * 0.003)), crisp);
     float dtMin = 3.0 + t * 0.002;
     // Entering a cloud: locate the boundary within the last stride (Illinois regula falsi), then
@@ -1793,9 +1866,10 @@ void main() {
       // discontinuous interior of the distance field)
       float ao = mix(0.5, 1.0, exp(-depthIn / 55.0));
       // sky light by orientation: the deep blue zenith on tops, the warm sunlit sea under bellies,
-      // the golden sun-side or the cool violet anti-sun sky on the sides
+      // the golden sun-side or the cool violet anti-sun sky on the sides (a belly sees only part of
+      // the sea below past the bulges around it)
       vec3 eSide = mix(ambAnti, ambSunS, sat(0.5 + 0.5 * lastNS));
-      vec3 eDir = lastNUp > 0.0 ? mix(eSide, ambUp, lastNUp) : mix(eSide, seaBounce, -lastNUp);
+      vec3 eDir = lastNUp > 0.0 ? mix(eSide, ambUp, lastNUp) : mix(eSide, seaBounce, -0.5 * lastNUp);
       vec3 amb = (eDir * mix(0.45, 1.0, up) + uAmbSea * (1.0 - up) * 0.7) * ao;
 #ifdef DBG
       if (uDbgMode == 5 || uDbgMode == 6) amb *= 0.0;
@@ -2494,8 +2568,8 @@ pass(P.ms, FB.ms, 32, 32, { uTrans: T.trans });
 const CLIP_N = 256, CLIP_M = CLIP_N - 1;
 const LEVELS = [
   { cell: 128, cellV: 128, nz: 112, maxD: 1200, minBR: 0, lod: 0, step: 16, chunk: 32 },
-  { cell: 512, cellV: 256, nz: 56, maxD: 4000, minBR: 100, lod: 1, step: 8, chunk: 32 },
-  { cell: 2048, cellV: 512, nz: 32, maxD: 12000, minBR: 400, lod: 2, step: 4, chunk: 16 },
+  { cell: 512, cellV: 256, nz: 56, maxD: 4000, minBR: 200, lod: 1, step: 8, chunk: 32 },
+  { cell: 2048, cellV: 512, nz: 32, maxD: 12000, minBR: 900, lod: 2, step: 4, chunk: 16 },
 ];
 const TSVL = { cell: 768, cellV: 360, nz: 40, step: 8, chunk: 32, tsv: true };
 for (const L of [...LEVELS, TSVL]) {
@@ -2806,7 +2880,7 @@ function resize() {
 // =====================================================================================
 const FLIGHT = { vCruise: 64, vStall: 31, vMax: 185, g: 11.5, gTurn: 16.5, maxBank: 56 * DEG, maxClimb: 30 * DEG, maxDive: 42 * DEG };
 const bird_ = {
-  pos: [0, seaTopAt(0, 0) + 750, 0], yaw: 0.22, gamma: 0, gammaV: 0, bank: 0, bankV: 0, speed: 66, aoa: 0.05,
+  pos: [0, seaTopAt(0, 0) + 750, 0], yaw: 0.45, gamma: 0, gammaV: 0, bank: 0, bankV: 0, speed: 66, aoa: 0.05,
   fwd: [0, 0, -1], up: [0, 1, 0], right: [1, 0, 0], load: 1, turnRate: 0, accel: 0,
 };
 const cam = {
@@ -2821,7 +2895,7 @@ function readPreset() {
   const pre = Q.get('preset');
   const sea0 = seaTopAt(0, 0);
   const presets = {
-    start: { y: sea0 + 750, yaw: 0.22, gamma: 0 },
+    start: { y: sea0 + 750, yaw: 0.45, gamma: 0 },
     sun: { y: sea0 + 900, yaw: 0.0, gamma: -0.06 },
     away: { y: sea0 + 900, yaw: PI, gamma: -0.06 },
     side: { y: sea0 + 850, yaw: PI / 2, gamma: -0.05 },
