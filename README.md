@@ -29,16 +29,31 @@ rise above the sea, but the bird is softly kept from sinking deep into the cloud
 * **Clouds** — raymarched volumes defined by signed distance fields. The world is endless and
   never repeats: every feature is drawn from a hash of where it is, generated as you fly toward
   it. Nothing is placed by hand, and there is no kit of set shapes.
-  * *The sea of clouds* is thick and uneven. Broad swells, hills, narrow deep valleys and rolling
-    billowy mounds raise and lower it across the landscape, and random domes heap up on it
-    wherever the air convects.
-  * *Towers.* Here and there a storm grows towers out of it: lone giants, loose groups, or long
-    walls whose feet merge into one range. Each tower is built in true 3D from rising thermal
-    bubbles. Plumes climb from a broad, heaped shoulder that swells out of the sea, drift with
-    the wind and outward, and stall at different heights in domes crowned by smaller domes. Some
-    push big domes out over their flanks, leaving overhangs and gaps to fly under. Size, width,
-    lean and shape all vary freely, and now and then the tallest of a storm spreads into a wide,
-    flat anvil drawn out downwind.
+  * *Grown, not built.* There are no tower types, anvils or overhangs in the code; the clouds
+    grow from a few natural causes and every shape emerges from them:
+    * *The air.* Slow fields decide how restless it is (broad unstable patches and long
+      winding bands where air streams converge; elsewhere calm), how much stronger the wind
+      blows higher up and from where, where the ceiling (tropopause) lies, how strong the
+      inversion capping the sea is, and how moist the air is.
+    * *Thermals.* Convective cells of every size send bubbles of warm air up out of the sea, a
+      few far stronger than the rest. Each bubble rises by an entraining-parcel model: it swells,
+      mixes with the air around it (the smaller it is, the faster it loses its strength, and
+      mixed-in dry air chills it), drifts with the wind of its height, sheds smaller bubbles that
+      crowd outward, and boils up into domes on domes as it slows. Calm air holds even big
+      bubbles down under its inversion; restless air lets them break through and climb until the
+      air above stops them, the strongest up to the ceiling, which nothing passes.
+    * *Time.* A cell keeps sending bubbles up for a while: weak while it builds up, strongest in
+      its prime, dying down at the end, each bubble rising through what the earlier ones left and
+      squeezing past the domes in its way. What stopped rising settles into domes, spreads out
+      beneath stable air (a little under the inversion, far under the ceiling), sags, drifts with
+      the wind of its height and evaporates, ice high up lingering longest. Outflows set off new
+      cells nearby, while the air sinking around a strong tower holds weaker cells next to it
+      down.
+    * Out of this come heaps on a lumpy, swelling sea, lone giants, clusters and long walls,
+      leaning and sheared towers, overhangs and gaps to fly under, decaying towers torn by the
+      wind, and now and then a far storm spreading into a wide, flat anvil. Weak pulses lie on the
+      sea as domes of its surface; tall ones are true 3D bubbles, so the sea and the towers are
+      one system.
   * *Billows.* On all of this, billows of an *fbm of spheres* (random spheres baked into tileable
     3D textures, merged octave by octave with crisp creases, behind a slow, never-repeating warp)
     add the cauliflower detail.
@@ -75,7 +90,7 @@ These are for working on the piece and are not needed to enjoy it.
 |---|---|
 | `?debug` | frame-rate / resolution / GPU-time overlay |
 | `?test&preset=start\|sun\|away\|side\|skim\|high\|high2\|bank\|tower\|giant\|anvil\|close\|under\|approach\|inside\|humps\|upward\|fastdive&frames=N&w=W&h=H&scale=S` | deterministic render: fixed time step, stops after `N` frames (for screenshots); `tower`, `giant`, `anvil`, `close`, `under`, `approach` and `inside` look at, under or into generated towers near the start |
-| `?seed=N`, `?towers=K` | another world; tower density multiplier (default 0.75) |
+| `?seed=N`, `?towers=K` | another world; density of convective cells (default 1) |
 | `?test&pose=x,y,z,yaw,pitch,bank` | start the bird at an exact pose |
 | `?test&closeup=right,up,forward` | fixed camera offset in the bird's frame |
 | `?test&script=dive\|climb\|turn\|weave&log` | scripted input; per-frame flight state in `window.__log` |

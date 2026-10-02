@@ -194,7 +194,7 @@ function poisson(rng, lam) {
   return n;
 }
 const F_WARP = 16, F_REST = 32, F_BAND = 40, F_SHEAR = 48, F_TURN = 52, F_SWELL = 64, F_HILL = 80, F_VAL = 96,
-  F_MOUND = 112, F_ROUGH = 128, F_AMP = 144, F_FINE = 160, F_CEIL = 176, F_MOIST = 184, F_CAP = 192;
+  F_MOUND = 112, F_ROUGH = 128, F_AMP = 144, F_FINE = 160, F_CEIL = 176, F_MOIST = 184, F_CAP = 192, F_DEEP = 200;
 
 // ---- the air
 function warpOf(x, z, o) {
@@ -205,8 +205,8 @@ function warpOf(x, z, o) {
 // how restless the air is: calm (0) .. ready to boil up into storms (1). Broad patches of unstable
 // air, and long winding bands where air streams converge
 function restOf(wx, wz) {
-  const patch = fbm(wx * 1.7e-5, wz * 1.7e-5, 4, F_REST, 0.55);
-  const band = 1 - Math.abs(2 * fbm(wx * 7e-6 + 3.1, wz * 7e-6 - 1.7, 3, F_BAND, 0.45) - 1);
+  const patch = fbm(wx * 2.4e-5, wz * 2.4e-5, 4, F_REST, 0.55);
+  const band = 1 - Math.abs(2 * fbm(wx * 9e-6 + 3.1, wz * 9e-6 - 1.7, 3, F_BAND, 0.45) - 1);
   return smoothstep(0.5, 0.95, patch + 0.25 * Math.pow(band, 6));
 }
 const _aw = {};
@@ -248,11 +248,13 @@ function airAt(x, z) {
   const shear = lerp(0.3, 2.4, fbm(x * 7e-6 - 2.3, z * 7e-6 + 0.7, 2, F_SHEAR)) * 1e-3;
   const turn = WIND_ANG + 2.0 * (fbm(x * 6e-6 + 4.4, z * 6e-6 - 2.1, 2, F_TURN) - 0.5);
   const capN = fbm(x * 3e-5 + 0.4, z * 3e-5 + 2.2, 2, F_CAP), moist = fbm(x * 1.4e-5 + 1.9, z * 1.4e-5 - 3.3, 2, F_MOIST);
+  // (how high up the unstable air reaches varies on its own: in some restless air only halfway)
+  const deep = lerp(0.55, 1, smoothstep(0.35, 0.65, fbm(x * 9e-6 - 1.1, z * 9e-6 + 3.7, 2, F_DEEP)));
   return {
     I, zs, ceil, moist,
     ux: Math.cos(turn) * shear, uz: Math.sin(turn) * shear, turn,
     dInv: 380, cap: lerp(0.2, 0.006, Math.pow(I, 0.8)) * lerp(0.7, 1.3, capN), dry: lerp(0.09, 0.05, moist),
-    bmax: 0.015 + 0.12 * Math.pow(I, 1.3), el: zs + 600 + (ceil - 1500 - zs - 600) * Math.pow(I, 1.5),
+    bmax: 0.015 + 0.12 * Math.pow(I, 1.3), el: zs + 600 + (ceil - 1500 - zs - 600) * Math.pow(I, 1.5) * deep,
   };
 }
 // buoyancy (m/s^2) of undiluted cloudy air risen from the sea to height y
@@ -260,7 +262,7 @@ function buoyAt(A, y) {
   if (y > A.ceil) return -1.2;
   if (y < A.zs) return 0;                         // (inside the sea it just coasts)
   if (y < A.zs + A.dInv) return -A.cap;
-  if (y > A.el) return -0.02 - 0.08 * (y - A.el) * 1e-3;
+  if (y > A.el) return -0.03 - 0.12 * (y - A.el) * 1e-3;
   const u = (y - A.zs - A.dInv) / (A.el - A.zs - A.dInv);
   return A.bmax * (0.3 + 2.8 * u * (1 - u));
 }
@@ -362,15 +364,18 @@ const roofOf = (A, y, r) => Math.min(Math.max(Math.min(y < A.zs + A.dInv ? A.zs 
 const stabOf = e => Math.pow(sat(-e.bu / 0.04), 0.7);
 const headUp = (A, e) => Math.min(e.still ? 0.86 * e.r : e.r * lerp(0.85, 0.3, stabOf(e)) * 1.05, roofOf(A, e.y, e.r));
 // What became of a piece of a bubble by the moment the world shows. It drifted with the wind of
-// its height since it was there, and evaporates (ice high up lingers far longer), the small parts
+// its height since it was there, and evaporates (ice high up lingers longer), the small parts
 // first. A head that stopped settles into a dome, flattens and sags; where the air above stopped
-// it hard (the inversion over the sea, the ceiling) it also spreads out beneath it in lobes, the
-// farther the harder it pushed: a little around a heap, far around a storm that hit the ceiling.
+// it hard it also spreads out beneath it in lobes, the farther the more stable that air and the
+// harder it pushed: a little under a strong inversion, far under the ceiling.
 // Appends the pieces to `out`; returns the head's (null if it is gone).
 function settle(c, e, out) {
   const A = c.A, age = Math.max(c.age - e.t, 0), r = e.r, hgt = e.y - A.zs;
-  // (the air is moist just above the sea and dry higher up; ice lingers)
-  const life = (e.y > ICE_Y ? 2600 : lerp(450, 1600, A.moist) * (1 + 2.5 * smoothstep(2500, 0, hgt))) * Math.sqrt(r / 1000) * (e.head ? 1 : 0.8);
+  // (the air is moist just above the sea and dry higher up; ice lingers; and what is high up does
+  // not outlast the column that holds it up for long: dying towers crumble from the top down)
+  const sq = Math.sqrt(r / 1000), col = lerp(450, 1600, A.moist) * sq;
+  let life = (e.y > ICE_Y ? 1700 * sq : col * (1 + 2.5 * smoothstep(2500, 0, hgt))) * (e.head ? 1 : 0.8);
+  if (e.head && hgt > 2500) life = Math.min(life, 0.75 * col);
   const ev = age / life;
   if (ev >= 1) return null;
   const g = Math.sqrt(1 - ev * ev), x = e.x + A.ux * hgt * age, z = e.z + A.uz * hgt * age;
@@ -387,8 +392,8 @@ function settle(c, e, out) {
   }
   if (e.still) return put(x, e.y, z, r, Math.min(0.86 * r, roof), 0.6 * r, 1, 0, 0.08, 1, null);
   const rng = mulberry32(e.seed), grow = 1 - Math.exp(-age / (600 * Math.sqrt(r / 1000)));
-  // (how far it spreads: by how hard it was rising when the stable air stopped it)
-  const stab = stabOf(e), S = stab * (0.5 + 3 * Math.pow(sat((e.w - 4) / 22), 1.5));
+  // (how far it spreads: by how stable the air that stopped it is, and how hard it was rising)
+  const stab = stabOf(e), S = sat(-e.bu / 0.6) * (0.5 + 3 * Math.pow(sat((e.w - 4) / 22), 1.5));
   const sp = 0.3 * grow, yc = e.y - Math.min(0.25 * age, 0.35 * r);
   // pressed flat under the air that stopped it; the underside sags as it ages; old domes soften
   const hp = put(x, yc, z, r * (1 + sp) * g, Math.min(r * lerp(0.85, 0.3, stab) * lerp(0.85, 1.05, rng()) / (1 + 0.6 * sp), roof) * g,
@@ -440,7 +445,7 @@ function placeDome(p, sea, out) {
 // clipmap level the small ones are grown without the bubbles their bubbles shed).
 const P_MIN = 600, ALPHA = 2.0, P_CUT = 2800;
 const TOWER_RATE = Q.has('towers') ? parseFloat(Q.get('towers')) : 1;
-const cellDensity = I => 0.3e-6 * (0.12 + 0.88 * I);       // cells per m^2 with P > P_MIN
+const cellDensity = I => 0.36e-6 * (0.12 + 0.88 * I);       // cells per m^2 with P > P_MIN
 const TIERS = [
   { S: 8000, pa: P_MIN, pb: 1000, salt: 0x4ea9, small: true, cache: new Map(), coarse: new Map(), sites: new Map() },
   { S: 16000, pa: 1000, pb: 3000, salt: 0x51a3, cache: new Map(), coarse: new Map(), sites: new Map() },
@@ -513,7 +518,7 @@ function growCell(c, coarse, out3, out2) {
         if (p.rh < 90 || p.y + p.ryU < zs - 150) continue;
         const rmin = Math.min(p.rh * Math.min(p.an, 1 / p.an), p.ryU, p.ryD);
         out3.push({ x: p.x, y: p.y, z: p.z, rh: p.rh, ryU: p.ryU, ryD: p.ryD, an: p.an, ang: p.ang, k: p.kf * rmin,
-          br: Math.max(p.rh * Math.max(p.an, 1 / p.an), p.ryU, p.ryD), age: p.age, kind: p.kind, cell: c });
+          br: Math.max(p.rh * Math.max(p.an, 1 / p.an), p.ryU, p.ryD), cell: c });
       }
     }
   }
@@ -546,22 +551,23 @@ function tierSites(T, ci, cj) {
     const r = mulberry32(hashU(ci, cj, T.salt + 7919 * (k + 1)));
     const x = (ci + r()) * S, z = (cj + r()) * S, u = r(), v = r();
     const P = T.pa * Math.pow(1 - u * (1 - Math.pow(T.pb / T.pa, -ALPHA)), -1 / ALPHA), I = restAt(x, z);
-    if (v <= cellDensity(I) / cellDensity(1) * Math.exp(-(P - P_MIN) / P_CUT)) st.push({ x, z, P, I, k, r });
+    if (v <= cellDensity(I) / cellDensity(1) * Math.exp(-(P - P_MIN) / P_CUT)) st.push({ x, z, P, I, k });
   }
   T.sites.set(key, st);
   return st;
 }
 // Air rising hard in a strong cell sinks again around it, and holds weaker cells nearby down:
 // 0 (free) .. 1 (right beside a far stronger one)
+const SUB_R = 2.6;
 function subsidenceAt(x, z, P) {
   let sup = 0;
   for (let t = 1; t < TIERS.length; t++) {
-    const T = TIERS[t], R = 1.8 * T.pb * 1.5;
+    const T = TIERS[t], R = 1.8 * SUB_R * T.pb;
     for (let j = Math.floor((z - R) / T.S); j <= Math.floor((z + R) / T.S); j++) for (let i = Math.floor((x - R) / T.S); i <= Math.floor((x + R) / T.S); i++)
       for (const o of tierSites(T, i, j)) {
-        if (o.P < 1.15 * P || o.I < 0.35) continue;
-        const d = Math.hypot(o.x - x, o.z - z) / (1.8 * o.P);
-        if (d < 2) sup = Math.max(sup, Math.exp(-d * d) * sat((o.I - 0.35) / 0.3));
+        if (o.P <= P || o.I < 0.35) continue;
+        const d = Math.hypot(o.x - x, o.z - z) / (SUB_R * o.P);
+        if (d < 1.8) sup = Math.max(sup, Math.exp(-d * d) * sat((o.I - 0.35) / 0.3) * sat((o.P - P) / (0.25 * P)));
       }
   }
   return sup;
@@ -577,7 +583,12 @@ function tierCell(T, ci, cj, coarse = false) {
   const grow = (x, z, P, age, r, gen) => {
     if (P > 1000 && nearStart(x, z, 2 * P)) return;
     const A = airAt(x, z), life = 1400 * Math.pow(P / 1000, 0.5) * lerp(0.7, 1.3, r());
-    A.cap *= 1 + 4 * subsidenceAt(x, z, P);
+    // the sinking air strengthens the inversion and warms and dries the air above it (where an
+    // outflow sets a cell off it lifts the air through half of that; small cells never rise far)
+    if (P >= 1000) {
+      const sub = subsidenceAt(x, z, P) * (gen ? 0.5 : 1);
+      A.cap += 0.12 * sub; A.bmax *= 1 - 0.7 * sub; A.el = A.zs + (A.el - A.zs) * (1 - 0.6 * sub);
+    }
     // it drifts with the wind of the lower air, and moves on as it renews itself
     const sp = lerp(0, 1.5, r()), pa = r() * 2 * PI, hm = 0.12 * (A.ceil - A.zs);
     const cell = { x, z, P, A, life, age: age < 0 ? life * 1.25 * r() : age, vx: A.ux * hm + Math.cos(pa) * sp, vz: A.uz * hm + Math.sin(pa) * sp, seed: (r() * 4294967296) >>> 0 };
@@ -591,7 +602,7 @@ function tierCell(T, ci, cj, coarse = false) {
       for (let i = n3; i < bub.length; i++) if (bub[i].y + bub[i].ryU > top - 2000) wide = Math.max(wide, Math.hypot(bub[i].x - x, bub[i].z - z) + bub[i].rh);
       cells.push({ x, z, P, y0: A.zs, top, wide, R0: P, ceil: A.ceil, gen, cell });
     }
-    const nd = gen < 2 ? poisson(r, 1.6 * A.I * sat(cell.age / cell.life)) : 0;
+    const nd = gen < 2 ? poisson(r, 1.2 * A.I * sat(cell.age / cell.life)) : 0;
     for (let k = 0; k < nd; k++) {
       const a = r() < 0.6 ? A.turn + (r() - 0.5) * 2.4 : r() * 2 * PI, d = P * lerp(1.8, 3.5, r());
       const Pd = P * lerp(0.4, 1, Math.pow(r(), 0.7)), ad = cell.age - lerp(300, 1500, r());
@@ -603,11 +614,10 @@ function tierCell(T, ci, cj, coarse = false) {
     for (let q = 0; q < 4; q++) r();      // (the draws that placed it)
     grow(o.x, o.z, o.P, -1, r, 0);
   }
-  const kept = bub;
   let bx0 = 1e30, bz0 = 1e30, bx1 = -1e30, bz1 = -1e30;
-  for (const b of kept) { bx0 = Math.min(bx0, b.x - b.br); bx1 = Math.max(bx1, b.x + b.br); bz0 = Math.min(bz0, b.z - b.br); bz1 = Math.max(bz1, b.z + b.br); }
+  for (const b of bub) { bx0 = Math.min(bx0, b.x - b.br); bx1 = Math.max(bx1, b.x + b.br); bz0 = Math.min(bz0, b.z - b.br); bz1 = Math.max(bz1, b.z + b.br); }
   for (const d of domes) { bx0 = Math.min(bx0, d.x - d.reach); bx1 = Math.max(bx1, d.x + d.reach); bz0 = Math.min(bz0, d.z - d.reach); bz1 = Math.max(bz1, d.z + d.reach); }
-  c = { bub: kept, domes, towers: cells, box: [bx0, bz0, bx1, bz1], x: (ci + 0.5) * S, z: (cj + 0.5) * S };
+  c = { bub, domes, towers: cells, box: [bx0, bz0, bx1, bz1], x: (ci + 0.5) * S, z: (cj + 0.5) * S };
   cache.set(key, c);
   return c;
 }
@@ -2825,7 +2835,7 @@ function readPreset() {
   };
   // views of generated towers near the start: from a distance with the sun to the side, close
   // under one, inside one
-  const ts = towersNear(0, 0, 120000).sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
+  const ts = towersNear(0, 0, 200000).sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
   // walk out from a tower (from dmin on) until the air is clear of every tower by `gap` and of the
   // sea's heaps, and nothing stands between there and the tower
   const clearOf = (t, dir, y, gap, dmin = 0) => {
@@ -2863,7 +2873,8 @@ function readPreset() {
   // (an anvil is nothing the world makes on purpose: a tower that hit the ceiling and spread wide)
   const isAnvil = t => t.top > t.ceil - 700 && t.wide > Math.max(2.5 * t.R0, 9000);
   const anv = ts.find(t => isAnvil(t) && sunlit(t)) || ts.find(isAnvil);
-  if (anv) { const v = clearOf(anv, sideDir(anv) - 1.2, null, 40000); if (v) presets.anvil = Object.assign(v, { gamma: 0.04 }); }
+  // (seen from high up and far off, against the sun, as from an airliner)
+  if (anv) { const v = clearOf(anv, PI / 2 + 0.08, 7000, 3000, 50000); if (v) presets.anvil = Object.assign(v, { gamma: 0.02 }); }
   if (bt) {
     const v = clearOf(bt, sideDir(bt), bt.y0 + 1100, 900, 3000);
     if (v) presets.close = Object.assign(v, { gamma: 0.32 });
