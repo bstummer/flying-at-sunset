@@ -1440,7 +1440,7 @@ float octave(float d, float n, float shell, float k) {
   // within the shell, so none floats detached)
   return smin(n, d, mix(max(k * 0.8, shell * 1.05), shell * 0.5 + 4.0, 0.7));
 }
-float shellOf(float a) { return 460.0 * a + 150.0; }    // highest billows above the large shapes
+float shellOf(float a) { return 400.0 * a + 120.0; }    // highest billows above the large shapes
 
 bool inLv(vec2 xz, int l) { vec4 v = uLvV[l]; return xz.x > v.x && xz.y > v.y && xz.x < v.z && xz.y < v.w; }
 // the clipmap level for a sample at distance t (dithered handover); coarser outside a window
