@@ -2652,9 +2652,10 @@ function runJob(job, O) {
     }));
     for (let z = 0; z < L.nz; z += NOUT) { bindBakeLayers(L, z); gl.uniform1i(uloc(P.tsv, 'uZ0'), z); gl.drawArrays(gl.TRIANGLES, 0, 3); }
   } else {
-    // the tower bubbles near it, relative to its corner
+    // the tower bubbles near it, relative to its corner (the coarsest level takes them from the
+    // cells grown for it: far cheaper, and all it can show)
     const ox = job.gi * L.cell, oz = job.gj * L.cell;
-    const nb = gatherBubbles(ox, oz, ox + job.ni * L.cell, oz + job.nj * L.cell, L.maxD + 300, L.minBR, ox, oz, bubData, BUB_MAX);
+    const nb = gatherBubbles(ox, oz, ox + job.ni * L.cell, oz + job.nj * L.cell, L.maxD + 300, L.minBR, ox, oz, bubData, BUB_MAX, L.lod >= 2);
     worldStats.bubbles += nb; worldStats.maxBub = Math.max(worldStats.maxBub, nb);
     if (nb) {
       gl.bindTexture(gl.TEXTURE_2D, T.bub.tex);
