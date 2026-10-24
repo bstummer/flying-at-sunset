@@ -89,6 +89,18 @@ rise above the sea, but the bird is softly kept from sinking deep into the cloud
 * **Image** — HDR throughout, bloom, occlusion-aware sun rays, a hue-preserving filmic tone
   curve with a golden-hour split tone, vignette and fine grain.
 
+## For developers
+
+* [`docs/BRIEF.md`](docs/BRIEF.md) — what the piece should be: every request verbatim, the
+  inspiration photos described, the feedback themes.
+* [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — how it works (sections of the file, the frame, the
+  world generator and its causes, streaming, the cloud renderer, flight, image, speed), test hooks,
+  performance baselines, known issues, tuning lessons, and a guide for splitting the file.
+* [`docs/HISTORY.md`](docs/HISTORY.md) — what was built, tried and dropped in each round.
+* [`docs/img/`](docs/img/) — reference renders of the current version, a world map, tower silhouettes.
+* [`tools/`](tools/README.md) — render and compare views, measure and draw the generated world in
+  Node, behaviour checks, and regression tests (world fingerprint, render baselines) for refactoring.
+
 ## Developer switches (URL parameters)
 
 These are for working on the piece and are not needed to enjoy it.

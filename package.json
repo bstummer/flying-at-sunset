@@ -1,0 +1,15 @@
+{
+  "name": "flying-at-sunset",
+  "private": true,
+  "description": "A paper bird gliding over an endless sea of clouds at golden hour (one self-contained HTML file). This file only sets up the development tools in tools/.",
+  "scripts": {
+    "fingerprint": "node tools/world/fingerprint.js",
+    "regress": "node tools/regress.mjs",
+    "check:presets": "node tools/checks/presets.mjs",
+    "check:gl": "node tools/checks/gl-errors.mjs",
+    "world:stats": "node tools/world/stats.js"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

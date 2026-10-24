@@ -1,0 +1,22 @@
+{
+ "recorded": "2026-10-24T17:17:22.159Z",
+ "page": "index.html",
+ "chromium": "141.0.7390.37",
+ "size": "&w=320&h=180&frames=8&scale=0.5",
+ "views": {
+  "start": "",
+  "sun": "preset=sun",
+  "away": "preset=away",
+  "side": "preset=side",
+  "skim": "preset=skim",
+  "high2": "preset=high2",
+  "tower": "preset=tower",
+  "giant": "preset=giant",
+  "anvil": "preset=anvil",
+  "close": "preset=close",
+  "under": "preset=under",
+  "inside": "preset=inside",
+  "seed3": "seed=3",
+  "geometry": "preset=side&dbg=1"
+ }
+}
