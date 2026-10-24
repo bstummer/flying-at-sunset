@@ -3262,7 +3262,7 @@ const tEnd = () => {
 
 let frame = 0;
 let prevVP = null;
-let probePBO = null, probeSync = null;
+let probePBO = null, probeSync = null, probeNext = null;
 const probeBuf = new Float32Array(32);
 const stats = { fps: 0 };
 
@@ -3474,6 +3474,13 @@ function renderBird(time, VP, birdRel) {
 
 function readProbeAsync() {
   if (!extCBF) return;
+  if (TEST) { // tests: as if the GPU were always done by the next frame (when a fence signals varies)
+    if (probeNext) probeData = probeNext;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.probe);
+    gl.readPixels(0, 0, 8, 1, gl.RGBA, gl.FLOAT, probeBuf);
+    probeNext = [probeBuf[12], probeBuf[13], probeBuf[14], probeBuf[15], probeBuf[20]];
+    return;
+  }
   if (probeSync) {
     const st = gl.getSyncParameter(probeSync, gl.SYNC_STATUS);
     if (st !== gl.SIGNALED) return;
