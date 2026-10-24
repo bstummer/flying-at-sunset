@@ -3,7 +3,7 @@
 How the piece works, why it is the way it is, how to test it, and what to watch out for. Written
 when the project was still one file (`index.html`, ~3,700 lines) and about to be split into
 source files with a build that outputs one file. Line numbers refer to that version (commit
-`9453631` and later in October 2026).
+`9be51d2`, October 2026).
 
 - What the piece should be: `docs/BRIEF.md` (every request verbatim, the photos, the feedback themes).
 - How it got here: `docs/HISTORY.md` (round by round: what was built, tried and dropped).
@@ -62,8 +62,8 @@ These come from the brief and the feedback; keep them when changing anything.
 | 2715–2785 | paper bird mesh | crane geometry, shadow map |
 | 2786–2877 | size-dependent resources | `allocate`/`freeRes`/`resize` (with out-of-memory retry) |
 | 2878–3201 | flight, input, camera | `FLIGHT`, `bird_`, `readPreset` (test views), input (mouse, touch, keys, gamepad), `updateFlight`, `updateCamera` |
-| 3202–3492 | rendering | GPU timers / `?cpuprof`, `render()` (the frame graph), `renderBird`, async probe readback |
-| 3493–3676 | hint, main loop, boot | dynamic resolution, `loop`/`frameStep`, context loss, fullscreen, `boot`, `window.__debug` |
+| 3202–3499 | rendering | GPU timers / `?cpuprof`, `render()` (the frame graph), `renderBird`, async probe readback |
+| 3500–3683 | hint, main loop, boot | dynamic resolution, `loop`/`frameStep`, context loss, fullscreen, `boot`, `window.__debug` |
 
 Shaders are JavaScript template strings composed by concatenation (`GLSL_COMMON + GLSL_ATMO +
 GLSL_CLOUD + ...`) and interpolation (`${MRT_OUT}`, `${MRT_WRITE(...)}`, `#define NOUT` from JS,
@@ -72,7 +72,7 @@ composition into the build).
 
 ## 3. One frame
 
-`frameStep` (≈ line 3599): fixed `dt` in tests, otherwise the real one (capped at 0.1 s).
+`frameStep` (≈ line 3608): fixed `dt` in tests, otherwise the real one (capped at 0.1 s).
 
 1. `resize()`: canvas size (device pixels, capped at 2.3 Mpx, 1.15 Mpx on touch devices); on
    change `allocate()` all size-dependent targets; if that fails (GPU memory) retry smaller.
