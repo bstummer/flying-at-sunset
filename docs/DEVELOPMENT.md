@@ -74,7 +74,7 @@ tools test.
 | `src/index.html`, `src/style.css` | the page: canvas, hint, touch ring, note; loads `main.js` |
 | `src/main.js` | the hint, the main loop (`frameStep`), context loss, fullscreen, `boot()`, `window.__debug` |
 | `src/params.js` | URL parameters: `Q`, `TEST`, `DEBUG`, `VIEW`, `DBG_MODE`, `TONEMAP`, `CONTRAST`, `HAZE_K` |
-| `src/page.js` | the page's elements and `fail()` (the note) |
+| `src/page.js` | the page's elements, `fail()` (the note), `COARSE` (a touch device) |
 | `src/math.js` | `clamp lerp sat smoothstep damp fmod add sub scl dot cross len norm mix3 mulberry32 halton spring mat4Mul perspective ortho viewFromBasis` |
 | `src/constants.js` | `SUN_DIR` (5° up, toward −Z), `WIND`, `WIND_ANG`, `SHAPE_N`, `DETAIL_N`, `ORIGIN_Q`, `CLOUD_TOP` |
 | `src/world/` | **the CPU world generator** (section 5): `noise.js`, `air.js`, `shapes.js`, `thermals.js`, `cells.js`, `queries.js`, `columns.js`; no DOM, no WebGL (the Node tools run it) |

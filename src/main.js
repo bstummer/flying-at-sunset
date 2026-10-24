@@ -5,7 +5,7 @@
 // =====================================================================================
 
 import { DEBUG, Q, TEST } from './params.js';
-import { canvas, fail, hintEl } from './page.js';
+import { canvas, COARSE, fail, hintEl } from './page.js';
 import { DEG } from './math.js';
 import { checkPrograms, extParallel, gl, programs } from './render/gl.js';
 import { cloudTopAt, seaTopAt, towersNear } from './world/queries.js';
@@ -22,18 +22,16 @@ import { frame, render } from './render/frame.js';
 import { adaptResolution, DR } from './render/resolution.js';
 
 // ---- hint & main loop
-const isTouch = matchMedia('(pointer: coarse)').matches;   // primary pointer is a finger
-hintEl.innerHTML = isTouch ? 'Touch and drag to steer<small>dive to gather speed · climb to soar</small>'
+hintEl.innerHTML = COARSE ? 'Touch and drag to steer<small>dive to gather speed · climb to soar</small>'
   : 'Move the mouse to steer<small>dive to gather speed · climb to soar · arrow keys work too</small>';
 let hintShown = false, hintHidden = false;
 
-let last = -1, clock = 0, fpsAcc = 0, fpsN = 0;
+let last = -1, clock = 0, fps = 0, fpsAcc = 0, fpsN = 0;
 const statsEl = DEBUG && !TEST ? document.createElement('div') : null;
 if (statsEl) { statsEl.id = 'stats'; document.body.appendChild(statsEl); }
 const FIXED_DT = TEST ? parseFloat(Q.get('dt') || '0.0166') : 0;
 const TEST_FRAMES = parseInt(Q.get('frames') || '24', 10);
 const FREEZE = Q.has('freeze');
-const stats = { fps: 0 };
 
 let startWall = -1;
 function loop(now) {
@@ -59,7 +57,7 @@ function frameStep(now) {
   else updateFlight(0, clock);
   updateCamera(dt, frame === 0, clock);
   updateInCloud(dt);
-  render(clock, dt);
+  render(clock);
   if (frame === 2) canvas.classList.add('on');
   // hint (wall-clock timing so it behaves the same at any frame rate)
   if (!TEST) {
@@ -70,10 +68,10 @@ function frameStep(now) {
   if (frame > 3) adaptResolution(dtMs);
   fpsAcc += dtMs; fpsN++;
   if (fpsN >= 30) {
-    stats.fps = 1000 / (fpsAcc / fpsN); fpsAcc = 0; fpsN = 0;
+    fps = 1000 / (fpsAcc / fpsN); fpsAcc = 0; fpsN = 0;
     if (statsEl) {
       const g = gpuTimer ? Object.entries(gpuTimer.ms).map(([k, v]) => `${k} ${v.toFixed(2)}`).join('  ') + `  = ${gpuTimer.total().toFixed(2)} ms` : 'no gpu timer';
-      statsEl.textContent = `${stats.fps.toFixed(1)} fps  ${R.w}x${R.h}  clouds ${R.lowW}x${R.lowH} (${R.scale.toFixed(2)})\n${g}\nalt ${bird_.pos[1].toFixed(0)} m  speed ${bird_.speed.toFixed(0)} m/s  sea ${seaTopAt(bird_.pos[0], bird_.pos[2]).toFixed(0)}  world jobs ${worldStats.jobs} queued ${bakeQueue.length}`;
+      statsEl.textContent = `${fps.toFixed(1)} fps  ${R.w}x${R.h}  clouds ${R.lowW}x${R.lowH} (${R.scale.toFixed(2)})\n${g}\nalt ${bird_.pos[1].toFixed(0)} m  speed ${bird_.speed.toFixed(0)} m/s  sea ${seaTopAt(bird_.pos[0], bird_.pos[2]).toFixed(0)}  world jobs ${worldStats.jobs} queued ${bakeQueue.length}`;
     }
   }
   window.__frame = frame;

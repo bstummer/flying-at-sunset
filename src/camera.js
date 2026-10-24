@@ -7,7 +7,7 @@ import { inCloud } from './render/probe.js';
 import { bird_, FLIGHT } from './flight.js';
 
 export const cam = {
-  pos: [0, 0, 0], prevPos: [0, 0, 0], offset: null, fwdSmooth: null, roll: 0, fov: 50 * DEG, shake: [0, 0],
+  pos: [0, 0, 0], prevPos: [0, 0, 0], offset: null, fwdSmooth: null, roll: 0, fov: 50 * DEG,
   right: [1, 0, 0], up: [0, 1, 0], fwd: [0, 0, -1],
 };
 const CLOSEUP = Q.has('closeup') ? Q.get('closeup').split(',').map(Number) : null;   // (?closeup: a test camera)

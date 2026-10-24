@@ -6,11 +6,9 @@ import { GLSL_CLOUD } from './cloud.js';
 
 export const FS_PROBE = GLSL_COMMON + GLSL_ATMO + GLSL_CLOUD + /* glsl */ `
 uniform sampler2D uAmb;
-uniform sampler2D uSky;
 uniform vec3 uCamPos;     // render space
 uniform vec3 uBirdRel;    // bird - camera
 uniform vec3 uAmbSea;
-uniform float uFrame;
 out vec4 o;
 float sigmaAt(vec3 wp, float h, out float sdf) {
   vec4 C = colAt(wp.xz, 0);

@@ -73,6 +73,8 @@ const hintEl = document.getElementById('hint');
 const noteEl = document.getElementById('note');
 const touchEl = document.getElementById('touch');
 
+const COARSE = matchMedia('(pointer: coarse)').matches;   // primary pointer is a finger
+
 function fail(msg) {
   noteEl.style.display = 'flex';
   noteEl.textContent = msg;
@@ -190,7 +192,7 @@ void main() {
 }`;
 
 const programs = [];
-function compileShader(type, src, name) {
+function compileShader(type, src) {
   const s = gl.createShader(type);
   gl.shaderSource(s, src);
   gl.compileShader(s);
@@ -198,7 +200,7 @@ function compileShader(type, src, name) {
 }
 function makeProgram(name, fs, vs = VS_FULLSCREEN) {
   const p = gl.createProgram();
-  const v = compileShader(gl.VERTEX_SHADER, vs, name), f = compileShader(gl.FRAGMENT_SHADER, fs, name);
+  const v = compileShader(gl.VERTEX_SHADER, vs), f = compileShader(gl.FRAGMENT_SHADER, fs);
   gl.attachShader(p, v); gl.attachShader(p, f); gl.linkProgram(p);
   const prog = { name, p, v, f, loc: {}, fsSrc: fs, vsSrc: vs };
   programs.push(prog);
@@ -852,7 +854,7 @@ function tierCell(T, ci, cj, coarse = false) {
 function worldGC(cx, cz) {
   for (const T of TIERS) for (const [cache, keep] of [[T.cache, T.small ? 90000 : 160000], [T.coarse, 420000], [T.sites, 480000]]) {
     if (cache.size < 2500) continue;
-    for (const [k, c] of cache) {
+    for (const k of cache.keys()) {
       const [i, j] = k.split(',').map(Number);
       if (Math.max(Math.abs((i + 0.5) * T.S - cx), Math.abs((j + 0.5) * T.S - cz)) > keep) cache.delete(k);
     }
@@ -1368,7 +1370,6 @@ uniform sampler3D uDetail;
 uniform sampler3D uTSV;
 uniform vec3 uShapeOff;     // slow evolution of the sea billows (wrapped)
 uniform vec3 uDetailOff;
-uniform float uTime;
 uniform vec3 uSunDir;
 uniform vec3 uSunCol[16];
 
@@ -2037,11 +2038,9 @@ void main() {
 
 const FS_PROBE = GLSL_COMMON + GLSL_ATMO + GLSL_CLOUD + /* glsl */ `
 uniform sampler2D uAmb;
-uniform sampler2D uSky;
 uniform vec3 uCamPos;     // render space
 uniform vec3 uBirdRel;    // bird - camera
 uniform vec3 uAmbSea;
-uniform float uFrame;
 out vec4 o;
 float sigmaAt(vec3 wp, float h, out float sdf) {
   vec4 C = colAt(wp.xz, 0);
@@ -2494,7 +2493,7 @@ FB.layers = framebuffer([T.layers]);
 FB.probe = framebuffer([T.probe]);
 const fbLayer = gl.createFramebuffer();
 
-function renderVolume(tex, n, depth, uniformsFor) {
+function renderVolume(tex, depth, uniformsFor) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbLayer);
   gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
   for (let z = 0; z < depth; z++) {
@@ -2514,8 +2513,8 @@ const layerColUniform = { v3: new Float32Array([...sunColorAt(6300), ...sunColor
 // one-off generation of all static GPU data (runs once the shaders are compiled)
 function generateStatic() {
 // noise volumes
-renderVolume(T.shape, SHAPE_N, SHAPE_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / SHAPE_N, uSize: SHAPE_N, uCells: [4, 8, 16, 32], uMode: { i: 0 } } }));
-renderVolume(T.detail, DETAIL_N, DETAIL_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / DETAIL_N, uSize: DETAIL_N, uCells: [4, 8, 16, 24], uMode: { i: 1 } } }));
+renderVolume(T.shape, SHAPE_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / SHAPE_N, uSize: SHAPE_N, uCells: [4, 8, 16, 32], uMode: { i: 0 } } }));
+renderVolume(T.detail, DETAIL_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / DETAIL_N, uSize: DETAIL_N, uCells: [4, 8, 16, 24], uMode: { i: 1 } } }));
 pass(P.cirrus, FB.cirrus, 512, 512, { uSize: 512 });
 pass(P.layers, FB.layers, 1024, 1024, { uSize: 1024 });
 gl.bindTexture(gl.TEXTURE_2D, T.layers.tex);           // seen at grazing angles far away: mipmaps
@@ -2843,7 +2842,6 @@ function allocate(w, h) {
   R.histValid = 0;
 }
 
-const COARSE = matchMedia('(pointer: coarse)').matches;
 R.maxPixels = COARSE ? 1.15e6 : 2.3e6;
 if (COARSE && !TEST) R.scale = 0.36;
 let allocFails = 0;
@@ -2909,7 +2907,7 @@ function updateInCloud(dt) {
 // Steering: mouse, touch, keys, gamepad (and the scripted input of the test mode)
 
 const input = {
-  mouse: null, touch: null, keys: new Set(), steerX: 0, steerY: 0, sx: 0, sy: 0, lastActive: -1e9, activeTime: 0,
+  mouse: null, touch: null, keys: new Set(), sx: 0, sy: 0, lastActive: -1e9, activeTime: 0,
 };
 
 function shaping(v, dead) {
@@ -3020,7 +3018,6 @@ const bird_ = {
   pos: [0, seaTopAt(0, 0) + 750, 0], yaw: 0.45, gamma: 0, gammaV: 0, bank: 0, bankV: 0, speed: 66, aoa: 0.05,
   fwd: [0, 0, -1], up: [0, 1, 0], right: [1, 0, 0], load: 1, turnRate: 0, accel: 0,
 };
-let lastFloorPush = 0;
 
 function updateFlight(dt, time) {
   const b = bird_, F = FLIGHT;
@@ -3083,7 +3080,7 @@ function updateFlight(dt, time) {
 // The chase camera
 
 const cam = {
-  pos: [0, 0, 0], prevPos: [0, 0, 0], offset: null, fwdSmooth: null, roll: 0, fov: 50 * DEG, shake: [0, 0],
+  pos: [0, 0, 0], prevPos: [0, 0, 0], offset: null, fwdSmooth: null, roll: 0, fov: 50 * DEG,
   right: [1, 0, 0], up: [0, 1, 0], fwd: [0, 0, -1],
 };
 const CLOSEUP = Q.has('closeup') ? Q.get('closeup').split(',').map(Number) : null;   // (?closeup: a test camera)
@@ -3183,7 +3180,7 @@ function readPreset() {
   };
   // seen from the sun's side (the sun behind the viewer, a little to one side); prefer towers whose
   // sunward face no other tower shades
-  const sideDir = t => -PI / 2 + 1.1;
+  const sideDir = -PI / 2 + 1.1;
   const sunlit = t => {
     const H = t.top - t.y0;
     for (const f of [0.35, 0.6]) {
@@ -3194,9 +3191,9 @@ function readPreset() {
   };
   const big = ts.filter(t => t.top > 8000 && Math.hypot(t.x, t.z) < 70000);
   const bt = big.find(sunlit) || big[0] || ts[0];
-  if (bt) { const v = clearOf(bt, sideDir(bt), null, 2500, 9000); if (v) presets.tower = Object.assign(v, { gamma: 0.12 }); }
+  if (bt) { const v = clearOf(bt, sideDir, null, 2500, 9000); if (v) presets.tower = Object.assign(v, { gamma: 0.12 }); }
   if (big.length) {
-    const g = big.reduce((a, b) => b.top > a.top ? b : a), v = clearOf(g, sideDir(g), null, 25000);
+    const g = big.reduce((a, b) => b.top > a.top ? b : a), v = clearOf(g, sideDir, null, 25000);
     if (v) presets.giant = Object.assign(v, { gamma: 0.06 });
   }
   // (an anvil is nothing the world makes on purpose: a tower that hit the ceiling and spread wide)
@@ -3205,9 +3202,9 @@ function readPreset() {
   // (seen from high up and far off, against the sun, as from an airliner)
   if (anv) { const v = clearOf(anv, PI / 2 + 0.08, 7000, 3000, 50000); if (v) presets.anvil = Object.assign(v, { gamma: 0.02 }); }
   if (bt) {
-    const v = clearOf(bt, sideDir(bt), bt.y0 + 1100, 900, 3000);
+    const v = clearOf(bt, sideDir, bt.y0 + 1100, 900, 3000);
     if (v) presets.close = Object.assign(v, { gamma: 0.32 });
-    const w = clearOf(bt, sideDir(bt), bt.y0 + 1500, 5000, 7000);
+    const w = clearOf(bt, sideDir, bt.y0 + 1500, 5000, 7000);
     if (w) presets.approach = Object.assign(w, { gamma: 0.0 });
     presets.inside = { x: bt.x, z: bt.z, y: bt.y0 + (bt.top - bt.y0) * 0.4, yaw: 0.3, gamma: 0.0 };
   }
@@ -3448,7 +3445,7 @@ function viewProjRot(camR, camU, camF, fovy, aspect) {
   return mat4Mul(perspective(fovy, aspect, 0.05, 1e8), V);
 }
 
-function render(time, dt) {
+function render(time) {
   const w = R.w, h = R.h, aspect = w / h;
   // --- dynamic cloud resolution
   R.lowW = Math.max(16, Math.round(w * R.scale)); R.lowH = Math.max(16, Math.round(h * R.scale));
@@ -3468,7 +3465,7 @@ function render(time, dt) {
   const ambSea = scl(sunColorAt(1500), 0.065);
   const common = Object.assign(worldUniforms(O), {
     uShape: T.shape, uDetail: T.detail, uTSV: T.tsv,
-    uShapeOff: shapeOff, uDetailOff: detailOff, uTime: time % 1e5, uSunDir: SUN_DIR, uSunCol: sunColUniform,
+    uShapeOff: shapeOff, uDetailOff: detailOff, uSunDir: SUN_DIR, uSunCol: sunColUniform,
   });
 
   // --- sky view LUT for the current altitude + ambient
@@ -3479,7 +3476,7 @@ function render(time, dt) {
   // --- probe (bird lighting, mist)
   const birdRel = sub(bird_.pos, cam.pos);
   pass(P.probe, FB.probe, 8, 1, Object.assign({}, common, {
-    uAmb: T.amb, uSky: T.sky, uCamPos: camR, uBirdRel: birdRel, uAmbSea: ambSea, uFrame: frame,
+    uAmb: T.amb, uCamPos: camR, uBirdRel: birdRel, uAmbSea: ambSea,
   }));
   tEnd();
   readProbeAsync();
@@ -3673,18 +3670,16 @@ function downgradePixels() {
 // =====================================================================================
 
 // ---- hint & main loop
-const isTouch = matchMedia('(pointer: coarse)').matches;   // primary pointer is a finger
-hintEl.innerHTML = isTouch ? 'Touch and drag to steer<small>dive to gather speed · climb to soar</small>'
+hintEl.innerHTML = COARSE ? 'Touch and drag to steer<small>dive to gather speed · climb to soar</small>'
   : 'Move the mouse to steer<small>dive to gather speed · climb to soar · arrow keys work too</small>';
 let hintShown = false, hintHidden = false;
 
-let last = -1, clock = 0, fpsAcc = 0, fpsN = 0;
+let last = -1, clock = 0, fps = 0, fpsAcc = 0, fpsN = 0;
 const statsEl = DEBUG && !TEST ? document.createElement('div') : null;
 if (statsEl) { statsEl.id = 'stats'; document.body.appendChild(statsEl); }
 const FIXED_DT = TEST ? parseFloat(Q.get('dt') || '0.0166') : 0;
 const TEST_FRAMES = parseInt(Q.get('frames') || '24', 10);
 const FREEZE = Q.has('freeze');
-const stats = { fps: 0 };
 
 let startWall = -1;
 function loop(now) {
@@ -3710,7 +3705,7 @@ function frameStep(now) {
   else updateFlight(0, clock);
   updateCamera(dt, frame === 0, clock);
   updateInCloud(dt);
-  render(clock, dt);
+  render(clock);
   if (frame === 2) canvas.classList.add('on');
   // hint (wall-clock timing so it behaves the same at any frame rate)
   if (!TEST) {
@@ -3721,10 +3716,10 @@ function frameStep(now) {
   if (frame > 3) adaptResolution(dtMs);
   fpsAcc += dtMs; fpsN++;
   if (fpsN >= 30) {
-    stats.fps = 1000 / (fpsAcc / fpsN); fpsAcc = 0; fpsN = 0;
+    fps = 1000 / (fpsAcc / fpsN); fpsAcc = 0; fpsN = 0;
     if (statsEl) {
       const g = gpuTimer ? Object.entries(gpuTimer.ms).map(([k, v]) => `${k} ${v.toFixed(2)}`).join('  ') + `  = ${gpuTimer.total().toFixed(2)} ms` : 'no gpu timer';
-      statsEl.textContent = `${stats.fps.toFixed(1)} fps  ${R.w}x${R.h}  clouds ${R.lowW}x${R.lowH} (${R.scale.toFixed(2)})\n${g}\nalt ${bird_.pos[1].toFixed(0)} m  speed ${bird_.speed.toFixed(0)} m/s  sea ${seaTopAt(bird_.pos[0], bird_.pos[2]).toFixed(0)}  world jobs ${worldStats.jobs} queued ${bakeQueue.length}`;
+      statsEl.textContent = `${fps.toFixed(1)} fps  ${R.w}x${R.h}  clouds ${R.lowW}x${R.lowH} (${R.scale.toFixed(2)})\n${g}\nalt ${bird_.pos[1].toFixed(0)} m  speed ${bird_.speed.toFixed(0)} m/s  sea ${seaTopAt(bird_.pos[0], bird_.pos[2]).toFixed(0)}  world jobs ${worldStats.jobs} queued ${bakeQueue.length}`;
     }
   }
   window.__frame = frame;

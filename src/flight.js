@@ -10,7 +10,6 @@ export const bird_ = {
   pos: [0, seaTopAt(0, 0) + 750, 0], yaw: 0.45, gamma: 0, gammaV: 0, bank: 0, bankV: 0, speed: 66, aoa: 0.05,
   fwd: [0, 0, -1], up: [0, 1, 0], right: [1, 0, 0], load: 1, turnRate: 0, accel: 0,
 };
-let lastFloorPush = 0;
 
 export function updateFlight(dt, time) {
   const b = bird_, F = FLIGHT;

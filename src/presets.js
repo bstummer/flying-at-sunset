@@ -45,7 +45,7 @@ function readPreset() {
   };
   // seen from the sun's side (the sun behind the viewer, a little to one side); prefer towers whose
   // sunward face no other tower shades
-  const sideDir = t => -PI / 2 + 1.1;
+  const sideDir = -PI / 2 + 1.1;
   const sunlit = t => {
     const H = t.top - t.y0;
     for (const f of [0.35, 0.6]) {
@@ -56,9 +56,9 @@ function readPreset() {
   };
   const big = ts.filter(t => t.top > 8000 && Math.hypot(t.x, t.z) < 70000);
   const bt = big.find(sunlit) || big[0] || ts[0];
-  if (bt) { const v = clearOf(bt, sideDir(bt), null, 2500, 9000); if (v) presets.tower = Object.assign(v, { gamma: 0.12 }); }
+  if (bt) { const v = clearOf(bt, sideDir, null, 2500, 9000); if (v) presets.tower = Object.assign(v, { gamma: 0.12 }); }
   if (big.length) {
-    const g = big.reduce((a, b) => b.top > a.top ? b : a), v = clearOf(g, sideDir(g), null, 25000);
+    const g = big.reduce((a, b) => b.top > a.top ? b : a), v = clearOf(g, sideDir, null, 25000);
     if (v) presets.giant = Object.assign(v, { gamma: 0.06 });
   }
   // (an anvil is nothing the world makes on purpose: a tower that hit the ceiling and spread wide)
@@ -67,9 +67,9 @@ function readPreset() {
   // (seen from high up and far off, against the sun, as from an airliner)
   if (anv) { const v = clearOf(anv, PI / 2 + 0.08, 7000, 3000, 50000); if (v) presets.anvil = Object.assign(v, { gamma: 0.02 }); }
   if (bt) {
-    const v = clearOf(bt, sideDir(bt), bt.y0 + 1100, 900, 3000);
+    const v = clearOf(bt, sideDir, bt.y0 + 1100, 900, 3000);
     if (v) presets.close = Object.assign(v, { gamma: 0.32 });
-    const w = clearOf(bt, sideDir(bt), bt.y0 + 1500, 5000, 7000);
+    const w = clearOf(bt, sideDir, bt.y0 + 1500, 5000, 7000);
     if (w) presets.approach = Object.assign(w, { gamma: 0.0 });
     presets.inside = { x: bt.x, z: bt.z, y: bt.y0 + (bt.top - bt.y0) * 0.4, yaw: 0.3, gamma: 0.0 };
   }

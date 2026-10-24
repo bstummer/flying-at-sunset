@@ -9,6 +9,8 @@ export const hintEl = document.getElementById('hint');
 const noteEl = document.getElementById('note');
 export const touchEl = document.getElementById('touch');
 
+export const COARSE = matchMedia('(pointer: coarse)').matches;   // primary pointer is a finger
+
 export function fail(msg) {
   noteEl.style.display = 'flex';
   noteEl.textContent = msg;

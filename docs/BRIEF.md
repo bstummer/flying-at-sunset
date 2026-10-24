@@ -222,6 +222,12 @@ The message as sent:
 > Commit all useful things that one might need. This chat will be deleted and after that the
 > project will be restructured (split in multiple files, output is one file).
 
+## 8 — split it up (24 Oct)
+
+> One single file is very annoying for development. Split it up in a structure that makes sense.
+> Commit it. Remove anything that is unnecessary and make sure the output game doesn't change
+> through the splitting.
+
 ## The inspiration photos
 
 Five photos were attached (three with request 3, two with request 6). They are not in this

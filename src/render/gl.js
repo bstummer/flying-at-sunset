@@ -61,7 +61,7 @@ void main() {
 }`;
 
 export const programs = [];
-function compileShader(type, src, name) {
+function compileShader(type, src) {
   const s = gl.createShader(type);
   gl.shaderSource(s, src);
   gl.compileShader(s);
@@ -69,7 +69,7 @@ function compileShader(type, src, name) {
 }
 export function makeProgram(name, fs, vs = VS_FULLSCREEN) {
   const p = gl.createProgram();
-  const v = compileShader(gl.VERTEX_SHADER, vs, name), f = compileShader(gl.FRAGMENT_SHADER, fs, name);
+  const v = compileShader(gl.VERTEX_SHADER, vs), f = compileShader(gl.FRAGMENT_SHADER, fs);
   gl.attachShader(p, v); gl.attachShader(p, f); gl.linkProgram(p);
   const prog = { name, p, v, f, loc: {}, fsSrc: fs, vsSrc: vs };
   programs.push(prog);

@@ -258,7 +258,7 @@ function tierCell(T, ci, cj, coarse = false) {
 export function worldGC(cx, cz) {
   for (const T of TIERS) for (const [cache, keep] of [[T.cache, T.small ? 90000 : 160000], [T.coarse, 420000], [T.sites, 480000]]) {
     if (cache.size < 2500) continue;
-    for (const [k, c] of cache) {
+    for (const k of cache.keys()) {
       const [i, j] = k.split(',').map(Number);
       if (Math.max(Math.abs((i + 0.5) * T.S - cx), Math.abs((j + 0.5) * T.S - cz)) > keep) cache.delete(k);
     }

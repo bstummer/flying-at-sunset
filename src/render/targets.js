@@ -1,7 +1,7 @@
 // Size-dependent render targets: allocated for the canvas size, retried smaller when GPU memory runs out
 
 import { Q, TEST } from '../params.js';
-import { canvas } from '../page.js';
+import { canvas, COARSE } from '../page.js';
 import { framebuffer, gl, HALF, RGBA16F, texture2D } from './gl.js';
 import { FB, T } from './setup.js';
 
@@ -70,7 +70,6 @@ function allocate(w, h) {
   R.histValid = 0;
 }
 
-const COARSE = matchMedia('(pointer: coarse)').matches;
 R.maxPixels = COARSE ? 1.15e6 : 2.3e6;
 if (COARSE && !TEST) R.scale = 0.36;
 let allocFails = 0;

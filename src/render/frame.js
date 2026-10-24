@@ -22,7 +22,7 @@ function viewProjRot(camR, camU, camF, fovy, aspect) {
   return mat4Mul(perspective(fovy, aspect, 0.05, 1e8), V);
 }
 
-export function render(time, dt) {
+export function render(time) {
   const w = R.w, h = R.h, aspect = w / h;
   // --- dynamic cloud resolution
   R.lowW = Math.max(16, Math.round(w * R.scale)); R.lowH = Math.max(16, Math.round(h * R.scale));
@@ -42,7 +42,7 @@ export function render(time, dt) {
   const ambSea = scl(sunColorAt(1500), 0.065);
   const common = Object.assign(worldUniforms(O), {
     uShape: T.shape, uDetail: T.detail, uTSV: T.tsv,
-    uShapeOff: shapeOff, uDetailOff: detailOff, uTime: time % 1e5, uSunDir: SUN_DIR, uSunCol: sunColUniform,
+    uShapeOff: shapeOff, uDetailOff: detailOff, uSunDir: SUN_DIR, uSunCol: sunColUniform,
   });
 
   // --- sky view LUT for the current altitude + ambient
@@ -53,7 +53,7 @@ export function render(time, dt) {
   // --- probe (bird lighting, mist)
   const birdRel = sub(bird_.pos, cam.pos);
   pass(P.probe, FB.probe, 8, 1, Object.assign({}, common, {
-    uAmb: T.amb, uSky: T.sky, uCamPos: camR, uBirdRel: birdRel, uAmbSea: ambSea, uFrame: frame,
+    uAmb: T.amb, uCamPos: camR, uBirdRel: birdRel, uAmbSea: ambSea,
   }));
   tEnd();
   readProbeAsync();

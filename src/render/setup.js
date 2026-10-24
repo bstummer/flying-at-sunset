@@ -62,7 +62,7 @@ FB.layers = framebuffer([T.layers]);
 FB.probe = framebuffer([T.probe]);
 const fbLayer = gl.createFramebuffer();
 
-function renderVolume(tex, n, depth, uniformsFor) {
+function renderVolume(tex, depth, uniformsFor) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbLayer);
   gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
   for (let z = 0; z < depth; z++) {
@@ -82,8 +82,8 @@ export const layerColUniform = { v3: new Float32Array([...sunColorAt(6300), ...s
 // one-off generation of all static GPU data (runs once the shaders are compiled)
 export function generateStatic() {
 // noise volumes
-renderVolume(T.shape, SHAPE_N, SHAPE_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / SHAPE_N, uSize: SHAPE_N, uCells: [4, 8, 16, 32], uMode: { i: 0 } } }));
-renderVolume(T.detail, DETAIL_N, DETAIL_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / DETAIL_N, uSize: DETAIL_N, uCells: [4, 8, 16, 24], uMode: { i: 1 } } }));
+renderVolume(T.shape, SHAPE_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / SHAPE_N, uSize: SHAPE_N, uCells: [4, 8, 16, 32], uMode: { i: 0 } } }));
+renderVolume(T.detail, DETAIL_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / DETAIL_N, uSize: DETAIL_N, uCells: [4, 8, 16, 24], uMode: { i: 1 } } }));
 pass(P.cirrus, FB.cirrus, 512, 512, { uSize: 512 });
 pass(P.layers, FB.layers, 1024, 1024, { uSize: 1024 });
 gl.bindTexture(gl.TEXTURE_2D, T.layers.tex);           // seen at grazing angles far away: mipmaps

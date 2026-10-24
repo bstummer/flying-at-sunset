@@ -21,7 +21,6 @@ uniform sampler3D uDetail;
 uniform sampler3D uTSV;
 uniform vec3 uShapeOff;     // slow evolution of the sea billows (wrapped)
 uniform vec3 uDetailOff;
-uniform float uTime;
 uniform vec3 uSunDir;
 uniform vec3 uSunCol[16];
 

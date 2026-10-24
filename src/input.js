@@ -5,7 +5,7 @@ import { canvas, touchEl } from './page.js';
 import { damp } from './math.js';
 
 export const input = {
-  mouse: null, touch: null, keys: new Set(), steerX: 0, steerY: 0, sx: 0, sy: 0, lastActive: -1e9, activeTime: 0,
+  mouse: null, touch: null, keys: new Set(), sx: 0, sy: 0, lastActive: -1e9, activeTime: 0,
 };
 
 function shaping(v, dead) {

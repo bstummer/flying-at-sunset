@@ -131,3 +131,24 @@ Commits: `bdd8cdc`, `38751c6`.
 - Test mode made fully deterministic: the probe (light and cloud at the bird and camera) is read
   back asynchronously, so under load in-cloud test renders varied by 1–2 levels between runs; test
   mode now reads it at once and uses it the next frame (normal use unchanged).
+
+## Round 8 — split into modules (24 Oct)
+
+- The author: one single file is very annoying for development; split it into a structure that
+  makes sense, remove anything unnecessary, and make sure the game does not change.
+- The code moved verbatim into ES modules under `src/` (the world generator, the renderer, the
+  shaders, the flight, steering, camera, test views and the main loop); `build.mjs` (Node, no
+  dependencies) joins them into `index.html`, still the one published file: the stylesheet
+  inlined, the modules in the order the browser runs them, one scope. `tools/serve.mjs` serves the
+  sources as modules for development. ES modules needed a few edits: without WebGL 2 the context
+  module throws instead of returning; state other parts change lives in objects or is changed
+  through its own module; the clock and the frame number are passed as parameters.
+- Removed as unnecessary: an unused variable, unused parameters and object fields, shader uniforms
+  nothing read (`uTime` in the shared cloud code, `uSky` and `uFrame` in the probe) with the values
+  passed for them, a second copy of the touch-device check, the tool that spliced world sections
+  into the single file, and the Node tools' copy of the math kit (they load `src/world/` itself).
+- Checked unchanged against the single file: the world fingerprint, the 14 regression renders
+  (bit-identical), the full flight logs of eight scripted flights, an 8 km flight that streams the
+  world in (images byte-identical); and all presets, input, UI timing, out-of-memory recovery,
+  dynamic resolution, the baked volumes. The sources run as modules render exactly what the build
+  renders.
