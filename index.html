@@ -2894,6 +2894,7 @@ const input = {
 
 function readPreset() {
   const pre = Q.get('preset');
+  if (!pre) return;     // (the test views look for towers far around: only when one is asked for)
   const sea0 = seaTopAt(0, 0);
   const presets = {
     start: { y: sea0 + 750, yaw: 0.45, gamma: 0 },
