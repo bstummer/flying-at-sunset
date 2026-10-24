@@ -1,22 +1,30 @@
 // Shared helpers for the browser-driven tools: find Playwright, launch Chromium with software GL
 // (SwiftShader, so renders are the same on every machine without a GPU), and locate the page.
 //
-//   PAGE=path/to/page.html   the page to test (default: index.html at the repo root). After the
-//                             project is split into source files, point this at the built output.
+//   PAGE=path/to/page.html   the page to test (default: index.html at the repo root, which
+//                             build.mjs writes from src/)
 //   PLAYWRIGHT_MODULE=...     where to import Playwright from, if `import('playwright')` fails
 //   CHROMIUM_ARGS="..."       replace the default Chromium flags (e.g. to try a real GPU)
 import fs from 'fs';
 import path from 'path';
 import url from 'url';
 import { createRequire } from 'module';
+import { build } from '../../build.mjs';
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(here, '..', '..');
 export const TOOLS = path.resolve(here, '..');
 
+let checked = false;
 export function pagePath() {
   const p = process.env.PAGE ? path.resolve(process.env.PAGE) : path.join(ROOT, 'index.html');
   if (!fs.existsSync(p)) throw new Error('page not found: ' + p + ' (set PAGE=...)');
+  // (the built page should be what src/ builds to: say so once if it is not)
+  if (!process.env.PAGE && !checked) {
+    checked = true;
+    try { if (fs.readFileSync(p, 'utf8') !== build()) console.error('warning: index.html is not built from the current src/ (run node build.mjs)'); }
+    catch (e) { console.error('warning: src/ does not build: ' + e.message); }
+  }
   return p;
 }
 // file:// URL of the page with a query string (without the leading '?')

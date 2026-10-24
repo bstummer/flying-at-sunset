@@ -3,9 +3,10 @@
 A small folded paper bird glides over an endless sea of clouds at golden hour, steered by you.
 No goals, no score — just the light, the clouds and the glide.
 
-Everything lives in one self-contained file: **`index.html`**. Open it in a recent desktop or
-mobile browser with WebGL 2 (Chrome, Edge, Firefox, Safari 15+). It works straight from disk
-(`file://`) or from any static web server; there are no dependencies or assets to load.
+Everything lives in one self-contained file: **`index.html`** (built from the sources in `src/`).
+Open it in a recent desktop or mobile browser with WebGL 2 (Chrome, Edge, Firefox, Safari 15+). It
+works straight from disk (`file://`) or from any static web server; there are no dependencies or
+assets to load.
 
 ## Controls
 
@@ -91,15 +92,20 @@ rise above the sea, but the bird is softly kept from sinking deep into the cloud
 
 ## For developers
 
+* [`src/`](src/) — the sources: ES modules for the world generator, the renderer and its shaders,
+  the flight, the steering and the camera. `node tools/serve.mjs` runs them as they are at
+  http://localhost:8000/src/ (edit, reload); `node build.mjs` joins them into `index.html`, which
+  is what gets published (commit both). Only Node is needed.
 * [`docs/BRIEF.md`](docs/BRIEF.md) — what the piece should be: every request verbatim, the
   inspiration photos described, the feedback themes.
-* [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — how it works (sections of the file, the frame, the
-  world generator and its causes, streaming, the cloud renderer, flight, image, speed), test hooks,
-  performance baselines, known issues, tuning lessons, and a guide for splitting the file.
+* [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — how it works (the source files and the build, the
+  frame, the world generator and its causes, streaming, the cloud renderer, flight, image, speed),
+  test hooks, performance baselines, known issues, tuning lessons, checking a change.
 * [`docs/HISTORY.md`](docs/HISTORY.md) — what was built, tried and dropped in each round.
 * [`docs/img/`](docs/img/) — reference renders of the current version, a world map, tower silhouettes.
-* [`tools/`](tools/README.md) — render and compare views, measure and draw the generated world in
-  Node, behaviour checks, and regression tests (world fingerprint, render baselines) for refactoring.
+* [`tools/`](tools/README.md) — the local server, rendering and comparing views, the generated
+  world measured and drawn in Node, behaviour checks, and regression tests (world fingerprint,
+  render baselines).
 
 ## Developer switches (URL parameters)
 

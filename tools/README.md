@@ -1,8 +1,9 @@
 # Tools
 
-Development tools for the piece: rendering and comparing views, measuring and drawing the generated
-world without a browser, behaviour checks, and regression tests for refactoring. None of this is
-needed to run the piece. See `docs/DEVELOPMENT.md` for how the piece works.
+Development tools for the piece: a local server for the sources, rendering and comparing views,
+measuring and drawing the generated world without a browser, behaviour checks, and regression
+tests. None of this is needed to run the piece. See `docs/DEVELOPMENT.md` for how it works (section
+2: the source files and the build).
 
 ## Setup
 
@@ -10,24 +11,33 @@ needed to run the piece. See `docs/DEVELOPMENT.md` for how the piece works.
 - **Playwright with Chromium** for everything that renders: `npm install` (the root `package.json`
   pins Playwright 1.56.1, Chromium 141, which recorded the baselines) and
   `npx playwright install chromium`, or set `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs`.
-  `npm run fingerprint`, `npm run regress`, `npm run check:presets` run the regression tests.
+  `npm run build`, `npm run dev`, `npm run fingerprint`, `npm run regress`, `npm run check:modules`,
+  `npm run check:presets` (see `package.json`). The build and the server need only Node.
   Chromium runs headless with **software GL (SwiftShader)**: no GPU needed, renders are
   deterministic, but slow (a 320×180 test render ≈ 30–60 s, mostly the first frame's world bake)
   and only relative timings mean anything. `CHROMIUM_ARGS` replaces the flags (e.g. for a GPU).
 - **Python 3 with Pillow** only for `combine.py` / `crop.py` / `render.sh` (image grids).
-- Every browser tool renders `PAGE` (default `index.html` at the repo root). After the restructure,
-  point it at the built output: `PAGE=dist/index.html node tools/...`.
-- Node world tools load the generator from `index.html` (between the `world constants` and
-  `WORLD END` markers) or from `WSRC=...`: another page, a `.js` file holding the world, or several
-  files joined with `:` in order (`WSRC=src/world/air.js:src/world/cells.js`; ES modules are fine:
-  `import` lines are dropped and `export` keywords removed, as the loader provides the math kit).
-  `QS="seed=3&towers=1.5"` sets the URL parameters the generator reads.
+- Every browser tool renders `PAGE` (default: `index.html` at the repo root, the built page).
+  **Build first** (`node build.mjs`) after changing `src/`; the tools warn when `index.html` is
+  older than the sources. `PAGE=/tmp/other.html` tests another build (`node build.mjs --out ...`).
+- Node world tools run the generator's modules (`src/world/` and what they import) through
+  `tools/world/load.js`; `WSRC=dir` loads another copy (e.g. `src/world` of another checkout), or
+  module files joined with `:`. `QS="seed=3&towers=1.5"` sets the URL parameters the generator
+  reads.
 
-## Regression tests (run these after the restructure)
+## Working on the sources
 
 | command | what |
 |---|---|
-| `node tools/world/fingerprint.js` | hash of everything the CPU world generator produces for fixed places (air, sea columns, column and bubble blocks of every level, towers, surface heights); compares with `world/fingerprint.json`, prints which part differs. `--write` records the current world; `WSRC=...` for the world's source files once split. ~3 s |
+| `node tools/serve.mjs [port]` | a local server: http://localhost:8000/src/ runs the sources as ES modules (edit, reload), http://localhost:8000/ the built page |
+| `node build.mjs` | write `index.html` from `src/` (`--check`: fail if it is out of date; `--out f.html`, `--src dir`) |
+| `node tools/checks/modules.mjs [queries]` | the sources run as modules render exactly what the built page renders, without errors |
+
+## Regression tests (run these after a change)
+
+| command | what |
+|---|---|
+| `node tools/world/fingerprint.js` | hash of everything the CPU world generator produces for fixed places (air, sea columns, column and bubble blocks of every level, towers, surface heights); compares with `world/fingerprint.json`, prints which part differs. `--write` records the current world. ~3 s |
 | `node tools/regress.mjs` | 14 small renders (start, sun, away, side, skim, high2, tower, giant, anvil, close, under, inside, another seed, cloud geometry) compared with `tools/baseline/*.png`; bit-identical on the same Chromium build. `record` re-records; `TOL_MEAN`, `TOL_OVER16` tolerances; new renders in `tools/out/regress/`. ~6 min |
 | `node tools/checks/presets.mjs` | every test preset renders without page or GL errors. ~6 min |
 
@@ -39,8 +49,7 @@ needed to run the piece. See `docs/DEVELOPMENT.md` for how the piece works.
 | `tools/render.sh outdir tag start side away high2 tower giant` | several views, two at a time, combined into `outdir/tag_all.png` (env `W H SCALE FRAMES EXTRA PAGE JOBS`; `name=pose:x,y,z,yaw,pitch` for exact poses) |
 | `python3 tools/combine.py out.png a.png b.png ...` | images side by side, two per row |
 | `python3 tools/crop.py out.png x0 y0 x1 y1 a.png b.png` | the same region (fractions) of several images, stacked: compare detail between versions |
-| `python3 tools/variant.py index.html /tmp/v.html edits.py` | a page variant from exact text replacements (each must match once): A/B experiments with `PAGE=/tmp/v.html` |
-| `python3 tools/splice-world.py world.js out.html` | put another world generator section into a copy of the page |
+| `python3 tools/variant.py index.html /tmp/v.html edits.py` | a variant of the built page from exact text replacements (each must match once): quick A/B experiments with `PAGE=/tmp/v.html` without touching `src/` |
 | `node tools/checks/profile.mjs [pageB.html] [presets]` | per-pass times (`?cpuprof`) of the page, or of two pages side by side with the change in % |
 
 Useful query additions: `&dbg=1` (normals of the cloud surface: geometry without lighting),
@@ -75,5 +84,5 @@ Useful query additions: `&dbg=1` (normals of the cloud surface: geometry without
 | `node tools/checks/stream.mjs [dir]` | fly 8 km, then start fresh at the same pose: the images must match |
 
 Expected results (Oct 2026): all presets ok; 0 GL errors; input banks ±53–55° and levels out;
-alloc-fail recovers in both cases; stream difference small (billows drift with time); fingerprint
-`a3088118a50acbd470b41785`.
+alloc-fail recovers in both cases; stream difference small (billows drift with time); modules and
+built page identical; fingerprint `a3088118a50acbd470b41785`.

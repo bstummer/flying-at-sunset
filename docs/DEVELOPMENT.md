@@ -1,9 +1,8 @@
 # Development notes
 
-How the piece works, why it is the way it is, how to test it, and what to watch out for. Written
-when the project was still one file (`index.html`, ~3,700 lines) and about to be split into
-source files with a build that outputs one file. Line numbers refer to that version (commit
-`9be51d2`, October 2026).
+How the piece works, why it is the way it is, how to test it, and what to watch out for. The
+sources are ES modules in `src/`; `build.mjs` joins them into `index.html`, the one file that is
+published (section 2).
 
 - What the piece should be: `docs/BRIEF.md` (every request verbatim, the photos, the feedback themes).
 - How it got here: `docs/HISTORY.md` (round by round: what was built, tried and dropped).
@@ -12,7 +11,7 @@ source files with a build that outputs one file. Line numbers refer to that vers
 ## Contents
 
 1. Ground rules
-2. The file today: sections and their seams
+2. The source files and the build
 3. One frame
 4. The sky
 5. The world generator (CPU)
@@ -25,7 +24,7 @@ source files with a build that outputs one file. Line numbers refer to that vers
 12. Performance baselines
 13. Known issues and ideas
 14. Tuning lessons (what failed, and why)
-15. Restructuring guide
+15. Checking a change
 
 ## 1. Ground rules
 
@@ -44,35 +43,62 @@ These come from the brief and the feedback; keep them when changing anything.
 - **Keep the lighting, colours and sky**: the author repeatedly asked for them to stay as they are.
 - The author's dislikes and wishes are listed at the end of `docs/BRIEF.md`.
 
-## 2. The file today: sections and their seams
+## 2. The source files and the build
 
-`index.html` = HTML + CSS (lines 1–53) and one IIFE script. In order:
+The piece is written as ES modules in `src/`. `build.mjs` joins them into `index.html` at the
+repository root: the one file that is published (GitHub Pages serves this branch) and that the
+tools test.
 
-| lines | section | contents |
-|---|---|---|
-| 54–93 | header, URL flags, GL context | `Q`, `TEST`, `DEBUG`, `VIEW`, `DBG_MODE`, `TONEMAP`, `CONTRAST`, `HAZE_K`; `fail()`; context + extensions |
-| 94–140 | small math kit | `clamp lerp sat smoothstep damp fmod add sub scl dot cross len norm mix3 mulberry32 halton spring mat4Mul perspective ortho viewFromBasis` |
-| 141–150 | world constants | `SUN_ELEV` (5°), `SUN_AZIM` (0: the sun is toward −Z), `SUN_DIR`, `WIND`, `SHAPE_N`, `DETAIL_N`, `ORIGIN_Q`, `CLOUD_TOP` |
-| 151–839 | **CPU world generator** (`// ==== WORLD BEGIN` … `// ==== WORLD END`) | hashing and noise, the air, domes, thermals, cells, caches, column fill, bubble gather (section 5) |
-| 841–869 | CPU atmosphere | transmittance for sun colours (`sunColorAt`, `sunColTable`) |
-| 870–979 | GL helpers | textures, framebuffers, program compile/link with async check, uniforms, `pass()` |
-| 980–2478 | **shaders** (template strings) | `VS_FULLSCREEN`, `GLSL_COMMON`, `GLSL_ATMO` + sky LUT passes, noise volume generation, cirrus, high layers, `GLSL_CLOUD` (shared cloud functions), `FS_TSV`, `FS_BAKE`, `FS_TRACE`, `FS_TAAU` (+ high layer sheets), `FS_PROBE`, mist (`VS_MIST`/`FS_MIST`), bird (`VS_BIRD`, `FS_BIRD`, `FS_SHADOW`), post (`FS_DOWN`, `FS_UP`, `FS_RAYMASK`, `FS_RAYBLUR`, `FS_FINAL`) |
-| 2479–2559 | initialisation | programs, static textures (`T`), framebuffers (`FB`), `generateStatic()` |
-| 2560–2714 | streamed world volumes | clipmap levels, bake queue, `shiftLevel`, `runJob`, `streamWorld`, `worldUniforms` |
-| 2715–2785 | paper bird mesh | crane geometry, shadow map |
-| 2786–2877 | size-dependent resources | `allocate`/`freeRes`/`resize` (with out-of-memory retry) |
-| 2878–3201 | flight, input, camera | `FLIGHT`, `bird_`, `readPreset` (test views), input (mouse, touch, keys, gamepad), `updateFlight`, `updateCamera` |
-| 3202–3499 | rendering | GPU timers / `?cpuprof`, `render()` (the frame graph), `renderBird`, async probe readback |
-| 3500–3683 | hint, main loop, boot | dynamic resolution, `loop`/`frameStep`, context loss, fullscreen, `boot`, `window.__debug` |
+- **Working on it**: `node tools/serve.mjs`, then http://localhost:8000/src/ runs the modules
+  directly (edit, reload; errors and the debugger show the real files). ES modules do not load
+  from `file://`, hence the server.
+- **Building**: `node build.mjs` writes `index.html`; commit it with the sources. `node build.mjs
+  --check` fails if it is out of date, and the browser tools warn when it is.
+- **What the build does**: it inlines `style.css` and turns the modules into one classic script
+  (an IIFE in strict mode), each module after the modules it imports, the order the browser runs
+  them in; import lines are removed and `export` keywords dropped. So in the built page all
+  modules share one scope: every top-level name must be unique across modules (the build checks),
+  imports are named and never renamed, and there are no default or namespace imports. The native
+  run and the build render the same, bit for bit (`tools/checks/modules.mjs`).
+- **Shared state**: a module never assigns to a binding it imports (ES modules forbid it). State
+  that other modules change lives in objects (`R`, `T`, `FB`, `bird_`, `cam`, `input`, `DR`) or is
+  changed through a function of its own module (`setRestOffset`, `updateInCloud`).
+- **Order of loading**: `main.js` imports the modules in the order they are set up: the WebGL
+  context (`render/gl.js`), the world (`world/`: its spawn draw runs as `cells.js` loads), the
+  shaders and static resources (`render/setup.js`, which compiles every program), the streamed
+  volumes, the render targets, the flight, the test views, the frame. Without WebGL 2 or float
+  render targets `render/gl.js` shows the note and throws, which stops everything after it.
 
-Shaders are JavaScript template strings composed by concatenation (`GLSL_COMMON + GLSL_ATMO +
-GLSL_CLOUD + ...`) and interpolation (`${MRT_OUT}`, `${MRT_WRITE(...)}`, `#define NOUT` from JS,
-a `#define DBG` injected when `?dbg` is set). A build must keep that working (or move the
-composition into the build).
+| file | contents |
+|---|---|
+| `src/index.html`, `src/style.css` | the page: canvas, hint, touch ring, note; loads `main.js` |
+| `src/main.js` | the hint, the main loop (`frameStep`), context loss, fullscreen, `boot()`, `window.__debug` |
+| `src/params.js` | URL parameters: `Q`, `TEST`, `DEBUG`, `VIEW`, `DBG_MODE`, `TONEMAP`, `CONTRAST`, `HAZE_K` |
+| `src/page.js` | the page's elements and `fail()` (the note) |
+| `src/math.js` | `clamp lerp sat smoothstep damp fmod add sub scl dot cross len norm mix3 mulberry32 halton spring mat4Mul perspective ortho viewFromBasis` |
+| `src/constants.js` | `SUN_DIR` (5° up, toward −Z), `WIND`, `WIND_ANG`, `SHAPE_N`, `DETAIL_N`, `ORIGIN_Q`, `CLOUD_TOP` |
+| `src/world/` | **the CPU world generator** (section 5): `noise.js`, `air.js`, `shapes.js`, `thermals.js`, `cells.js`, `queries.js`, `columns.js`; no DOM, no WebGL (the Node tools run it) |
+| `src/render/gl.js` | WebGL 2 context and extensions; textures, framebuffers, programs (compiled in parallel, checked at boot), uniforms, `pass()`, `VS_FULLSCREEN`, multiple render targets (`NOUT`, `MRT_OUT`, `MRT_WRITE`) |
+| `src/render/sun.js` | sun colours by altitude (a CPU copy of the transmittance) |
+| `src/shaders/` | **GLSL** as template strings (marked `/* glsl */` for editors): `common`, `sky` (atmosphere LUTs), `textures` (noise volumes, cirrus, high layers), `cloud` (shared cloud functions), `volumes` (shadow volume, bake), `trace`, `taau`, `probe`, `mist`, `bird`, `post` |
+| `src/render/setup.js` | the programs `P`, static textures `T`, framebuffers `FB`, `generateStatic()` |
+| `src/render/stream.js` | the streamed world volumes (section 6) |
+| `src/render/targets.js` | size-dependent targets: `R`, `allocate`, `resize` (out-of-memory retry) |
+| `src/render/probe.js` | the probe readback (`probeData`) and `inCloud` |
+| `src/render/timing.js` | GPU timer queries, `?cpuprof` |
+| `src/render/bird.js` | the crane mesh, its shadow map, `renderBird` |
+| `src/render/frame.js` | `render()`: the passes of one frame (section 3) |
+| `src/render/resolution.js` | dynamic resolution (section 10) |
+| `src/flight.js`, `src/input.js`, `src/camera.js` | the glider, steering, the chase camera (section 8) |
+| `src/presets.js` | the test views (`?preset`, `?pose`) |
+
+Shaders are composed by concatenation (`GLSL_COMMON + GLSL_ATMO + GLSL_CLOUD + ...`) and
+interpolation (`${MRT_OUT}`, `${MRT_WRITE(...)}`, with `#define NOUT` from JS); `?dbg` injects
+`#define DBG` into the trace.
 
 ## 3. One frame
 
-`frameStep` (≈ line 3608): fixed `dt` in tests, otherwise the real one (capped at 0.1 s).
+`frameStep` (`main.js`): fixed `dt` in tests, otherwise the real one (capped at 0.1 s).
 
 1. `resize()`: canvas size (device pixels, capped at 2.3 Mpx, 1.15 Mpx on touch devices); on
    change `allocate()` all size-dependent targets; if that fails (GPU memory) retry smaller.
@@ -103,18 +129,17 @@ known issues).
 
 ## 5. The world generator (CPU)
 
-Everything between the markers `// ------------------------------------------------------------------ world constants`
-and `// ==== WORLD END`. It is pure JavaScript (no DOM, no GL) and deterministic: every value is a
-function of position, `WORLD_SEED` (`?seed=N`, default 7) and `TOWER_RATE` (`?towers=K`). The
-Node tools load exactly this text (`tools/world/load.js`).
+`src/world/`, with `params.js`, `math.js` and `constants.js`. It is pure JavaScript (no DOM, no
+GL) and deterministic: every value is a function of position, `WORLD_SEED` (`?seed=N`, default 7)
+and `TOWER_RATE` (`?towers=K`). The Node tools run these very modules (`tools/world/load.js`).
 
-### 5.1 Hashing and noise
+### 5.1 Hashing and noise (`world/noise.js`)
 
 `hashU(i, j, s)` integer hash; `vnoise` value noise on an endless lattice; `fbm` (each octave ~2×
 finer and turned 36°, so no lattice shows); `mulberry32` streams seeded per cell / per bubble, so
 each thing draws from its own stream and changing one never shifts another. `poisson`, `gauss`.
 
-### 5.2 The air
+### 5.2 The air (`world/air.js`)
 
 - `warpOf`: domain warp (±4.5 km) for the slow fields.
 - `restOf`: **restlessness** I ∈ [0, 1], calm .. storms: broad patches (fbm at 2.4e-5 /m, 4 octaves)
@@ -138,7 +163,7 @@ each thing draws from its own stream and changing one never shifts another. `poi
 - `buoyAt(A, y)`: buoyancy profile: 0 inside the sea (it coasts), −cap through the inversion,
   bmax·(0.3 + 2.8u(1−u)) up to the EL, −0.03 − 0.12/km above it, −1.2 above the ceiling.
 
-### 5.3 Thermals (`lift`, ≈ line 306)
+### 5.3 Thermals (`lift`, `world/thermals.js`)
 
 One bubble rising from the sea: an entraining-parcel ODE stepped in height (60 m through the
 inversion so a big bubble can't hop over it, else 0.3·r clamped to 40–450 m).
@@ -159,7 +184,7 @@ inversion so a big bubble can't hop over it, else 0.3·r clamped to 40–450 m).
 - `roofOf`: how far a piece may bulge above its centre: the inversion while below it, the ceiling
   always, never above `CLOUD_TOP − 300`.
 
-### 5.4 Ageing (`settle`, ≈ line 374) and domes (`placeDome`)
+### 5.4 Ageing (`settle`) and domes (`placeDome`; shapes in `world/shapes.js`)
 
 What became of each piece by the moment the world shows:
 
@@ -176,7 +201,7 @@ What became of each piece by the moment the world shows:
   (`placeDome`): standing on what they grew from, never steeper than h/r ≈ 0.65 (r ≥ height/0.5),
   profile from a table: rounder when young (prof 0.8) to sagging bell (1.4), lobes 1.1.
 
-### 5.5 Convective cells (≈ lines 442–690)
+### 5.5 Convective cells (`world/cells.js`)
 
 - **Potential P** (m): the size of a cell's strongest bubbles. Power law: density
   0.36e-6/m² × (0.12 + 0.88·I) × `TOWER_RATE` for P > `P_MIN` (600 m), slope `ALPHA` 2, cut
@@ -211,7 +236,7 @@ What became of each piece by the moment the world shows:
   away downwind. Failing that the best draw. ~30 ms. If the sun azimuth, the start yaw or the
   wind change, revisit these bearings.
 
-### 5.6 Columns and bubbles for the GPU
+### 5.6 Columns and bubbles for the GPU (`world/columns.js`, `world/queries.js`)
 
 - `fillColumns(cell, lod, gi0, gj0, ni, nj, out)`: RGBA per column: R sea surface with domes
   (smooth max of every dome, small domes widened and lowered on coarse levels so their volume stays,
@@ -225,7 +250,7 @@ What became of each piece by the moment the world shows:
   flown into), `seaTopAt`, `cloudTopAt`, `ellDist` (approximate ellipsoid distance), `towerDistAt`,
   `towersNear`.
 
-## 6. Streaming the world to the GPU (≈ lines 2560–2714)
+## 6. Streaming the world to the GPU (`render/stream.js`)
 
 - Three **clipmap levels**, each a 256×256×nz R16F 3D distance volume plus a 256×256 RGBA16F column
   map, centred on the camera, addressed toroidally (only strips that enter are rebuilt):
@@ -250,7 +275,7 @@ What became of each piece by the moment the world shows:
 
 ## 7. The cloud renderer
 
-Shared functions in `GLSL_CLOUD` (≈ line 1398), used by trace, TSV, probe and mist.
+Shared functions in `GLSL_CLOUD` (`shaders/cloud.js`), used by trace, TSV, probe and mist.
 
 - `levelAt`: L0 below ~7–10 km (dithered handover), L1 below ~40–55 km, else L2; a level is used
   only inside its valid window. `LV_MARGIN` (80, 260, 750 m) = interpolation error per level.
@@ -268,7 +293,7 @@ Shared functions in `GLSL_CLOUD` (≈ line 1398), used by trace, TSV, probe and 
   80 m at 4 km; crisp (≤ max(30 m, 0.3% of distance)) on the billowy tops of the sea and on
   everything heaped on it, soft in the sea's deep troughs; wispy erosion by the detail texture
   (64³ Worley/Perlin over 512 m); far silhouettes of heaps fray; near the camera extra fine wisps.
-- **Trace** (`FS_TRACE`, ≈ line 1679): up to 360 steps to 250 km or `CLOUD_TOP` (14 km) on a
+- **Trace** (`FS_TRACE`, `shaders/trace.js`): up to 360 steps to 250 km or `CLOUD_TOP` (14 km) on a
   curved planet. Empty-space skipping by `dm − shellOf − margin`; sphere tracing near surfaces with
   jittered strides; on entry the boundary is found by a few Illinois regula-falsi steps (else far
   clouds look dark and speckled); inside, steps aim at a fixed optical depth (σ = 0.035/m) but stay
@@ -327,7 +352,7 @@ Shared functions in `GLSL_CLOUD` (≈ line 1398), used by trace, TSV, probe and 
 
 ## 11. Test mode, hooks and URL parameters
 
-The tools rely on these; keep them through the restructure.
+The tools rely on these; keep them.
 
 - `?test`: fixed time step (`dt`, default 1/60), canvas `w`×`h` (default 960×540), cloud `scale`
   (0.5), stops after `frames` (`window.__done = true`), keeps the drawing buffer, no hint, no
@@ -373,7 +398,7 @@ anything; no real GPU or phone has been measured in these sessions.
 ## 13. Known issues and ideas
 
 - **Never measured on real hardware** in these sessions: frame rate, dynamic resolution behaviour,
-  memory on phones. First thing to check after the restructure.
+  memory on phones. The first thing to check on real devices.
 - **CPU world generation runs on the main thread** and synchronously when a new grid cell is first
   needed (startup ≈ 4.7 s on software GL; in round 5 streaming spikes of ≈ 200–250 ms were measured
   when entering new areas). The generator is DOM-free and deterministic: moving it into a Web
@@ -432,28 +457,17 @@ From the rounds in `docs/HISTORY.md`; worth knowing before tuning again.
 - **Coarse level**: must take bubbles from coarse cells (`gatherBubbles(..., coarse)`), or the first
   frame grows everything in full across 524 km.
 
-## 15. Restructuring guide
+## 15. Checking a change
 
-The author plans to split the code into several files and build one HTML file. Suggestions:
+Run what the change can affect; the commands are in `tools/README.md`.
 
-- Natural modules (see section 2): `math`, `world/` (noise, air, thermals, cells, columns —
-  DOM-free, also used by the Node tools), `atmosphere` (CPU sun colours), `gl` (helpers),
-  `shaders/` (`.glsl` files or JS strings; mind the JS interpolations `${MRT_OUT}`, `NOUT`, the
-  `DBG` define), `streaming` (clipmaps, bake queue), `bird`, `resources` (allocate/resize),
-  `flight`/`input`/`camera`, `render` (frame graph), `resolution` (dynamic resolution, timers),
-  `presets` (test views), `main` (boot, loop, hint, hooks), `page.html` + `style.css`.
-- The output must stay a single file that works from `file://`: inline the script (a classic
-  script or one inlined module), the CSS and the shader sources; no runtime fetches.
-- Keep the world generator loadable by the tools: either keep the two marker comments around it in
-  the built page (then `tools/world/load.js` works unchanged), or point `WSRC` at its source files,
-  joined with `:` in order (ES modules are fine: `import` lines are dropped and `export` keywords
-  removed). `load.js` evaluates them after a prelude that provides `Q` and the math kit (`PI DEG
-  clamp lerp sat smoothstep len norm mulberry32`) and returns the names listed in `NAMES` (adjust if
-  names change). Tested with the world as one module and split over two.
-- Keep the test hooks, element ids and URL parameters (section 11); the checks use them.
-- **Verify the restructure** (nothing should change):
-  1. `node tools/world/fingerprint.js` (or `WSRC=<the world's source files> node ...`) → "same as
-     fingerprint.json" (pure JS; any generator change shows).
-  2. `PAGE=dist/index.html node tools/regress.mjs` → all views match the baselines (bit-identical on
-     the same Chromium build).
-  3. `PAGE=dist/index.html node tools/checks/presets.mjs` and the other checks in `tools/README.md`.
+1. `node build.mjs` (the tools test `index.html`, and warn when it is older than `src/`).
+2. `node tools/world/fingerprint.js`: any change to the world generator shows (pure JS, ~3 s).
+3. `node tools/regress.mjs`: 14 small renders, bit-identical to `tools/baseline/` on the same
+   Chromium build. A change meant to alter the look or the world fails here: look at the new
+   renders (`tools/out/regress/`), then re-record (`regress.mjs record`, `fingerprint.js --write`)
+   and say so in the commit.
+4. `node tools/checks/modules.mjs` (the sources run as modules render what the build renders),
+   `node tools/checks/presets.mjs`, and the checks for what was touched (input, UI, memory,
+   dynamic resolution, streaming).
+5. Keep the test hooks, element ids and URL parameters (section 11): the tools use them.
