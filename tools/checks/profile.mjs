@@ -1,6 +1,7 @@
-// Per-pass cost on software GL (?cpuprof: a fence after every pass), for one page or to compare two:
-// world (generation + bakes), sky, trace (the cloud raymarch), taau, bird, post. Milliseconds summed
-// over the frames; only ratios between pages are meaningful (a real GPU behaves differently).
+// Per-pass cost on software rendering (?cpuprof: GPU timestamps around each group of passes), for
+// one page or to compare two: world (bakes), sky, trace (the cloud raymarch), taau, bird, post.
+// Milliseconds summed over the frames; only ratios between pages are meaningful (a real GPU
+// behaves differently).
 //
 //   node tools/checks/profile.mjs [pageB.html] [preset ...]     (page A = PAGE or index.html)
 //   e.g. node tools/checks/profile.mjs /tmp/variant.html start side high2 tower

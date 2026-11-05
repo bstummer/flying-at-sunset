@@ -48,7 +48,7 @@
 <div id="touch"><div class="ring"></div><div class="dot"></div></div>
 <div id="note"></div>
 <script>
-(() => {
+(async () => {
 'use strict';
 
 // ======== src/params.js
@@ -131,140 +131,278 @@ function viewFromBasis(R, U, F, eye) {
     -dot(R, eye), -dot(U, eye), -dot(B, eye), 1]);
 }
 
-// ======== src/render/gl.js
-// WebGL 2: the context and its extensions; helpers for textures, framebuffers, programs, uniforms, passes
+// ======== src/render/gpu.js
+// WebGPU: the device and the canvas; textures, samplers, uniforms, pipelines, passes
 
-const gl = canvas.getContext('webgl2', {
-  antialias: false, alpha: false, depth: false, stencil: false,
-  premultipliedAlpha: false, preserveDrawingBuffer: TEST, powerPreference: 'high-performance',
+// (without WebGPU the piece cannot run: say why, and stop)
+const NEEDS = 'This piece needs WebGPU. Please open it in a recent version of Chrome, Edge, Safari or Firefox.';
+const adapter = navigator.gpu ? await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null) : null;
+if (!adapter) { fail(NEEDS); throw new Error('no WebGPU'); }
+const device = await adapter.requestDevice({
+  requiredFeatures: adapter.features.has('timestamp-query') ? ['timestamp-query'] : [],
+}).catch(() => null);
+if (!device) { fail(NEEDS); throw new Error('no WebGPU device'); }
+const TIMESTAMPS = device.features.has('timestamp-query');
+// (a lost device, e.g. after a GPU reset: main.js reloads the page)
+const gpuState = { lost: null };
+device.lost.then(info => { gpuState.lost = info; });
+
+// the canvas (tests copy its texture to read the image back)
+const context = canvas.getContext('webgpu');
+const CANVAS_FORMAT = navigator.gpu.getPreferredCanvasFormat();
+context.configure({ device, format: CANVAS_FORMAT, alphaMode: 'opaque', usage: GPUTextureUsage.RENDER_ATTACHMENT | (TEST ? GPUTextureUsage.COPY_SRC : 0) });
+
+// ---- textures
+const TU = GPUTextureUsage;
+const RENDER = TU.TEXTURE_BINDING | TU.RENDER_ATTACHMENT;   // the usual: drawn into, then read
+let nextId = 0;
+// a texture and its view; `id` keys the cached bind groups
+function texture(w, h, format, { depth = 1, dim = '2d', mips = 1, samples = 1, usage = RENDER } = {}) {
+  const tex = device.createTexture({ size: [w, h, depth], format, dimension: dim, mipLevelCount: mips, sampleCount: samples, usage });
+  return { tex, view: tex.createView(), w, h, d: depth, format, id: ++nextId };
+}
+// one mip level of a texture: to draw into, or to read while drawing the next
+function mipLevel(t, k) {
+  return { tex: t.tex, view: t.tex.createView({ baseMipLevel: k, mipLevelCount: 1 }), w: Math.max(1, t.w >> k), h: Math.max(1, t.h >> k), format: t.format, id: ++nextId };
+}
+// colour attachments of n slices of a 3D texture, from slice z
+const slices = (t, z, n = 1) => Array.from({ length: n }, (_, k) => ({ view: t.view, w: t.w, h: t.h, slice: z + k }));
+
+// float32 -> float16 bits, rounded to nearest even (as GL converts float data uploaded into half
+// float textures)
+const f32b = new Float32Array(1), u32b = new Uint32Array(f32b.buffer);
+function half(x) {
+  f32b[0] = x;
+  const i = u32b[0], sign = (i >>> 16) & 0x8000;
+  let a = i & 0x7FFFFFFF;
+  if (a > 0x7F800000) return 0x7FFF;                         // NaN
+  if (a > 0x47FFEFFF) return sign | 0x7C00;                  // too large: infinity
+  if (a < 0x38800000) {                                       // denormal
+    const e = 113 - (a >>> 23);
+    a = e < 24 ? ((a & 0x007FFFFF) | 0x00800000) >>> e : 0;
+    return sign | ((a + 0x0FFF + ((a >>> 13) & 1)) >>> 13);
+  }
+  return sign | ((a + 0xC8000000 + 0x0FFF + ((a >>> 13) & 1)) >>> 13);
+}
+function toHalf(src, dst = new Uint16Array(src.length)) {
+  for (let k = 0; k < src.length; k++) dst[k] = half(src[k]);
+  return dst;
+}
+function fromHalf(h) {
+  const e = (h >> 10) & 31, m = h & 1023, s = h & 0x8000 ? -1 : 1;
+  return e === 31 ? (m ? NaN : s * Infinity) : s * (e ? 2 ** (e - 15) * (1 + m / 1024) : 2 ** -14 * (m / 1024));
+}
+
+// ---- samplers (every shader may use any of them)
+const smp = (filter, wrap, wrapW = wrap, mip = 'nearest') => device.createSampler({
+  magFilter: filter, minFilter: filter, mipmapFilter: mip, addressModeU: wrap, addressModeV: wrap, addressModeW: wrapW,
 });
-// (without these the piece cannot run: say why, and stop)
-if (!gl) { fail('This piece needs WebGL 2. Please open it in a recent version of Chrome, Edge, Firefox or Safari.'); throw new Error('no WebGL 2'); }
-const extCBF = gl.getExtension('EXT_color_buffer_float');
-const extCBHF = gl.getExtension('EXT_color_buffer_half_float');
-gl.getExtension('OES_texture_float_linear');
-const extParallel = gl.getExtension('KHR_parallel_shader_compile');
-const extTimer = gl.getExtension('EXT_disjoint_timer_query_webgl2');
-if (!extCBF && !extCBHF) { fail('Your browser cannot render to floating point textures, which this piece needs.'); throw new Error('no float render targets'); }
+const SAMPLERS = {
+  sLin: smp('linear', 'clamp-to-edge'),
+  sNear: smp('nearest', 'clamp-to-edge'),
+  sRep: smp('linear', 'repeat'),
+  sVol: smp('linear', 'repeat', 'clamp-to-edge'),      // the clipmap volumes: toroidal across, clamped in height
+  sMip: smp('linear', 'repeat', 'repeat', 'linear'),
+  sShadow: device.createSampler({ compare: 'less-equal', magFilter: 'linear', minFilter: 'linear' }),
+};
+const SAMPLER_NAMES = Object.keys(SAMPLERS);
 
-// ---- GL helpers
-const RGBA16F = gl.RGBA16F, HALF = gl.HALF_FLOAT;
-const FLOAT_RT = extCBF ? gl.RGBA32F : gl.RGBA16F;
-function texture2D(w, h, ifmt, fmt, type, { filter = gl.LINEAR, wrap = gl.CLAMP_TO_EDGE, data = null } = {}) {
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
-  gl.texImage2D(gl.TEXTURE_2D, 0, ifmt, w, h, 0, fmt, type, data);
-  return { tex, w, h, target: gl.TEXTURE_2D };
-}
-function texture3D(w, h, d, ifmt, fmt, type, { filter = gl.LINEAR, wrapR = gl.REPEAT } = {}) {
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_3D, tex);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, filter);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, filter);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, wrapR);
-  gl.texImage3D(gl.TEXTURE_3D, 0, ifmt, w, h, d, 0, fmt, type, null);
-  return { tex, w, h, d, target: gl.TEXTURE_3D };
-}
-function framebuffer(colors, depth = null) {
-  const fb = gl.createFramebuffer();
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-  colors.forEach((t, i) => gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t.tex, 0));
-  if (depth) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth.tex, 0);
-  gl.drawBuffers(colors.length ? colors.map((_, i) => gl.COLOR_ATTACHMENT0 + i) : [gl.NONE]);
-  const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-  if (st !== gl.FRAMEBUFFER_COMPLETE) throw new Error('framebuffer incomplete 0x' + st.toString(16));
-  return fb;
-}
+// every texture a shader may read, by its WGSL name: '2d', '3d', 'raw' (32-bit float, only
+// loaded, never filtered) or 'depth'. A pipeline binds those its shaders mention.
+const TEXTURES = {
+  tTrans: '2d', tMS: '2d', tSky: '2d', tAmb: '2d', tProbe: 'raw', tShape: '3d', tDetail: '3d', tTsv: '3d',
+  tVol0: '3d', tVol1: '3d', tVol2: '3d', tCol0: '2d', tCol1: '2d', tCol2: '2d', tCol: '2d', tBub: 'raw',
+  tCirrus: '2d', tLayers: '2d', tCur: '2d', tCurDepth: '2d', tHist: '2d', tSrc: '2d', tBird: '2d', tScene: '2d',
+  tBloom: '2d', tRays: '2d', tDbg: '2d', tDbg2: '2d', tShadowMap: 'depth',
+};
+const TEX_KINDS = {
+  '2d': ['texture_2d<f32>', { sampleType: 'float' }],
+  '3d': ['texture_3d<f32>', { sampleType: 'float', viewDimension: '3d' }],
+  raw: ['texture_2d<f32>', { sampleType: 'unfilterable-float' }],
+  depth: ['texture_depth_2d', { sampleType: 'depth' }],
+};
+const TEX_BINDING = {};
+Object.keys(TEXTURES).forEach((n, k) => { TEX_BINDING[n] = 16 + k; });
 
+// ---- uniforms: a struct U per pipeline, laid out by WGSL's rules (arrays of vec3f / vec4f only)
+const TYPES = { f32: [1, 4], i32: [1, 4], vec2f: [2, 8], vec2i: [2, 8], vec3f: [3, 16], vec4f: [4, 16], mat4x4f: [16, 16] };
+function struct(fields) {
+  let off = 0;
+  const lay = Object.entries(fields).map(([name, type]) => {
+    const [, base, n] = /^(\w+)(?:\[(\d+)\])?$/.exec(type);
+    const [comps, align] = TYPES[base];
+    off = Math.ceil(off / (n ? 16 : align)) * (n ? 16 : align);
+    const f = { name, comps, n: n ? +n : 0, off: off / 4, int: base === 'i32' || base === 'vec2i' };
+    off += n ? 16 * n : comps * 4;
+    return f;
+  });
+  const wgsl = 'struct U {\n' + Object.entries(fields).map(([name, type]) => {
+    const [, base, n] = /^(\w+)(?:\[(\d+)\])?$/.exec(type);
+    return `  ${name}: ${n ? `array<${base}, ${n}>` : base},`;
+  }).join('\n') + '\n}\n';
+  return { lay, size: Math.ceil(off / 16) * 16, wgsl };
+}
+// the uniforms of all draws until the next submit, in one buffer (each draw at its own offset)
+const ARENA = 1 << 20;
+const arena = device.createBuffer({ label: 'uniforms', size: ARENA, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+const arenaData = new ArrayBuffer(ARENA), arenaF = new Float32Array(arenaData), arenaI = new Int32Array(arenaData);
+let arenaUsed = 0;
+
+// ---- the commands of a frame: encoded here, submitted by flush() (at the end of a frame, and
+// before a queue write that commands already encoded must not see)
+let encoder = null;
+function enc() { return encoder || (encoder = device.createCommandEncoder()); }
+function flush() {
+  if (!encoder) return;
+  if (arenaUsed) device.queue.writeBuffer(arena, 0, arenaData, 0, arenaUsed);
+  device.queue.submit([encoder.finish()]);
+  encoder = null;
+  arenaUsed = 0;
+}
+// write the uniforms of one draw: the dynamic offset to bind them with
+function uniforms(P, vals) {
+  if (!P.S) return [];
+  if (arenaUsed + P.S.size > ARENA) flush();
+  const off = arenaUsed, base = off >> 2;
+  for (const f of P.S.lay) {
+    const v = vals[f.name], o = base + f.off;
+    if (v === undefined) throw new Error(P.name + ': uniform ' + f.name + ' missing');
+    if (f.n) { for (let e = 0; e < f.n; e++) for (let c = 0; c < f.comps; c++) arenaF[o + e * 4 + c] = v[e * f.comps + c]; }
+    else if (f.comps === 1) (f.int ? arenaI : arenaF)[o] = v;
+    else { const a = f.int ? arenaI : arenaF; for (let c = 0; c < f.comps; c++) a[o + c] = v[c]; }
+  }
+  arenaUsed = Math.ceil((off + P.S.size) / 256) * 256;
+  return [off];
+}
+// the bind group of a pipeline with these textures (cached)
+function bindGroup(P, vals) {
+  let key = '';
+  for (const n of P.texNames) {
+    const t = vals[n];
+    if (!t || !t.view) throw new Error(P.name + ': texture ' + n + ' missing');
+    key += t.id + ' ';
+  }
+  let bg = P.groups.get(key);
+  if (!bg) {
+    const entries = SAMPLER_NAMES.map((n, k) => ({ binding: 1 + k, resource: SAMPLERS[n] }));
+    if (P.S) entries.push({ binding: 0, resource: { buffer: arena, size: P.S.size } });
+    for (const n of P.texNames) entries.push({ binding: TEX_BINDING[n], resource: vals[n].view });
+    bg = device.createBindGroup({ label: P.name, layout: P.bgl, entries });
+    P.groups.set(key, bg);
+  }
+  return bg;
+}
+// (textures were replaced: forget the bind groups made with the old ones)
+function forgetBindGroups() { for (const P of pipelines) P.groups.clear(); }
+
+// ---- pipelines
 // the vertex shader of the fullscreen passes: one triangle that covers the viewport
-const VS_FULLSCREEN = /* glsl */ `#version 300 es
-out vec2 vUv;
-void main() {
-  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
-  vUv = p;
-  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+const FULLSCREEN = /* wgsl */ `
+@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
+  let p = vec2f(f32((i << 1u) & 2u), f32(i & 2u));
+  return vec4f(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
-
-const programs = [];
-function compileShader(type, src) {
-  const s = gl.createShader(type);
-  gl.shaderSource(s, src);
-  gl.compileShader(s);
-  return s;
+const fullscreenModule = device.createShaderModule({ label: 'fullscreen', code: FULLSCREEN });
+const pipelines = [], compiling = [];
+// A render pipeline. vs / fs: WGSL with entry points vs / fs (no vs: the fullscreen triangle; no
+// fs: depth only); uniforms: the fields of its struct U; targets: colour formats; the rest as in
+// GPURenderPipelineDescriptor. Its shaders are compiled in parallel: wait with pipelinesReady().
+function pipeline(name, { vs = null, fs = null, uniforms = null, targets = [], blend, topology = 'triangle-list', depth, samples = 1, buffers = [] }) {
+  const S = uniforms ? struct(uniforms) : null;
+  const all = (vs || '') + (fs || '');
+  const texNames = Object.keys(TEXTURES).filter(n => new RegExp('\\b' + n + '\\b').test(all));
+  const header = (S ? S.wgsl + '@group(0) @binding(0) var<uniform> u: U;\n' : '')
+    + SAMPLER_NAMES.map((n, k) => `@group(0) @binding(${1 + k}) var ${n}: ${n === 'sShadow' ? 'sampler_comparison' : 'sampler'};\n`).join('')
+    + texNames.map(n => `@group(0) @binding(${TEX_BINDING[n]}) var ${n}: ${TEX_KINDS[TEXTURES[n]][0]};\n`).join('');
+  const vis = GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT;
+  const entries = SAMPLER_NAMES.map((n, k) => ({ binding: 1 + k, visibility: vis, sampler: { type: n === 'sShadow' ? 'comparison' : 'filtering' } }));
+  if (S) entries.push({ binding: 0, visibility: vis, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: S.size } });
+  for (const n of texNames) entries.push({ binding: TEX_BINDING[n], visibility: vis, texture: TEX_KINDS[TEXTURES[n]][1] });
+  const bgl = device.createBindGroupLayout({ label: name, entries });
+  const modules = [];
+  const module = (stage, code) => {
+    const m = device.createShaderModule({ label: name + ' ' + stage, code: header + code });
+    modules.push({ m, code: header + code, stage });
+    return m;
+  };
+  const desc = {
+    label: name,
+    layout: device.createPipelineLayout({ bindGroupLayouts: [bgl] }),
+    vertex: { module: vs ? module('vs', vs) : fullscreenModule, entryPoint: 'vs', buffers },
+    primitive: { topology },
+    multisample: { count: samples },
+  };
+  if (fs) desc.fragment = { module: module('fs', fs), entryPoint: 'fs', targets: targets.map(format => ({ format, blend })) };
+  if (depth) desc.depthStencil = depth;
+  const P = { name, S, texNames, bgl, pipe: null, groups: new Map() };
+  compiling.push(device.createRenderPipelineAsync(desc).then(p => { P.pipe = p; }, e => shaderError(name, modules, e)));
+  pipelines.push(P);
+  return P;
 }
-function makeProgram(name, fs, vs = VS_FULLSCREEN) {
-  const p = gl.createProgram();
-  const v = compileShader(gl.VERTEX_SHADER, vs), f = compileShader(gl.FRAGMENT_SHADER, fs);
-  gl.attachShader(p, v); gl.attachShader(p, f); gl.linkProgram(p);
-  const prog = { name, p, v, f, loc: {}, fsSrc: fs, vsSrc: vs };
-  programs.push(prog);
-  return prog;
-}
-function checkPrograms() {
-  for (const prog of programs) {
-    if (!gl.getProgramParameter(prog.p, gl.LINK_STATUS)) {
-      const logF = gl.getShaderInfoLog(prog.f), logV = gl.getShaderInfoLog(prog.v), logP = gl.getProgramInfoLog(prog.p);
-      const log = (logF || '') + (logV || '') + (logP || '');
-      const m = /ERROR: \d+:(\d+)/.exec(log);
-      let ctx = '';
-      if (m) {
-        const src = (logF ? prog.fsSrc : prog.vsSrc).split('\n'), ln = +m[1];
-        ctx = '\n' + src.slice(Math.max(0, ln - 4), ln + 2).map((l, k) => (ln - 3 + k) + ': ' + l).join('\n');
-      }
-      throw new Error('Shader "' + prog.name + '" failed:\n' + log + ctx);
+async function shaderError(name, modules, e) {
+  let msg = '';
+  for (const { m, code, stage } of modules) {
+    const info = await m.getCompilationInfo();
+    const src = code.split('\n');
+    for (const x of info.messages) {
+      if (x.type !== 'error') continue;
+      const ln = x.lineNum;
+      msg += `${stage} line ${ln}: ${x.message}\n` + src.slice(Math.max(0, ln - 3), ln + 1).map((l, k) => (Math.max(0, ln - 3) + k + 1) + ': ' + l).join('\n') + '\n';
     }
   }
+  throw new Error('Shader "' + name + '" failed:\n' + (msg || e.message));
 }
-function uloc(prog, name) {
-  let l = prog.loc[name];
-  if (l === undefined) { l = gl.getUniformLocation(prog.p, name); prog.loc[name] = l; }
-  return l;
+const pipelinesReady = () => Promise.all(compiling);
+
+// ---- passes
+const hooks = { timestamps: null };    // timing.js: the timestamp writes of the next pass
+const BLACK = [0, 0, 0, 0];
+// One draw of P into colour attachments (textures, or slices of a 3D texture). vals: uniform
+// values and textures by their WGSL names. o: viewport [x, y, w, h] (default: the whole target),
+// load (keep what the target holds: always so when drawing into part of it), clear colour,
+// vertex count and instances (default: one fullscreen triangle).
+function pass(P, colors, vals, o = {}) {
+  const t0 = colors[0], vp = o.viewport;
+  const load = o.load || (vp && (vp[0] || vp[1] || vp[2] !== t0.w || vp[3] !== t0.h));
+  const offsets = uniforms(P, vals);
+  const bg = bindGroup(P, vals);
+  const rp = enc().beginRenderPass({
+    colorAttachments: colors.map(c => ({ view: c.view, depthSlice: c.slice, loadOp: load ? 'load' : 'clear', storeOp: 'store', clearValue: o.clear || BLACK })),
+    timestampWrites: hooks.timestamps ? hooks.timestamps() : undefined,
+  });
+  rp.setPipeline(P.pipe);
+  rp.setBindGroup(0, bg, offsets);
+  if (vp) rp.setViewport(vp[0], vp[1], vp[2], vp[3], 0, 1);
+  rp.draw(o.count || 3, o.instances || 1);
+  rp.end();
 }
-// Typed uniform helpers: plain numbers -> float, arrays by length, {tex} -> sampler, {i} -> int,
-// {iv2} -> ivec2, {v3: arr} -> vec3[], {v4: arr} -> vec4[]
-function setUniforms(prog, u) {
-  let unit = 0;
-  for (const k in u) {
-    const v = u[k], l = uloc(prog, k);
-    if (v && v.tex !== undefined) {
-      gl.activeTexture(gl.TEXTURE0 + unit);
-      gl.bindTexture(v.target || gl.TEXTURE_2D, v.tex);
-      if (l) gl.uniform1i(l, unit);
-      unit++;
-      continue;
-    }
-    if (!l) continue;
-    if (typeof v === 'number') gl.uniform1f(l, v);
-    else if (v.i !== undefined) gl.uniform1i(l, v.i);
-    else if (v.iv2) gl.uniform2i(l, v.iv2[0], v.iv2[1]);
-    else if (v.v3) gl.uniform3fv(l, v.v3);
-    else if (v.v4) gl.uniform4fv(l, v.v4);
-    else if (v.length === 2) gl.uniform2f(l, v[0], v[1]);
-    else if (v.length === 3) gl.uniform3f(l, v[0], v[1], v[2]);
-    else if (v.length === 4) gl.uniform4f(l, v[0], v[1], v[2], v[3]);
-    else if (v.length === 16) gl.uniformMatrix4fv(l, false, v);
-  }
-}
-const emptyVAO = gl.createVertexArray();
-function pass(prog, fb, w, h, uniforms, x = 0, y = 0) {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-  gl.viewport(x, y, w, h);
-  gl.useProgram(prog.p);
-  setUniforms(prog, uniforms);
-  gl.bindVertexArray(emptyVAO);
-  gl.drawArrays(gl.TRIANGLES, 0, 3);
+// fill a target with one colour
+function clearPass(t, color) {
+  enc().beginRenderPass({ colorAttachments: [{ view: t.view, loadOp: 'clear', storeOp: 'store', clearValue: color }] }).end();
 }
 
-// world volumes are baked several slices at a time (multiple render targets)
-const NOUT = Math.min(gl.getParameter(gl.MAX_DRAW_BUFFERS), gl.getParameter(gl.MAX_COLOR_ATTACHMENTS)) >= 8 ? 8 : 4;
-const MRT_OUT = '#define NOUT ' + NOUT + '\n' + Array.from({ length: NOUT }, (_, k) => `layout(location = ${k}) out vec4 o${k};`).join('\n');
-const MRT_WRITE = e => Array.from({ length: NOUT }, (_, k) => `  o${k} = vec4(${e.replace(/K/g, k)});`).join('\n');
+// ---- reading textures back (debugging and the tools): the texels of slices [z, z + nz) as
+// numbers, rows packed
+const TEXEL = { rgba16float: [8, 4, true], r16float: [2, 1, true], rgba32float: [16, 4, false], r32float: [4, 1, false], rgba8unorm: [4, 4, false] };
+async function readTexture(t, z = 0, nz = 1) {
+  const [bytes, comps, isHalf] = TEXEL[t.format];
+  const row = Math.ceil(t.w * bytes / 256) * 256;
+  const buf = device.createBuffer({ size: row * t.h * nz, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  flush();
+  const e = device.createCommandEncoder();
+  e.copyTextureToBuffer({ texture: t.tex, origin: [0, 0, z] }, { buffer: buf, bytesPerRow: row, rowsPerImage: t.h }, [t.w, t.h, nz]);
+  device.queue.submit([e.finish()]);
+  await buf.mapAsync(GPUMapMode.READ);
+  const raw = buf.getMappedRange(), n = t.w * comps, out = new Float32Array(n * t.h * nz);
+  for (let r = 0; r < t.h * nz; r++) {
+    if (isHalf) { const h = new Uint16Array(raw, r * row, n); for (let k = 0; k < n; k++) out[r * n + k] = fromHalf(h[k]); }
+    else if (t.format === 'rgba8unorm') { const b = new Uint8Array(raw, r * row, n); for (let k = 0; k < n; k++) out[r * n + k] = b[k] / 255; }
+    else out.set(new Float32Array(raw, r * row, n), r * n);
+  }
+  buf.unmap();
+  buf.destroy();
+  return out;
+}
 
 // ======== src/constants.js
 // Constants of the scene: the sun, the wind, noise texture sizes, the render origin, the ceiling
@@ -320,7 +458,7 @@ const F_WARP = 16, F_REST = 32, F_BAND = 40, F_SHEAR = 48, F_TURN = 52, F_SWELL 
 
 // ======== src/world/air.js
 // The world, generated on the CPU: endless and grown. (This folder never touches the page or
-// WebGL: tools/world runs it in Node.)
+// the GPU: tools/world runs it in Node.)
 // Nothing is placed by hand and nothing repeats: everything is drawn from a hash of where it is.
 // The clouds grow from a few causes, as in nature. Slow fields of the air decide how restless it
 // is, how much stronger the wind blows higher up, where the ceiling is and how moist the air is.
@@ -937,413 +1075,442 @@ function sunColorAt(hm) {
 }
 
 // ======== src/shaders/common.js
-// GLSL shared by (almost) every shader
+// WGSL shared by (almost) every shader
 
-const GLSL_COMMON = /* glsl */ `#version 300 es
-precision highp float;
-precision highp int;
-precision highp sampler2D;
-precision highp sampler3D;
-precision highp sampler2DShadow;
-#define PI 3.14159265359
-float sat(float x) { return clamp(x, 0.0, 1.0); }
-vec3 sat(vec3 x) { return clamp(x, 0.0, 1.0); }
-float smin(float a, float b, float k) { float h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }
-float smax(float a, float b, float k) { float h = max(k - abs(a - b), 0.0) / k; return max(a, b) + h * h * k * 0.25; }
-uvec3 pcg3d(uvec3 v) {
-  v = v * 1664525u + 1013904223u;
+const WGSL_COMMON = /* wgsl */ `
+const PI = 3.14159265359;
+fn smin(a: f32, b: f32, k: f32) -> f32 { let h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }
+fn smax(a: f32, b: f32, k: f32) -> f32 { let h = max(k - abs(a - b), 0.0) / k; return max(a, b) + h * h * k * 0.25; }
+fn pcg3d(v0: vec3u) -> vec3u {
+  var v = v0 * 1664525u + 1013904223u;
   v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
-  v ^= v >> 16u;
+  v ^= v >> vec3u(16u);
   v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
   return v;
 }
-vec3 hash33(uvec3 v) { return vec3(pcg3d(v)) * (1.0 / 4294967296.0); }
-float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
-float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+fn hash33(v: vec3u) -> vec3f { return vec3f(pcg3d(v)) * (1.0 / 4294967296.0); }
+fn ign(p: vec2f) -> f32 { return fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715)))); }
+fn luma(c: vec3f) -> f32 { return dot(c, vec3f(0.2126, 0.7152, 0.0722)); }
+// GLSL's mod (the remainder takes the sign of y; WGSL's % truncates)
+fn mod1(x: f32, y: f32) -> f32 { return x - y * floor(x / y); }
+fn mod2(x: vec2f, y: vec2f) -> vec2f { return x - y * floor(x / y); }
+fn mod3(x: vec3f, y: vec3f) -> vec3f { return x - y * floor(x / y); }
+// clip position from the GL-style matrices (math.js): y flipped so that every texture keeps its rows
+// bottom-up, as the screen-space passes read them; depth from [-w, w] to [0, w]
+fn toClip(p: vec4f) -> vec4f { return vec4f(p.x, -p.y, (p.z + p.w) * 0.5, p.w); }
 `;
 
 // ======== src/shaders/sky.js
 // The sky: atmosphere lookup tables after Hillaire 2020 (transmittance, multiple scattering, sky view, ambient)
 
-const GLSL_ATMO = /* glsl */ `
-const float RG = 6360.0;
-const float RT = 6460.0;
-const vec3 RAY_S = vec3(5.802e-3, 13.558e-3, 33.1e-3);
-const float RAY_H = 8.0;
-const float MIE_S = 3.996e-3 * 2.2;
-const float MIE_A = 4.4e-3 * 2.2;
-const float MIE_H = 1.2;
-const vec3 OZO_A = vec3(0.650e-3, 1.881e-3, 0.085e-3);
-const vec2 TRANS_SIZE = vec2(256.0, 64.0);
-const vec2 SKY_SIZE = vec2(192.0, 108.0);
+const WGSL_ATMO = /* wgsl */ `
+const RG = 6360.0;
+const RT = 6460.0;
+const RAY_S = vec3f(5.802e-3, 13.558e-3, 33.1e-3);
+const RAY_H = 8.0;
+const MIE_S = 3.996e-3 * 2.2;
+const MIE_A = 4.4e-3 * 2.2;
+const MIE_H = 1.2;
+const OZO_A = vec3f(0.650e-3, 1.881e-3, 0.085e-3);
+const TRANS_SIZE = vec2f(256.0, 64.0);
+const SKY_SIZE = vec2f(192.0, 108.0);
 
-void mediumAt(float h, out vec3 scatR, out float scatM, out vec3 ext) {
-  float dR = exp(-h / RAY_H), dM = exp(-h / MIE_H), dO = max(0.0, 1.0 - abs(h - 25.0) / 15.0);
-  scatR = RAY_S * dR;
-  scatM = MIE_S * dM;
-  ext = scatR + vec3(scatM + MIE_A * dM) + OZO_A * dO;
+struct Medium { scatR: vec3f, scatM: f32, ext: vec3f }
+fn mediumAt(h: f32) -> Medium {
+  let dR = exp(-h / RAY_H);
+  let dM = exp(-h / MIE_H);
+  let dO = max(0.0, 1.0 - abs(h - 25.0) / 15.0);
+  var m: Medium;
+  m.scatR = RAY_S * dR;
+  m.scatM = MIE_S * dM;
+  m.ext = m.scatR + vec3f(m.scatM + MIE_A * dM) + OZO_A * dO;
+  return m;
 }
-float distToTop(float r, float mu) {
-  float disc = r * r * (mu * mu - 1.0) + RT * RT;
+fn distToTop(r: f32, mu: f32) -> f32 {
+  let disc = r * r * (mu * mu - 1.0) + RT * RT;
   return max(0.0, -r * mu + sqrt(max(disc, 0.0)));
 }
-float distToGround(float r, float mu) {
-  float disc = r * r * (mu * mu - 1.0) + RG * RG;
-  if (disc < 0.0 || mu > 0.0) return -1.0;
+fn distToGround(r: f32, mu: f32) -> f32 {
+  let disc = r * r * (mu * mu - 1.0) + RG * RG;
+  if (disc < 0.0 || mu > 0.0) { return -1.0; }
   return -r * mu - sqrt(disc);
 }
-vec2 rMuToTransUv(float r, float mu) {
-  float H = sqrt(RT * RT - RG * RG);
-  float rho = sqrt(max(0.0, r * r - RG * RG));
-  float d = distToTop(r, mu);
-  float dMin = RT - r, dMax = rho + H;
-  vec2 uv = vec2((d - dMin) / max(dMax - dMin, 1e-4), rho / H);
+fn rMuToTransUv(r: f32, mu: f32) -> vec2f {
+  let H = sqrt(RT * RT - RG * RG);
+  let rho = sqrt(max(0.0, r * r - RG * RG));
+  let d = distToTop(r, mu);
+  let dMin = RT - r;
+  let dMax = rho + H;
+  let uv = vec2f((d - dMin) / max(dMax - dMin, 1e-4), rho / H);
   return (uv * (TRANS_SIZE - 1.0) + 0.5) / TRANS_SIZE;
 }
-float rayleighPhase(float c) { return 3.0 / (16.0 * PI) * (1.0 + c * c); }
-float cornetteShanks(float c, float g) {
-  float g2 = g * g;
+fn rayleighPhase(c: f32) -> f32 { return 3.0 / (16.0 * PI) * (1.0 + c * c); }
+fn cornetteShanks(c: f32, g: f32) -> f32 {
+  let g2 = g * g;
   return 3.0 / (8.0 * PI) * ((1.0 - g2) * (1.0 + c * c)) / ((2.0 + g2) * pow(max(1.0 + g2 - 2.0 * g * c, 1e-4), 1.5));
 }
-vec3 sampleTrans(sampler2D lut, float r, float mu) {
-  return textureLod(lut, rMuToTransUv(r, mu), 0.0).rgb;
+// (the lookup tables are parameters: a pass must not bind the table it renders)
+fn sampleTrans(lut: texture_2d<f32>, r: f32, mu: f32) -> vec3f {
+  return textureSampleLevel(lut, sLin, rMuToTransUv(r, mu), 0.0).rgb;
 }
-vec3 sunTransmittance(sampler2D lut, float r, float muS) {
-  float muH = -sqrt(max(0.0, 1.0 - RG * RG / (r * r)));
+fn sunTransmittance(lut: texture_2d<f32>, r: f32, muS: f32) -> vec3f {
+  let muH = -sqrt(max(0.0, 1.0 - RG * RG / (r * r)));
   return sampleTrans(lut, r, muS) * smoothstep(-0.006, 0.006, muS - muH);
 }
-vec2 skyParamsToUv(float r, float viewZenithCos, float lightViewCos, bool ground) {
-  float vHorizon = sqrt(max(r * r - RG * RG, 0.0));
-  float beta = acos(clamp(vHorizon / r, -1.0, 1.0));
-  float zenithHorizonAngle = PI - beta;
-  vec2 uv;
-  float a = acos(clamp(viewZenithCos, -1.0, 1.0));
+fn skyParamsToUv(r: f32, viewZenithCos: f32, lightViewCos: f32, ground: bool) -> vec2f {
+  let vHorizon = sqrt(max(r * r - RG * RG, 0.0));
+  let beta = acos(clamp(vHorizon / r, -1.0, 1.0));
+  let zenithHorizonAngle = PI - beta;
+  var uv: vec2f;
+  let a = acos(clamp(viewZenithCos, -1.0, 1.0));
   if (!ground) {
-    float c = a / zenithHorizonAngle;
+    var c = a / zenithHorizonAngle;
     c = 1.0 - sqrt(max(1.0 - c, 0.0));
     uv.y = c * 0.5;
   } else {
-    float c = (a - zenithHorizonAngle) / beta;
+    let c = (a - zenithHorizonAngle) / beta;
     uv.y = sqrt(max(c, 0.0)) * 0.5 + 0.5;
   }
   uv.x = sqrt(clamp(-lightViewCos * 0.5 + 0.5, 0.0, 1.0));
   return (uv * (SKY_SIZE - 1.0) + 0.5) / SKY_SIZE;
 }
-vec3 skyLookup(sampler2D skyLut, vec3 dir, vec3 sunDir, float camHkm) {
-  float r = RG + max(camHkm, 0.01);
-  vec2 dh = dir.xz, sh = sunDir.xz;
-  float l1 = length(dh), l2 = length(sh);
-  float lvc = (l1 > 1e-5 && l2 > 1e-5) ? dot(dh, sh) / (l1 * l2) : 1.0;
-  bool ground = distToGround(r, dir.y) > 0.0;
-  return textureLod(skyLut, skyParamsToUv(r, dir.y, lvc, ground), 0.0).rgb;
+fn skyLookup(skyLut: texture_2d<f32>, dir: vec3f, sunDir: vec3f, camHkm: f32) -> vec3f {
+  let r = RG + max(camHkm, 0.01);
+  let dh = dir.xz;
+  let sh = sunDir.xz;
+  let l1 = length(dh);
+  let l2 = length(sh);
+  let lvc = select(1.0, dot(dh, sh) / (l1 * l2), l1 > 1e-5 && l2 > 1e-5);
+  let ground = distToGround(r, dir.y) > 0.0;
+  return textureSampleLevel(skyLut, sLin, skyParamsToUv(r, dir.y, lvc, ground), 0.0).rgb;
 }
 `;
 
-const FS_TRANSMITTANCE = GLSL_COMMON + GLSL_ATMO + /* glsl */ `
-out vec4 o;
-void main() {
-  vec2 uv = (gl_FragCoord.xy - 0.5) / (TRANS_SIZE - 1.0);
-  float H = sqrt(RT * RT - RG * RG);
-  float rho = H * uv.y;
-  float r = sqrt(rho * rho + RG * RG);
-  float dMin = RT - r, dMax = rho + H;
-  float d = dMin + uv.x * (dMax - dMin);
-  float mu = d == 0.0 ? 1.0 : (H * H - rho * rho - d * d) / (2.0 * r * d);
+const FS_TRANSMITTANCE = WGSL_COMMON + WGSL_ATMO + /* wgsl */ `
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let uv = (pos.xy - 0.5) / (TRANS_SIZE - 1.0);
+  let H = sqrt(RT * RT - RG * RG);
+  let rho = H * uv.y;
+  let r = sqrt(rho * rho + RG * RG);
+  let dMin = RT - r;
+  let dMax = rho + H;
+  let d = dMin + uv.x * (dMax - dMin);
+  var mu = select((H * H - rho * rho - d * d) / (2.0 * r * d), 1.0, d == 0.0);
   mu = clamp(mu, -1.0, 1.0);
-  float L = distToTop(r, mu);
-  vec3 od = vec3(0.0);
-  const int N = 48;
-  float ds = L / float(N);
-  for (int i = 0; i < N; i++) {
-    float s = (float(i) + 0.5) * ds;
-    float rr = sqrt(r * r + s * s + 2.0 * r * mu * s);
-    vec3 sR, ext; float sM;
-    mediumAt(rr - RG, sR, sM, ext);
-    od += ext * ds;
+  let L = distToTop(r, mu);
+  var od = vec3f(0.0);
+  const N = 48;
+  let ds = L / f32(N);
+  for (var i = 0; i < N; i++) {
+    let s = (f32(i) + 0.5) * ds;
+    let rr = sqrt(r * r + s * s + 2.0 * r * mu * s);
+    od += mediumAt(rr - RG).ext * ds;
   }
-  o = vec4(exp(-od), 1.0);
+  return vec4f(exp(-od), 1.0);
 }`;
 
-const FS_MULTISCAT = GLSL_COMMON + GLSL_ATMO + /* glsl */ `
-uniform sampler2D uTrans;
-out vec4 o;
-void main() {
-  vec2 uv = (gl_FragCoord.xy - 0.5) / 31.0;
-  float muS = uv.x * 2.0 - 1.0;
-  float r = RG + max(uv.y * (RT - RG), 0.02);
-  vec3 sunDir = vec3(sqrt(max(0.0, 1.0 - muS * muS)), muS, 0.0);
-  vec3 pos = vec3(0.0, r, 0.0);
-  vec3 L2 = vec3(0.0), Fms = vec3(0.0);
-  const int SQ = 8;
-  for (int i = 0; i < SQ; i++) for (int j = 0; j < SQ; j++) {
-    float th = 2.0 * PI * (float(i) + 0.5) / float(SQ);
-    float cp = 1.0 - 2.0 * (float(j) + 0.5) / float(SQ);
-    float sp = sqrt(max(0.0, 1.0 - cp * cp));
-    vec3 dir = vec3(sp * cos(th), cp, sp * sin(th));
-    float tG = distToGround(r, dir.y);
-    float tMax = tG > 0.0 ? tG : distToTop(r, dir.y);
-    const int NS = 24;
-    float dt = tMax / float(NS);
-    vec3 T = vec3(1.0), Lp = vec3(0.0), Fp = vec3(0.0);
-    for (int k = 0; k < NS; k++) {
-      float t = (float(k) + 0.5) * dt;
-      vec3 p = pos + dir * t;
-      float rr = length(p);
-      vec3 up = p / rr;
-      vec3 sR, ext; float sM;
-      mediumAt(rr - RG, sR, sM, ext);
-      vec3 sS = sR + vec3(sM);
-      vec3 Ts = sunTransmittance(uTrans, rr, dot(up, sunDir));
-      vec3 st = exp(-ext * dt);
-      vec3 S = sS * Ts / (4.0 * PI);
-      Lp += T * (S - S * st) / max(ext, vec3(1e-7));
-      Fp += T * (sS - sS * st) / max(ext, vec3(1e-7));
-      T *= st;
+const FS_MULTISCAT = WGSL_COMMON + WGSL_ATMO + /* wgsl */ `
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let uv = (pos.xy - 0.5) / 31.0;
+  let muS = uv.x * 2.0 - 1.0;
+  let r = RG + max(uv.y * (RT - RG), 0.02);
+  let sunDir = vec3f(sqrt(max(0.0, 1.0 - muS * muS)), muS, 0.0);
+  let p0 = vec3f(0.0, r, 0.0);
+  var L2 = vec3f(0.0);
+  var Fms = vec3f(0.0);
+  const SQ = 8;
+  for (var i = 0; i < SQ; i++) {
+    for (var j = 0; j < SQ; j++) {
+      let th = 2.0 * PI * (f32(i) + 0.5) / f32(SQ);
+      let cp = 1.0 - 2.0 * (f32(j) + 0.5) / f32(SQ);
+      let sp = sqrt(max(0.0, 1.0 - cp * cp));
+      let dir = vec3f(sp * cos(th), cp, sp * sin(th));
+      let tG = distToGround(r, dir.y);
+      let tMax = select(distToTop(r, dir.y), tG, tG > 0.0);
+      const NS = 24;
+      let dt = tMax / f32(NS);
+      var T = vec3f(1.0);
+      var Lp = vec3f(0.0);
+      var Fp = vec3f(0.0);
+      for (var k = 0; k < NS; k++) {
+        let t = (f32(k) + 0.5) * dt;
+        let p = p0 + dir * t;
+        let rr = length(p);
+        let up = p / rr;
+        let m = mediumAt(rr - RG);
+        let sS = m.scatR + vec3f(m.scatM);
+        let Ts = sunTransmittance(tTrans, rr, dot(up, sunDir));
+        let st = exp(-m.ext * dt);
+        let S = sS * Ts / (4.0 * PI);
+        Lp += T * (S - S * st) / max(m.ext, vec3f(1e-7));
+        Fp += T * (sS - sS * st) / max(m.ext, vec3f(1e-7));
+        T *= st;
+      }
+      if (tG > 0.0) {
+        let pg = p0 + dir * tG;
+        let up = normalize(pg);
+        let mu = dot(up, sunDir);
+        Lp += T * sunTransmittance(tTrans, RG, mu) * saturate(mu) * 0.55 / PI;
+      }
+      L2 += Lp;
+      Fms += Fp;
     }
-    if (tG > 0.0) {
-      vec3 pg = pos + dir * tG;
-      vec3 up = normalize(pg);
-      float mu = dot(up, sunDir);
-      Lp += T * sunTransmittance(uTrans, RG, mu) * sat(mu) * 0.55 / PI;
-    }
-    L2 += Lp; Fms += Fp;
   }
-  L2 /= float(SQ * SQ);
-  Fms /= float(SQ * SQ);
-  o = vec4(L2 / (1.0 - Fms), 1.0);
+  L2 /= f32(SQ * SQ);
+  Fms /= f32(SQ * SQ);
+  return vec4f(L2 / (1.0 - Fms), 1.0);
 }`;
 
-const FS_SKYVIEW = GLSL_COMMON + GLSL_ATMO + /* glsl */ `
-uniform sampler2D uTrans;
-uniform sampler2D uMS;
-uniform float uCamH;   // km
-uniform vec3 uSunDir;
-out vec4 o;
-vec3 msLookup(float r, float muS) {
-  vec2 uv = vec2(muS * 0.5 + 0.5, (r - RG) / (RT - RG));
+const U_SKYVIEW = { camH: 'f32', sunDir: 'vec3f' };   // camH in km
+const FS_SKYVIEW = WGSL_COMMON + WGSL_ATMO + /* wgsl */ `
+fn msLookup(r: f32, muS: f32) -> vec3f {
+  var uv = vec2f(muS * 0.5 + 0.5, (r - RG) / (RT - RG));
   uv = (uv * 31.0 + 0.5) / 32.0;
-  return textureLod(uMS, uv, 0.0).rgb;
+  return textureSampleLevel(tMS, sLin, uv, 0.0).rgb;
 }
-void main() {
-  vec2 uv = (gl_FragCoord.xy - 0.5) / (SKY_SIZE - 1.0);
-  float r = RG + max(uCamH, 0.01);
-  float vHorizon = sqrt(max(r * r - RG * RG, 0.0));
-  float beta = acos(clamp(vHorizon / r, -1.0, 1.0));
-  float zha = PI - beta;
-  float vz;
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let uv = (pos.xy - 0.5) / (SKY_SIZE - 1.0);
+  let r = RG + max(u.camH, 0.01);
+  let vHorizon = sqrt(max(r * r - RG * RG, 0.0));
+  let beta = acos(clamp(vHorizon / r, -1.0, 1.0));
+  let zha = PI - beta;
+  var vz: f32;
   if (uv.y < 0.5) {
-    float c = 2.0 * uv.y; c = 1.0 - c; c *= c; c = 1.0 - c;
+    var c = 2.0 * uv.y; c = 1.0 - c; c *= c; c = 1.0 - c;
     vz = zha * c;
   } else {
-    float c = uv.y * 2.0 - 1.0; c *= c;
+    var c = uv.y * 2.0 - 1.0; c *= c;
     vz = zha + beta * c;
   }
-  float cvz = cos(vz), svz = sin(vz);
-  float c = uv.x * uv.x;
-  float lvc = -(c * 2.0 - 1.0);
-  float slv = sqrt(max(0.0, 1.0 - lvc * lvc));
-  vec3 dir = vec3(svz * lvc, cvz, svz * slv);
-  float sunH = length(uSunDir.xz);
-  vec3 sunDir = vec3(sunH, uSunDir.y, 0.0);
-  float tG = distToGround(r, dir.y);
-  float tMax = tG > 0.0 ? tG : distToTop(r, dir.y);
+  let cvz = cos(vz);
+  let svz = sin(vz);
+  let c = uv.x * uv.x;
+  let lvc = -(c * 2.0 - 1.0);
+  let slv = sqrt(max(0.0, 1.0 - lvc * lvc));
+  let dir = vec3f(svz * lvc, cvz, svz * slv);
+  let sunH = length(u.sunDir.xz);
+  let sunDir = vec3f(sunH, u.sunDir.y, 0.0);
+  let tG = distToGround(r, dir.y);
+  var tMax = select(distToTop(r, dir.y), tG, tG > 0.0);
   tMax = min(tMax, 900.0);
-  float cosT = dot(dir, sunDir);
-  float pR = rayleighPhase(cosT), pM = cornetteShanks(cosT, 0.8);
-  vec3 pos = vec3(0.0, r, 0.0);
-  vec3 T = vec3(1.0), L = vec3(0.0);
-  const int N = 40;
-  float tPrev = 0.0;
-  for (int i = 0; i < N; i++) {
-    float f = (float(i) + 0.5) / float(N);
-    float t = tMax * f * f;
-    float tn = tMax * pow((float(i) + 1.0) / float(N), 2.0);
-    float dt = tn - tPrev; tPrev = tn;
-    vec3 p = pos + dir * t;
-    float rr = length(p);
-    vec3 up = p / rr;
-    float muS = dot(up, sunDir);
-    vec3 sR, ext; float sM;
-    mediumAt(rr - RG, sR, sM, ext);
-    vec3 Ts = sunTransmittance(uTrans, rr, muS);
-    vec3 ms = msLookup(rr, muS);
-    vec3 S = sR * (Ts * pR + ms) + sM * (Ts * pM + ms);
-    vec3 st = exp(-ext * dt);
-    L += T * (S - S * st) / max(ext, vec3(1e-7));
+  let cosT = dot(dir, sunDir);
+  let pR = rayleighPhase(cosT);
+  let pM = cornetteShanks(cosT, 0.8);
+  let p0 = vec3f(0.0, r, 0.0);
+  var T = vec3f(1.0);
+  var L = vec3f(0.0);
+  const N = 40;
+  var tPrev = 0.0;
+  for (var i = 0; i < N; i++) {
+    let f = (f32(i) + 0.5) / f32(N);
+    let t = tMax * f * f;
+    let tn = tMax * pow((f32(i) + 1.0) / f32(N), 2.0);
+    let dt = tn - tPrev;
+    tPrev = tn;
+    let p = p0 + dir * t;
+    let rr = length(p);
+    let up = p / rr;
+    let muS = dot(up, sunDir);
+    let m = mediumAt(rr - RG);
+    let Ts = sunTransmittance(tTrans, rr, muS);
+    let ms = msLookup(rr, muS);
+    let S = m.scatR * (Ts * pR + ms) + m.scatM * (Ts * pM + ms);
+    let st = exp(-m.ext * dt);
+    L += T * (S - S * st) / max(m.ext, vec3f(1e-7));
     T *= st;
   }
-  o = vec4(L, 1.0);
+  return vec4f(L, 1.0);
 }`;
 
 // ambient: px0 = cosine weighted sky irradiance / PI (upper hemisphere), px1 = mean radiance near
 // horizon, px2 / px3 = sky irradiance / PI on a vertical face turned toward / away from the sun
-const FS_AMBIENT = GLSL_COMMON + GLSL_ATMO + /* glsl */ `
-uniform sampler2D uSky;
-uniform vec3 uSunDir;
-uniform float uCamH;
-out vec4 o;
-void main() {
-  int px = int(gl_FragCoord.x);
-  vec3 acc = vec3(0.0); float w = 0.0;
-  vec3 face = normalize(vec3(uSunDir.x, 0.0, uSunDir.z)) * (px == 2 ? 1.0 : -1.0);
-  for (int i = 0; i < 24; i++) for (int j = 0; j < 10; j++) {
-    float ph = 2.0 * PI * (float(i) + 0.5) / 24.0;
-    float ct = (float(j) + 0.5) / 10.0;
-    if (px == 1) ct = ct * 0.25;
-    float st = sqrt(1.0 - ct * ct);
-    vec3 d = vec3(st * cos(ph), ct, st * sin(ph));
-    vec3 L = skyLookup(uSky, d, uSunDir, uCamH);
-    float wt = px == 0 ? ct : px == 1 ? 1.0 : max(dot(d, face), 0.0);
-    acc += L * wt; w += wt;
+const U_AMBIENT = { sunDir: 'vec3f', camH: 'f32' };
+const FS_AMBIENT = WGSL_COMMON + WGSL_ATMO + /* wgsl */ `
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let px = i32(pos.x);
+  var acc = vec3f(0.0);
+  var w = 0.0;
+  let face = normalize(vec3f(u.sunDir.x, 0.0, u.sunDir.z)) * select(-1.0, 1.0, px == 2);
+  for (var i = 0; i < 24; i++) {
+    for (var j = 0; j < 10; j++) {
+      let ph = 2.0 * PI * (f32(i) + 0.5) / 24.0;
+      var ct = (f32(j) + 0.5) / 10.0;
+      if (px == 1) { ct = ct * 0.25; }
+      let st = sqrt(1.0 - ct * ct);
+      let d = vec3f(st * cos(ph), ct, st * sin(ph));
+      let L = skyLookup(tSky, d, u.sunDir, u.camH);
+      var wt = max(dot(d, face), 0.0);
+      if (px == 0) { wt = ct; } else if (px == 1) { wt = 1.0; }
+      acc += L * wt;
+      w += wt;
+    }
   }
   // px0: irradiance/PI = mean(L cos)/mean(cos) * ... ; uniform-in-cos sampling -> E = 2PI * mean(L cos)
-  vec3 r = px == 1 ? acc / w : acc / float(240) * 2.0;
-  o = vec4(r, 1.0);
+  let r = select(acc / f32(240) * 2.0, acc / w, px == 1);
+  return vec4f(r, 1.0);
 }`;
 
 // ======== src/shaders/textures.js
 // Static textures, generated once: noise volumes (cloud shapes, detail), cirrus, the two high layers
 
-const FS_NOISE3D = GLSL_COMMON + /* glsl */ `
-uniform float uZ;
-uniform float uSize;
-uniform vec4 uCells;
-uniform int uMode;
-out vec4 o;
+const U_NOISE3D = { z: 'f32', size: 'f32', mode: 'i32', cells: 'vec4f' };
+const FS_NOISE3D = WGSL_COMMON + /* wgsl */ `
 // field of random spheres in a tileable lattice; returns signed distance in cell units
-float sphereField(vec3 p, float cells, uint seed) {
-  vec3 pc = p * cells;
-  vec3 id = floor(pc);
-  vec3 f = pc - id;
-  float d = 1.0;
-  for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
-    vec3 o3 = vec3(x, y, z);
-    vec3 c = mod(id + o3, cells);
-    uvec3 ci = uvec3(c);
-    vec3 h = hash33(ci + uvec3(seed * 101u, seed * 211u, seed * 307u));
-    vec3 h2 = hash33(ci * 3u + uvec3(seed * 13u + 7u, seed * 5u + 1u, 11u));
-    // (the large billows pack close; the small ones over them a little looser)
-    bool big = seed <= 2u;
-    if (h2.y < (big ? 0.1 : 0.16)) continue;
-    vec3 center = o3 + 0.1 + 0.8 * h;
-    float rad = big ? mix(0.4, 0.78, h2.x) : mix(0.36, 0.72, h2.x);
-    d = min(d, length(center - f) - rad);
+fn sphereField(p: vec3f, cells: f32, seed: u32) -> f32 {
+  let pc = p * cells;
+  let id = floor(pc);
+  let f = pc - id;
+  var d = 1.0;
+  for (var z = -1; z <= 1; z++) {
+    for (var y = -1; y <= 1; y++) {
+      for (var x = -1; x <= 1; x++) {
+        let o3 = vec3f(f32(x), f32(y), f32(z));
+        let c = mod3(id + o3, vec3f(cells));
+        let ci = vec3u(c);
+        let h = hash33(ci + vec3u(seed * 101u, seed * 211u, seed * 307u));
+        let h2 = hash33(ci * 3u + vec3u(seed * 13u + 7u, seed * 5u + 1u, 11u));
+        // (the large billows pack close; the small ones over them a little looser)
+        let big = seed <= 2u;
+        if (h2.y < select(0.16, 0.1, big)) { continue; }
+        let center = o3 + 0.1 + 0.8 * h;
+        let rad = select(mix(0.36, 0.72, h2.x), mix(0.4, 0.78, h2.x), big);
+        d = min(d, length(center - f) - rad);
+      }
+    }
   }
   return d;
 }
-float worley(vec3 p, float cells, uint seed) {
-  vec3 pc = p * cells;
-  vec3 id = floor(pc);
-  vec3 f = pc - id;
-  float d = 1e9;
-  for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
-    vec3 o3 = vec3(x, y, z);
-    vec3 c = mod(id + o3, cells);
-    vec3 h = hash33(uvec3(c) + uvec3(seed * 97u, seed * 193u, seed * 389u));
-    vec3 q = o3 + h - f;
-    d = min(d, dot(q, q));
+fn worley(p: vec3f, cells: f32, seed: u32) -> f32 {
+  let pc = p * cells;
+  let id = floor(pc);
+  let f = pc - id;
+  var d = 1e9;
+  for (var z = -1; z <= 1; z++) {
+    for (var y = -1; y <= 1; y++) {
+      for (var x = -1; x <= 1; x++) {
+        let o3 = vec3f(f32(x), f32(y), f32(z));
+        let c = mod3(id + o3, vec3f(cells));
+        let h = hash33(vec3u(c) + vec3u(seed * 97u, seed * 193u, seed * 389u));
+        let q = o3 + h - f;
+        d = min(d, dot(q, q));
+      }
+    }
   }
   return sqrt(d);
 }
-vec3 grad3(vec3 c, float period, uint seed) {
-  vec3 h = hash33(uvec3(mod(c, period)) + uvec3(seed * 53u, seed * 59u, seed * 61u)) * 2.0 - 1.0;
+fn grad3(c: vec3f, period: f32, seed: u32) -> vec3f {
+  let h = hash33(vec3u(mod3(c, vec3f(period))) + vec3u(seed * 53u, seed * 59u, seed * 61u)) * 2.0 - 1.0;
   return normalize(h + 1e-4);
 }
-float perlin(vec3 p, float period, uint seed) {
-  vec3 i = floor(p), f = p - i;
-  vec3 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-  float n000 = dot(grad3(i, period, seed), f);
-  float n100 = dot(grad3(i + vec3(1, 0, 0), period, seed), f - vec3(1, 0, 0));
-  float n010 = dot(grad3(i + vec3(0, 1, 0), period, seed), f - vec3(0, 1, 0));
-  float n110 = dot(grad3(i + vec3(1, 1, 0), period, seed), f - vec3(1, 1, 0));
-  float n001 = dot(grad3(i + vec3(0, 0, 1), period, seed), f - vec3(0, 0, 1));
-  float n101 = dot(grad3(i + vec3(1, 0, 1), period, seed), f - vec3(1, 0, 1));
-  float n011 = dot(grad3(i + vec3(0, 1, 1), period, seed), f - vec3(0, 1, 1));
-  float n111 = dot(grad3(i + vec3(1, 1, 1), period, seed), f - vec3(1, 1, 1));
-  return mix(mix(mix(n000, n100, u.x), mix(n010, n110, u.x), u.y), mix(mix(n001, n101, u.x), mix(n011, n111, u.x), u.y), u.z);
+fn perlin(p: vec3f, period: f32, seed: u32) -> f32 {
+  let i = floor(p);
+  let f = p - i;
+  let fu = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  let n000 = dot(grad3(i, period, seed), f);
+  let n100 = dot(grad3(i + vec3f(1.0, 0.0, 0.0), period, seed), f - vec3f(1.0, 0.0, 0.0));
+  let n010 = dot(grad3(i + vec3f(0.0, 1.0, 0.0), period, seed), f - vec3f(0.0, 1.0, 0.0));
+  let n110 = dot(grad3(i + vec3f(1.0, 1.0, 0.0), period, seed), f - vec3f(1.0, 1.0, 0.0));
+  let n001 = dot(grad3(i + vec3f(0.0, 0.0, 1.0), period, seed), f - vec3f(0.0, 0.0, 1.0));
+  let n101 = dot(grad3(i + vec3f(1.0, 0.0, 1.0), period, seed), f - vec3f(1.0, 0.0, 1.0));
+  let n011 = dot(grad3(i + vec3f(0.0, 1.0, 1.0), period, seed), f - vec3f(0.0, 1.0, 1.0));
+  let n111 = dot(grad3(i + vec3f(1.0, 1.0, 1.0), period, seed), f - vec3f(1.0, 1.0, 1.0));
+  return mix(mix(mix(n000, n100, fu.x), mix(n010, n110, fu.x), fu.y), mix(mix(n001, n101, fu.x), mix(n011, n111, fu.x), fu.y), fu.z);
 }
-void main() {
-  vec3 p = vec3(gl_FragCoord.xy / uSize, uZ);
-  if (uMode == 0) {
-    vec4 d = vec4(sphereField(p, uCells.x, 1u), sphereField(p, uCells.y, 2u), sphereField(p, uCells.z, 3u), sphereField(p, uCells.w, 4u));
-    o = clamp(d * 0.5 + 0.5, 0.0, 1.0);
-  } else {
-    float w1 = 1.0 - worley(p, uCells.x, 5u);
-    float w2 = 1.0 - worley(p, uCells.y, 6u);
-    float w3 = 1.0 - worley(p, uCells.z, 7u);
-    float wf = sat(w1 * 0.6 + w2 * 0.28 + w3 * 0.12);
-    float pf = 0.0, amp = 0.5, per = uCells.x;
-    for (int k = 0; k < 4; k++) { pf += amp * perlin(p * per, per, uint(9 + k)); amp *= 0.5; per *= 2.0; }
-    pf = sat(pf * 0.9 + 0.5);
-    float w4 = 1.0 - worley(p, uCells.w, 8u);
-    o = vec4(wf, pf, sat(w3 * 0.6 + w4 * 0.4), sat(perlin(p * uCells.y, uCells.y, 21u) * 0.9 + 0.5));
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let p = vec3f(pos.xy / u.size, u.z);
+  if (u.mode == 0) {
+    let d = vec4f(sphereField(p, u.cells.x, 1u), sphereField(p, u.cells.y, 2u), sphereField(p, u.cells.z, 3u), sphereField(p, u.cells.w, 4u));
+    return clamp(d * 0.5 + 0.5, vec4f(0.0), vec4f(1.0));
   }
+  let w1 = 1.0 - worley(p, u.cells.x, 5u);
+  let w2 = 1.0 - worley(p, u.cells.y, 6u);
+  let w3 = 1.0 - worley(p, u.cells.z, 7u);
+  let wf = saturate(w1 * 0.6 + w2 * 0.28 + w3 * 0.12);
+  var pf = 0.0;
+  var amp = 0.5;
+  var per = u.cells.x;
+  for (var k = 0; k < 4; k++) { pf += amp * perlin(p * per, per, u32(9 + k)); amp *= 0.5; per *= 2.0; }
+  pf = saturate(pf * 0.9 + 0.5);
+  let w4 = 1.0 - worley(p, u.cells.w, 8u);
+  return vec4f(wf, pf, saturate(w3 * 0.6 + w4 * 0.4), saturate(perlin(p * u.cells.y, u.cells.y, 21u) * 0.9 + 0.5));
 }`;
 
-const FS_CIRRUS = GLSL_COMMON + /* glsl */ `
-uniform float uSize;
-out vec4 o;
-float vnoise(vec2 p, float per, uint seed) {
-  vec2 i = floor(p), f = p - i;
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  float a = hash33(uvec3(uvec2(mod(i, per)), seed)).x;
-  float b = hash33(uvec3(uvec2(mod(i + vec2(1, 0), per)), seed)).x;
-  float c = hash33(uvec3(uvec2(mod(i + vec2(0, 1), per)), seed)).x;
-  float d = hash33(uvec3(uvec2(mod(i + vec2(1, 1), per)), seed)).x;
-  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+const U_SIZE = { size: 'f32' };
+const FS_CIRRUS = WGSL_COMMON + /* wgsl */ `
+fn vnoise(p: vec2f, per: f32, seed: u32) -> f32 {
+  let i = floor(p);
+  let f = p - i;
+  let fu = f * f * (3.0 - 2.0 * f);
+  let a = hash33(vec3u(vec2u(mod2(i, vec2f(per))), seed)).x;
+  let b = hash33(vec3u(vec2u(mod2(i + vec2f(1.0, 0.0), vec2f(per))), seed)).x;
+  let c = hash33(vec3u(vec2u(mod2(i + vec2f(0.0, 1.0), vec2f(per))), seed)).x;
+  let d = hash33(vec3u(vec2u(mod2(i + vec2f(1.0, 1.0), vec2f(per))), seed)).x;
+  return mix(mix(a, b, fu.x), mix(c, d, fu.x), fu.y);
 }
-float fbm(vec2 p, float per, uint seed) {
-  float s = 0.0, a = 0.5;
-  for (int i = 0; i < 6; i++) { s += a * vnoise(p * per, per, seed + uint(i)); a *= 0.5; per *= 2.0; }
+fn fbm(p: vec2f, per0: f32, seed: u32) -> f32 {
+  var s = 0.0;
+  var a = 0.5;
+  var per = per0;
+  for (var i = 0; i < 6; i++) { s += a * vnoise(p * per, per, seed + u32(i)); a *= 0.5; per *= 2.0; }
   return s;
 }
-void main() {
-  vec2 p = gl_FragCoord.xy / uSize;
-  vec2 w = vec2(fbm(p, 4.0, 3u), fbm(p + 0.37, 4.0, 9u)) - 0.5;
-  vec2 q = p + w * vec2(0.08, 0.25);
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let p = pos.xy / u.size;
+  let w = vec2f(fbm(p, 4.0, 3u), fbm(p + 0.37, 4.0, 9u)) - 0.5;
+  let q = p + w * vec2f(0.08, 0.25);
   // streaks: stretch the fine detail along x
-  float base = fbm(q, 3.0, 17u);
-  float streak = 0.0, a = 0.5, per = 4.0;
-  for (int i = 0; i < 5; i++) {
-    vec2 sp = vec2(q.x * per, q.y * per * 6.0);
-    streak += a * vnoise(sp, per, 40u + uint(i)) ;
+  let base = fbm(q, 3.0, 17u);
+  var streak = 0.0;
+  var a = 0.5;
+  var per = 4.0;
+  for (var i = 0; i < 5; i++) {
+    let sp = vec2f(q.x * per, q.y * per * 6.0);
+    streak += a * vnoise(sp, per, 40u + u32(i));
     a *= 0.55; per *= 2.0;
   }
-  float c = sat((base - 0.47) * 3.2) * (0.35 + 0.9 * streak);
-  float patchy = sat((fbm(p, 2.0, 77u) - 0.42) * 3.0);
-  o = vec4(sat(c * patchy), streak, base, 1.0);
+  let c = saturate((base - 0.47) * 3.2) * (0.35 + 0.9 * streak);
+  let patchy = saturate((fbm(p, 2.0, 77u) - 0.42) * 3.0);
+  return vec4f(saturate(c * patchy), streak, base, 1.0);
 }`;
 
 // thin high layers: r, g = density of the two layers (a few long patches drawn out along the
 // wind, streaky inside), b = fine streaks. Tiles over 64 km.
-const FS_LAYERS = GLSL_COMMON + /* glsl */ `
-uniform float uSize;
-out vec4 o;
-float vnoise(vec2 p, vec2 per, uint seed) {
-  vec2 i = floor(p), f = p - i;
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  float a = hash33(uvec3(uvec2(mod(i, per)), seed)).x;
-  float b = hash33(uvec3(uvec2(mod(i + vec2(1, 0), per)), seed)).x;
-  float c = hash33(uvec3(uvec2(mod(i + vec2(0, 1), per)), seed)).x;
-  float d = hash33(uvec3(uvec2(mod(i + vec2(1, 1), per)), seed)).x;
-  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+const FS_LAYERS = WGSL_COMMON + /* wgsl */ `
+fn vnoise(p: vec2f, per: vec2f, seed: u32) -> f32 {
+  let i = floor(p);
+  let f = p - i;
+  let fu = f * f * (3.0 - 2.0 * f);
+  let a = hash33(vec3u(vec2u(mod2(i, per)), seed)).x;
+  let b = hash33(vec3u(vec2u(mod2(i + vec2f(1.0, 0.0), per)), seed)).x;
+  let c = hash33(vec3u(vec2u(mod2(i + vec2f(0.0, 1.0), per)), seed)).x;
+  let d = hash33(vec3u(vec2u(mod2(i + vec2f(1.0, 1.0), per)), seed)).x;
+  return mix(mix(a, b, fu.x), mix(c, d, fu.x), fu.y);
 }
-float fbm(vec2 p, vec2 per, uint seed) {
-  float s = 0.0, a = 0.5;
-  for (int i = 0; i < 6; i++) { s += a * vnoise(p * per, per, seed + uint(i)); a *= 0.5; per *= 2.0; }
+fn fbm(p: vec2f, per0: vec2f, seed: u32) -> f32 {
+  var s = 0.0;
+  var a = 0.5;
+  var per = per0;
+  for (var i = 0; i < 6; i++) { s += a * vnoise(p * per, per, seed + u32(i)); a *= 0.5; per *= 2.0; }
   return s;
 }
-float layer(vec2 p, uint seed) {
-  vec2 w = vec2(fbm(p, vec2(3.0, 6.0), seed + 60u), fbm(p + 0.31, vec2(3.0, 6.0), seed + 70u)) - 0.5;
-  vec2 q = p + w * vec2(0.05, 0.03);
-  float patchy = smoothstep(0.62, 0.76, fbm(q, vec2(2.0, 5.0), seed));         // a few long patches
-  float body = smoothstep(0.32, 0.72, fbm(q, vec2(3.0, 20.0), seed + 20u));     // stretched along x
-  float streak = fbm(q, vec2(6.0, 64.0), seed + 40u);
+fn layer(p: vec2f, seed: u32) -> f32 {
+  let w = vec2f(fbm(p, vec2f(3.0, 6.0), seed + 60u), fbm(p + 0.31, vec2f(3.0, 6.0), seed + 70u)) - 0.5;
+  let q = p + w * vec2f(0.05, 0.03);
+  let patchy = smoothstep(0.62, 0.76, fbm(q, vec2f(2.0, 5.0), seed));         // a few long patches
+  let body = smoothstep(0.32, 0.72, fbm(q, vec2f(3.0, 20.0), seed + 20u));     // stretched along x
+  let streak = fbm(q, vec2f(6.0, 64.0), seed + 40u);
   return patchy * body * (0.45 + 0.75 * streak);
 }
-void main() {
-  vec2 p = gl_FragCoord.xy / uSize;
-  o = vec4(sat(layer(p, 101u)), sat(layer(p + vec2(0.43, 0.27), 151u)), fbm(p, vec2(8.0, 96.0), 211u), 1.0);
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let p = pos.xy / u.size;
+  return vec4f(saturate(layer(p, 101u)), saturate(layer(p + vec2f(0.43, 0.27), 151u)), fbm(p, vec2f(8.0, 96.0), 211u), 1.0);
+}`;
+
+// the next mip level of the high layers (seen at grazing angles far away): each texel the mean of
+// the four below it
+const FS_MIP = /* wgsl */ `
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  return textureSampleLevel(tSrc, sLin, pos.xy / u.size, 0.0);
 }`;
 
 // ======== src/shaders/cloud.js
@@ -1352,284 +1519,291 @@ void main() {
 // three 3D distance volumes of the large shapes (sea relief, heaps, towers), 128 m / 512 m / 2 km,
 // each with a 2D map of per-column data, addressed toroidally so they stream as the bird flies.
 
-const GLSL_CLOUD = /* glsl */ `
-uniform highp sampler3D uVol0;
-uniform highp sampler3D uVol1;
-uniform highp sampler3D uVol2;
-uniform sampler2D uCol0;
-uniform sampler2D uCol1;
-uniform sampler2D uCol2;
-uniform vec4 uLvA[3];       // per level: 1 / extent, toroidal offset x, z, 1 / height
-uniform vec4 uLvV[3];       // per level: valid window (min x, min z, max x, max z)
-uniform vec4 uTsvA;         // shadow volume: the same
-uniform vec4 uTsvV;
-uniform vec4 uWarpPh;       // phases of the billow warp at the render origin
-uniform vec2 uWarpPh2;
-uniform sampler3D uShape;
-uniform sampler3D uDetail;
-uniform sampler3D uTSV;
-uniform vec3 uShapeOff;     // slow evolution of the sea billows (wrapped)
-uniform vec3 uDetailOff;
-uniform vec3 uSunDir;
-uniform vec3 uSunCol[16];
+// uniforms of the clipmap lookups (part of the uniforms of every shader that includes them)
+const U_CLIP = {
+  lvA: 'vec4f[3]',      // per level: 1 / extent, toroidal offset x, z, 1 / height
+  lvV: 'vec4f[3]',      // per level: valid window (min x, min z, max x, max z)
+};
+const WGSL_CLIP = /* wgsl */ `
+const INV2R = 0.5 / 6360000.0;
+const SEA_BASE = 520.0;
+const CLOUD_TOP = 14000.0;
+const SHAPE_TILE = 5120.0;
+const DETAIL_TILE = 512.0;
+const SIGMA = 0.035;        // extinction inside clouds (1/m)
+const EDGE_W = 80.0;        // soft boundary thickness (m)
+fn lvMargin(l: i32) -> f32 { return select(select(750.0, 260.0, l == 1), 80.0, l == 0); }   // interpolation error of each level
 
-const float INV2R = 0.5 / 6360000.0;
-const float SEA_BASE = 520.0;
-const float CLOUD_TOP = 14000.0;
-const float SHAPE_TILE = 5120.0;
-const float DETAIL_TILE = 512.0;
-const float SIGMA = 0.035;        // extinction inside clouds (1/m)
-const float EDGE_W = 80.0;        // soft boundary thickness (m)
-const float LV_MARGIN[3] = float[3](80.0, 260.0, 750.0);   // interpolation error of each level
+fn inLv(xz: vec2f, l: i32) -> bool { let v = u.lvV[l]; return xz.x > v.x && xz.y > v.y && xz.x < v.z && xz.y < v.w; }
+// the clipmap level for a sample at distance t (dithered handover); coarser outside a window
+fn levelAt(xz: vec2f, t: f32, dith: f32) -> i32 {
+  var l = 2;
+  if (t < 7000.0 + 3000.0 * dith) { l = 0; } else if (t < 40000.0 + 15000.0 * dith) { l = 1; }
+  if (l == 0 && !inLv(xz, 0)) { l = 1; }
+  if (l == 1 && !inLv(xz, 1)) { l = 2; }
+  return l;
+}
+// distance to the large shapes (no billows yet) in level l
+fn macroAt(p: vec3f, l: i32) -> f32 {
+  let a = u.lvA[l];
+  let uvw = vec3f(p.x * a.x + a.y, p.z * a.x + a.z, p.y * a.w);
+  if (l == 0) { return textureSampleLevel(tVol0, sVol, uvw, 0.0).r; }
+  if (l == 1) { return textureSampleLevel(tVol1, sVol, uvw, 0.0).r; }
+  if (!inLv(p.xz, 2)) { return 20000.0; }
+  return textureSampleLevel(tVol2, sVol, uvw, 0.0).r;
+}
+// column data: sea surface with heaps, billow strength, fine billows, sea level without heaps
+fn colAt(xz: vec2f, l: i32) -> vec4f {
+  let a = u.lvA[l];
+  let uv = vec2f(xz.x * a.x + a.y, xz.y * a.x + a.z);
+  if (l == 0) { return textureSampleLevel(tCol0, sRep, uv, 0.0); }
+  if (l == 1) { return textureSampleLevel(tCol1, sRep, uv, 0.0); }
+  return textureSampleLevel(tCol2, sRep, uv, 0.0);
+}
+`;
 
-vec3 sunColorAt(float h) {
-  float f = clamp(h / 750.0, 0.0, 14.99);
-  int i = int(f);
-  return mix(uSunCol[i], uSunCol[i + 1], f - float(i));
+const U_CLOUD = {
+  tsvA: 'vec4f',        // shadow volume: the same as lvA
+  tsvV: 'vec4f',
+  warpPh: 'vec4f',      // phases of the billow warp at the render origin
+  warpPh2: 'vec2f',
+  shapeOff: 'vec3f',    // slow evolution of the sea billows (wrapped)
+  detailOff: 'vec3f',
+  sunDir: 'vec3f',
+  sunCol: 'vec3f[16]',
+};
+const WGSL_CLOUD = WGSL_CLIP + /* wgsl */ `
+fn sunColorAt(h: f32) -> vec3f {
+  let f = clamp(h / 750.0, 0.0, 14.99);
+  let i = i32(f);
+  return mix(u.sunCol[i], u.sunCol[i + 1], f - f32(i));
 }
 
-float octave(float d, float n, float shell, float k) {
+fn octave(d: f32, n0: f32, shell: f32, k: f32) -> f32 {
   // spheres may only bulge out to "shell" beyond the current surface; the clip is wide and soft
   // so over-sized spheres become rounded swells instead of flat-topped plateaus
-  n = smax(n, d - shell, max(k, shell * 1.6));
+  let n = smax(n0, d - shell, max(k, shell * 1.6));
   // a tight union: crisp, defined creases between the billows (the clip above keeps every sphere
   // within the shell, so none floats detached)
   return smin(n, d, mix(max(k * 0.8, shell * 1.05), shell * 0.5 + 4.0, 0.7));
 }
-float shellOf(float a) { return 400.0 * a + 120.0; }    // highest billows above the large shapes
+fn shellOf(a: f32) -> f32 { return 400.0 * a + 120.0; }    // highest billows above the large shapes
 
-bool inLv(vec2 xz, int l) { vec4 v = uLvV[l]; return xz.x > v.x && xz.y > v.y && xz.x < v.z && xz.y < v.w; }
-// the clipmap level for a sample at distance t (dithered handover); coarser outside a window
-int levelAt(vec2 xz, float t, float dith) {
-  int l = t < 7000.0 + 3000.0 * dith ? 0 : (t < 40000.0 + 15000.0 * dith ? 1 : 2);
-  if (l == 0 && !inLv(xz, 0)) l = 1;
-  if (l == 1 && !inLv(xz, 1)) l = 2;
-  return l;
-}
-// distance to the large shapes (no billows yet) in level l
-float macroAt(vec3 p, int l) {
-  vec4 a = uLvA[l];
-  vec3 uvw = vec3(p.x * a.x + a.y, p.z * a.x + a.z, p.y * a.w);
-  if (l == 0) return textureLod(uVol0, uvw, 0.0).r;
-  if (l == 1) return textureLod(uVol1, uvw, 0.0).r;
-  if (!inLv(p.xz, 2)) return 20000.0;
-  return textureLod(uVol2, uvw, 0.0).r;
-}
-// column data: sea surface with heaps, billow strength, fine billows, sea level without heaps
-vec4 colAt(vec2 xz, int l) {
-  vec4 a = uLvA[l];
-  vec2 uv = vec2(xz.x * a.x + a.y, xz.y * a.x + a.z);
-  if (l == 0) return textureLod(uCol0, uv, 0.0);
-  if (l == 1) return textureLod(uCol1, uv, 0.0);
-  return textureLod(uCol2, uv, 0.0);
-}
 // a slow, seamless warp of the billow pattern: waves of unrelated lengths, it never repeats
-vec3 warpLand(vec3 p) {
-  vec2 q = p.xz;
-  return p + vec3(240.0 * sin(q.y * 8.37e-4 + uWarpPh.x + 1.3 * sin(q.x * 3.41e-4 + uWarpPh.y)) + 150.0 * sin(q.y * 2.53e-4 + q.x * 1.49e-4 + uWarpPh.z), 0.0,
-                  240.0 * sin(q.x * 9.29e-4 + uWarpPh.w + 1.3 * sin(q.y * 3.97e-4 + uWarpPh2.x)) + 150.0 * sin(q.x * 1.93e-4 - q.y * 2.91e-4 + uWarpPh2.y));
+fn warpLand(p: vec3f) -> vec3f {
+  let q = p.xz;
+  return p + vec3f(240.0 * sin(q.y * 8.37e-4 + u.warpPh.x + 1.3 * sin(q.x * 3.41e-4 + u.warpPh.y)) + 150.0 * sin(q.y * 2.53e-4 + q.x * 1.49e-4 + u.warpPh.z), 0.0,
+                   240.0 * sin(q.x * 9.29e-4 + u.warpPh.w + 1.3 * sin(q.y * 3.97e-4 + u.warpPh2.x)) + 150.0 * sin(q.x * 1.93e-4 - q.y * 2.91e-4 + u.warpPh2.y));
 }
 
 // Signed distance (m) to the cloud surface: the large shapes (dm, from a clipmap) with billows of
 // spheres heaped on them. C: column data. lod: 0 = full detail.
-float cloudSDF(vec3 wp, float h, float dm, vec4 C, float lod) {
+fn cloudSDF(wp: vec3f, h: f32, dm: f32, C: vec4f, lod: f32) -> f32 {
   // squashed lookup: billows are wider than tall (heaps, not balls)
-  vec4 sf = textureLod(uShape, (warpLand(wp) + uShapeOff) * (vec3(1.0, 1.35, 1.0) / SHAPE_TILE), 0.0) * 2.0 - 1.0;
+  var sf = textureSampleLevel(tShape, sRep, (warpLand(wp) + u.shapeOff) * (vec3f(1.0, 1.35, 1.0) / SHAPE_TILE), 0.0) * 2.0 - 1.0;
   sf *= 1.0 / 1.35;
-  float A = C.y;
-  float ds = octave(dm, sf.x * 1280.0, 300.0 * A, 300.0);
+  let A = C.y;
+  var ds = octave(dm, sf.x * 1280.0, 300.0 * A, 300.0);
   ds = octave(ds, sf.y * 640.0, 160.0 * A, 160.0);
   // cauliflower detail on the upper parts of the sea and on everything heaped above it; the
   // troughs stay smooth
-  float topW = sat((h - min(C.x, C.w + 100.0) + 40.0) / 220.0);
-  float w3 = (1.0 - smoothstep(0.8, 2.0, lod)) * topW;
-  float w4 = (1.0 - smoothstep(0.35, 1.0, lod)) * topW;
+  let topW = saturate((h - min(C.x, C.w + 100.0) + 40.0) / 220.0);
+  let w3 = (1.0 - smoothstep(0.8, 2.0, lod)) * topW;
+  let w4 = (1.0 - smoothstep(0.35, 1.0, lod)) * topW;
   ds = octave(ds, sf.z * 320.0, 56.0 * w3 * C.z, 90.0);
   ds = octave(ds, sf.w * 160.0, 26.0 * w4 * C.z, 45.0);
-  float d = ds;
+  var d = ds;
   // near the camera: an extra pair of small billow octaves (crisp cauliflower texture up close)
   if (lod < 0.15 && abs(d) < 80.0) {   // only matters right at the surface
-    float wn = 1.0 - smoothstep(0.05, 0.15, lod);
-    vec4 sn = textureLod(uShape, (wp + uShapeOff * 2.0) * (8.0 / SHAPE_TILE), 0.0) * 2.0 - 1.0;
+    let wn = 1.0 - smoothstep(0.05, 0.15, lod);
+    let sn = textureSampleLevel(tShape, sRep, (wp + u.shapeOff * 2.0) * (8.0 / SHAPE_TILE), 0.0) * 2.0 - 1.0;
     d = octave(d, sn.y * 80.0, 20.0 * wn, 16.0);
     d = octave(d, sn.z * 40.0, 10.0 * wn, 8.0);
   }
   return d;
 }
 // the same, looking up the large shapes and column data of level l
-float sceneSDF(vec3 wp, float h, int l, float lod) {
-  return cloudSDF(wp, h, macroAt(vec3(wp.x, h, wp.z), l), colAt(wp.xz, l), lod);
+fn sceneSDF(wp: vec3f, h: f32, l: i32, lod: f32) -> f32 {
+  return cloudSDF(wp, h, macroAt(vec3f(wp.x, h, wp.z), l), colAt(wp.xz, l), lod);
 }
 
 // density (0..1) from the signed distance with wispy erosion at the soft boundary.
 // edgeW: boundary softness; nearW: weight of extra-fine wisps close to the camera; farW: coarse
 // fraying for distant silhouettes
-float densityEx(float d, vec3 wp, float detailW, float edgeW, float nearW, float farW) {
-  float x = -d;
-  if (x <= 0.0) return 0.0;
-  float dens = sat(x / edgeW);
-  float er = 0.0;
+fn densityEx(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32, farW: f32) -> f32 {
+  let x = -d;
+  if (x <= 0.0) { return 0.0; }
+  var dens = saturate(x / edgeW);
+  var er = 0.0;
   if (detailW > 0.01 && x < edgeW * 2.5) {
-    vec4 dn = textureLod(uDetail, (wp + uDetailOff) * (1.0 / DETAIL_TILE), 0.0);
-    float e = mix(dn.g, dn.r, sat(x / (edgeW * 1.5)));
+    let dn = textureSampleLevel(tDetail, sRep, (wp + u.detailOff) * (1.0 / DETAIL_TILE), 0.0);
+    var e = mix(dn.g, dn.r, saturate(x / (edgeW * 1.5)));
     if (nearW > 0.01) {
-      vec4 dn2 = textureLod(uDetail, (wp + uDetailOff * 2.0) * (4.0 / DETAIL_TILE) + dn.a * 0.35, 0.0);
+      let dn2 = textureSampleLevel(tDetail, sRep, (wp + u.detailOff * 2.0) * (4.0 / DETAIL_TILE) + dn.a * 0.35, 0.0);
       e = mix(e, e * 0.6 + dn2.r * 0.55, nearW);
     }
     er = e * 0.36 * detailW;
   } else if (nearW > 0.01) {
     // inside a cloud near the camera: drifting density variations so mist visibly streams past
-    vec4 dn = textureLod(uDetail, (wp + uDetailOff * 2.0) * (2.0 / DETAIL_TILE), 0.0);
+    let dn = textureSampleLevel(tDetail, sRep, (wp + u.detailOff * 2.0) * (2.0 / DETAIL_TILE), 0.0);
     dens *= mix(1.0, 0.25 + 1.1 * dn.r * dn.r + 0.3 * dn.g, nearW);
   }
   // far away: coarse erosion of the outermost rim only, so distant silhouettes fray instead of
   // ending in smooth outlines (the faces themselves stay crisp)
   if (farW > 0.01 && x < edgeW) {
-    vec4 fn = textureLod(uDetail, wp * (1.0 / 4096.0), 0.0);
-    er = max(er, (0.65 * fn.g + 0.35 * fn.r) * 0.3 * farW * (1.0 - x / edgeW));
+    let fz = textureSampleLevel(tDetail, sRep, wp * (1.0 / 4096.0), 0.0);
+    er = max(er, (0.65 * fz.g + 0.35 * fz.r) * 0.3 * farW * (1.0 - x / edgeW));
   }
-  if (er > 0.0) dens = sat((dens - er) / max(1.0 - er, 0.15));
+  if (er > 0.0) { dens = saturate((dens - er) / max(1.0 - er, 0.15)); }
   return dens;
 }
-float densityFromSDF(float d, vec3 wp, float detailW, float edgeW, float nearW) {
+fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f32 {
   return densityEx(d, wp, detailW, edgeW, nearW, 0.0);
 }
 
 // optical depth toward the sun from the shadow volume (no shadows outside its window)
-float tsvTau(vec3 wp, float h) {
-  vec4 v = uTsvV;
-  float w = min(min(wp.x - v.x, v.z - wp.x), min(wp.z - v.y, v.w - wp.z));
-  if (w <= 0.0) return 0.0;
-  return textureLod(uTSV, vec3(wp.x * uTsvA.x + uTsvA.y, wp.z * uTsvA.x + uTsvA.z, h * uTsvA.w), 0.0).r * sat(w / 8000.0);
+fn tsvTau(wp: vec3f, h: f32) -> f32 {
+  let v = u.tsvV;
+  let w = min(min(wp.x - v.x, v.z - wp.x), min(wp.z - v.y, v.w - wp.z));
+  if (w <= 0.0) { return 0.0; }
+  return textureSampleLevel(tTsv, sVol, vec3f(wp.x * u.tsvA.x + u.tsvA.y, wp.z * u.tsvA.x + u.tsvA.z, h * u.tsvA.w), 0.0).r * saturate(w / 8000.0);
 }
 
-float HG(float c, float g) {
-  float g2 = g * g;
+fn HG(c: f32, g: f32) -> f32 {
+  let g2 = g * g;
   return (1.0 - g2) / (4.0 * PI * pow(max(1.0 + g2 - 2.0 * g * c, 1e-4), 1.5));
 }
 // Multiple scattering approximation (Wrenninge): sum of octaves with reduced extinction & anisotropy
-vec4 phaseOctaves(float c) {
-  return vec4(mix(HG(c, -0.3), HG(c, 0.8), 0.62), mix(HG(c, -0.15), HG(c, 0.4), 0.62),
-              mix(HG(c, -0.075), HG(c, 0.2), 0.62), mix(HG(c, -0.0375), HG(c, 0.1), 0.62));
+fn phaseOctaves(c: f32) -> vec4f {
+  return vec4f(mix(HG(c, -0.3), HG(c, 0.8), 0.62), mix(HG(c, -0.15), HG(c, 0.4), 0.62),
+               mix(HG(c, -0.075), HG(c, 0.2), 0.62), mix(HG(c, -0.0375), HG(c, 0.1), 0.62));
 }
-float msScatterP(float tau, vec4 ph) {
-  vec4 e = exp(-tau * vec4(1.0, 0.5, 0.25, 0.125));
-  return dot(e * vec4(1.0, 0.55, 0.3025, 0.166375), ph);
+fn msScatterP(tau: f32, ph: vec4f) -> f32 {
+  let e = exp(-tau * vec4f(1.0, 0.5, 0.25, 0.125));
+  return dot(e * vec4f(1.0, 0.55, 0.3025, 0.166375), ph);
 }
 
-// Optical depth toward the sun from a point (short march with growing steps). nS: how much the
-// surface there faces the sun (-1..1), from the distance field along the first two steps.
-// l, C: clipmap level and column data of the starting point.
-float lightTauN(vec3 wp0, float h0, int l, vec4 C, float jit, float lod0, out float nS) {
-  float tau = 0.0, s = 0.0, ds = 25.0, d1 = 0.0, s1 = 0.0;
-  nS = 0.0;
-  for (int i = 0; i < 5; i++) {
-    float sm = s + ds * (0.25 + 0.5 * jit);
-    vec3 wp = wp0 + uSunDir * sm;
-    float h = h0 + uSunDir.y * sm;
+// Optical depth toward the sun from a point (short march with growing steps), and nS: how much
+// the surface there faces the sun (-1..1), from the distance field along the first two steps.
+// l, C: clipmap level and column data of the starting point. Returns (tau, nS).
+fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, jit: f32, lod0: f32) -> vec2f {
+  var tau = 0.0;
+  var s = 0.0;
+  var ds = 25.0;
+  var d1 = 0.0;
+  var s1 = 0.0;
+  var nS = 0.0;
+  for (var i = 0; i < 5; i++) {
+    let sm = s + ds * (0.25 + 0.5 * jit);
+    let wp = wp0 + u.sunDir * sm;
+    let h = h0 + u.sunDir.y * sm;
     // the first steps keep the detail of the view sample: bulges shade themselves at any range
-    float d = cloudSDF(wp, h, macroAt(vec3(wp.x, h, wp.z), l), C, lod0 + float(max(i - 1, 0)) * 0.6);
+    let d = cloudSDF(wp, h, macroAt(vec3f(wp.x, h, wp.z), l), C, lod0 + f32(max(i - 1, 0)) * 0.6);
     if (i == 0) { d1 = d; s1 = sm; }
-    else if (i == 1) nS = clamp((d - d1) / (sm - s1), -1.0, 1.0);
+    else if (i == 1) { nS = clamp((d - d1) / (sm - s1), -1.0, 1.0); }
     // near steps: point density; long far steps: smooth coverage estimate (no contour rings)
     // the density ramp widens with the step length so long steps don't switch abruptly (and is
     // sharp right at the start, so each bulge shades the one beside it)
-    tau += sat(-d / (mix(30.0, EDGE_W, sat(s / 200.0)) + ds * 0.35)) * ds * SIGMA;
+    tau += saturate(-d / (mix(30.0, EDGE_W, saturate(s / 200.0)) + ds * 0.35)) * ds * SIGMA;
     s += ds;
     ds *= 2.4;
   }
-  return tau;
+  return vec2f(tau, nS);
 }
-float lightTau(vec3 wp0, float h0, int l, vec4 C, float jit, float lod0) {
-  float nS;
-  return lightTauN(wp0, h0, l, C, jit, lod0, nS);
+fn lightTau(wp0: vec3f, h0: f32, l: i32, C: vec4f, jit: f32, lod0: f32) -> f32 {
+  return lightTauN(wp0, h0, l, C, jit, lod0).x;
 }
 `;
 
 // ======== src/shaders/volumes.js
 // Baking the streamed world volumes: the shadow volume and the distance volumes of the clipmaps
 
+// world volumes are baked several slices at a time: NOUT slices of a 3D texture as the colour
+// attachments of one pass (WebGPU guarantees 8)
+const NOUT = 8;
+const MRT_OUT = `const NOUT = ${NOUT};\nstruct Slices {\n` + Array.from({ length: NOUT }, (_, k) => `  @location(${k}) o${k}: f32,`).join('\n') + '\n}';
+const MRT_WRITE = e => '  var o: Slices;\n' + Array.from({ length: NOUT }, (_, k) => `  o.o${k} = ${e.replace(/K/g, k)};`).join('\n') + '\n  return o;';
+
 // shadow volume (camera-centred, streamed like the clipmaps): optical depth toward the sun from
 // each texel, marched through the large shapes of the coarser levels. Bakes NOUT slices at once.
-const FS_TSV = GLSL_COMMON + GLSL_CLOUD + /* glsl */ `
-uniform ivec2 uTex0;      // first texel of this block
-uniform vec2 uP0;         // render-space xz of that texel's centre
-uniform float uCellT, uCellTV;
-uniform int uZ0;
+const U_TSV = {
+  ...U_CLIP, sunDir: 'vec3f',
+  tex0: 'vec2i',        // first texel of this block
+  p0: 'vec2f',          // render-space xz of that texel's centre
+  cellT: 'f32', cellTV: 'f32', z0: 'i32',
+};
+const FS_TSV = WGSL_COMMON + WGSL_CLIP + /* wgsl */ `
 ${MRT_OUT}
-float march(vec2 xz, float y0, float jit) {
-  float trans = 1.0;
-  float s = 200.0 + 320.0 * jit;
-  bool out_ = false;     // shading only starts once the ray has left the cloud it started in
-  for (int i = 0; i < 320; i++) {
-    vec3 p = vec3(xz.x, y0, xz.y) + uSunDir * s;
-    if (p.y > CLOUD_TOP || s > 150000.0) break;
-    int l = inLv(p.xz, 1) ? 1 : 2;
-    float d = macroAt(p, l);
+fn march(xz: vec2f, y0: f32, jit: f32) -> f32 {
+  var trans = 1.0;
+  var s = 200.0 + 320.0 * jit;
+  var out_ = false;     // shading only starts once the ray has left the cloud it started in
+  for (var i = 0; i < 320; i++) {
+    let p = vec3f(xz.x, y0, xz.y) + u.sunDir * s;
+    if (p.y > CLOUD_TOP || s > 150000.0) { break; }
+    let l = select(2, 1, inLv(p.xz, 1));
+    let d = macroAt(p, l);
     // far from every cloud: skip ahead
-    float m = d - LV_MARGIN[l] - 300.0;
+    let m = d - lvMargin(l) - 300.0;
     if (m > 0.0) { out_ = true; s += max(m, 320.0); continue; }
-    float step = d < 400.0 ? 200.0 : 320.0;
+    let stp = select(320.0, 200.0, d < 400.0);
     // inside the large shapes, and the larger billows on them
-    float occ = sat((120.0 - d) / 380.0);
-    if (!out_) { if (occ < 0.05) out_ = true; occ = 0.0; }
+    var occ = saturate((120.0 - d) / 380.0);
+    if (!out_) { if (occ < 0.05) { out_ = true; } occ = 0.0; }
     // distant occluders cast fainter shadows (sky light and haze fill them in)
-    trans *= mix(1.0, exp(-SIGMA * step * occ), exp(-s / 28000.0));
-    s += step;
+    trans *= mix(1.0, exp(-SIGMA * stp * occ), exp(-s / 28000.0));
+    s += stp;
   }
   return min(-log(max(trans, 1e-6)), 14.0);
 }
-void main() {
-  vec2 xz = uP0 + vec2(ivec2(gl_FragCoord.xy) - uTex0) * uCellT;
-  float jit = ign(gl_FragCoord.xy);
-${MRT_WRITE('march(xz, (float(uZ0 + K) + 0.5) * uCellTV, fract(jit + float(K) * 0.618))')}
+@fragment fn fs(@builtin(position) pos: vec4f) -> Slices {
+  let xz = u.p0 + vec2f(vec2i(pos.xy) - u.tex0) * u.cellT;
+  let jit = ign(pos.xy);
+${MRT_WRITE('march(xz, (f32(u.z0 + K) + 0.5) * u.cellTV, fract(jit + f32(K) * 0.618))')}
 }`;
 
 // Bakes NOUT slices of a block of one clipmap level: the sea (from the column map: its surface
 // and slope) united with the tower bubbles near the block (ellipsoids; crisp creases between
 // them, a broad fillet where they swell out of the sea). Positions are relative to the block.
-const FS_BAKE = GLSL_COMMON + /* glsl */ `
-uniform sampler2D uCol;
-uniform highp sampler2D uBub;
-uniform int uNB;
-uniform ivec2 uTex0;
-uniform float uCellH, uCellV, uMaxD;
-uniform int uZ0;
-uniform int uMask;
+const U_BAKE = { nb: 'i32', z0: 'i32', mask: 'i32', tex0: 'vec2i', cellH: 'f32', cellV: 'f32', maxD: 'f32' };
+const FS_BAKE = WGSL_COMMON + /* wgsl */ `
 ${MRT_OUT}
-float ellD(vec3 q, vec3 r) {   // distance to an ellipsoid (good near its surface)
-  float k0 = length(q / r), k1 = length(q / (r * r));
+fn ellD(q: vec3f, r: vec3f) -> f32 {   // distance to an ellipsoid (good near its surface)
+  let k0 = length(q / r);
+  let k1 = length(q / (r * r));
   return k0 * (k0 - 1.0) / max(k1, 1e-9);
 }
-void main() {
-  ivec2 tx = ivec2(gl_FragCoord.xy);
-  vec2 pl = (vec2(tx - uTex0) + 0.5) * uCellH;
-  float hs = texelFetch(uCol, tx, 0).r;
-  float gx = texelFetch(uCol, ivec2((tx.x + 1) & uMask, tx.y), 0).r - texelFetch(uCol, ivec2((tx.x - 1) & uMask, tx.y), 0).r;
-  float gz = texelFetch(uCol, ivec2(tx.x, (tx.y + 1) & uMask), 0).r - texelFetch(uCol, ivec2(tx.x, (tx.y - 1) & uMask), 0).r;
-  float cs = max(inversesqrt(1.0 + (gx * gx + gz * gz) / (4.0 * uCellH * uCellH)), 0.3);
-  float y0 = (float(uZ0) + 0.5) * uCellV, y1 = y0 + uCellV * float(NOUT - 1);
-  float acc[NOUT];
-  for (int k = 0; k < NOUT; k++) acc[k] = uMaxD;
-  for (int b = 0; b < uNB; b++) {
-    ivec2 bt = ivec2(b & 1023, (b >> 10) * 3);
-    vec4 A = texelFetch(uBub, bt, 0);
-    vec4 E = texelFetch(uBub, bt + ivec2(0, 2), 0);
-    vec2 dxz = pl - A.xz;
-    if (length(dxz) - E.y > uMaxD || y0 - (A.y + E.y) > uMaxD || (A.y - E.y) - y1 > uMaxD) continue;
-    vec4 B = texelFetch(uBub, bt + ivec2(0, 1), 0);
-    float ca = cos(B.w), sa = sin(B.w);
-    vec2 q = vec2(dxz.x * ca + dxz.y * sa, -dxz.x * sa + dxz.y * ca);
-    vec2 rxz = vec2(A.w * B.z, A.w / B.z);
-    for (int k = 0; k < NOUT; k++) {
-      float dy = y0 + float(k) * uCellV - A.y;
-      acc[k] = smin(acc[k], ellD(vec3(q.x, dy, q.y), vec3(rxz.x, dy > 0.0 ? B.x : B.y, rxz.y)), E.x);
+@fragment fn fs(@builtin(position) pos: vec4f) -> Slices {
+  let tx = vec2i(pos.xy);
+  let pl = (vec2f(tx - u.tex0) + 0.5) * u.cellH;
+  let hs = textureLoad(tCol, tx, 0).r;
+  let gx = textureLoad(tCol, vec2i((tx.x + 1) & u.mask, tx.y), 0).r - textureLoad(tCol, vec2i((tx.x - 1) & u.mask, tx.y), 0).r;
+  let gz = textureLoad(tCol, vec2i(tx.x, (tx.y + 1) & u.mask), 0).r - textureLoad(tCol, vec2i(tx.x, (tx.y - 1) & u.mask), 0).r;
+  let cs = max(inverseSqrt(1.0 + (gx * gx + gz * gz) / (4.0 * u.cellH * u.cellH)), 0.3);
+  let y0 = (f32(u.z0) + 0.5) * u.cellV;
+  let y1 = y0 + u.cellV * f32(NOUT - 1);
+  var acc: array<f32, NOUT>;
+  for (var k = 0; k < NOUT; k++) { acc[k] = u.maxD; }
+  for (var b = 0; b < u.nb; b++) {
+    let bt = vec2i(b & 1023, (b >> 10u) * 3);
+    let A = textureLoad(tBub, bt, 0);
+    let E = textureLoad(tBub, bt + vec2i(0, 2), 0);
+    let dxz = pl - A.xz;
+    if (length(dxz) - E.y > u.maxD || y0 - (A.y + E.y) > u.maxD || (A.y - E.y) - y1 > u.maxD) { continue; }
+    let B = textureLoad(tBub, bt + vec2i(0, 1), 0);
+    let ca = cos(B.w);
+    let sa = sin(B.w);
+    let q = vec2f(dxz.x * ca + dxz.y * sa, -dxz.x * sa + dxz.y * ca);
+    let rxz = vec2f(A.w * B.z, A.w / B.z);
+    for (var k = 0; k < NOUT; k++) {
+      let dy = y0 + f32(k) * u.cellV - A.y;
+      acc[k] = smin(acc[k], ellD(vec3f(q.x, dy, q.y), vec3f(rxz.x, select(B.y, B.x, dy > 0.0), rxz.y)), E.x);
     }
   }
-  float res[NOUT];
-  for (int k = 0; k < NOUT; k++) {
-    float above = y0 + float(k) * uCellV - hs;
-    res[k] = clamp(smin(above * cs, acc[k], mix(700.0, 60.0, smoothstep(0.0, 1800.0, above))), -uMaxD, uMaxD);
+  var res: array<f32, NOUT>;
+  for (var k = 0; k < NOUT; k++) {
+    let above = y0 + f32(k) * u.cellV - hs;
+    res[k] = clamp(smin(above * cs, acc[k], mix(700.0, 60.0, smoothstep(0.0, 1800.0, above))), -u.maxD, u.maxD);
   }
 ${MRT_WRITE('res[K]')}
 }`;
@@ -1637,109 +1811,114 @@ ${MRT_WRITE('res[K]')}
 // ======== src/shaders/trace.js
 // The cloud raymarch (low resolution)
 
-const FS_TRACE = GLSL_COMMON + GLSL_ATMO + GLSL_CLOUD + /* glsl */ `
-uniform sampler2D uSky;
-uniform sampler2D uAmb;
-uniform vec2 uRes;
-uniform vec2 uJitter;
-uniform vec3 uCamPos;
-uniform vec3 uCamRight, uCamUp, uCamFwd;
-uniform vec2 uTanHalf;
-uniform float uFrame;
-uniform vec3 uAmbSea;
-uniform float uHazeK;
-uniform int uDbgMode;
-uniform float uInCloud;
-layout(location = 0) out vec4 oCol;
-layout(location = 1) out vec4 oDepth;
-
-const float HAZE_H = 2400.0;
-float hazeOD(float t, float h0, float dy) {
-  float e0 = uHazeK * exp(-h0 / HAZE_H);
-  float k = (dy + t * INV2R) / HAZE_H;
-  if (abs(k) < 1e-7) return e0 * t;
+const U_TRACE = {
+  ...U_CLIP, ...U_CLOUD,
+  res: 'vec2f', jitter: 'vec2f', tanHalf: 'vec2f',
+  camPos: 'vec3f', frame: 'f32', camRight: 'vec3f', hazeK: 'f32', camUp: 'vec3f', inCloud: 'f32', camFwd: 'vec3f', dbgMode: 'i32',
+  ambSea: 'vec3f',
+};
+// (the debug views of ?dbg=N are compiled in only when asked for: setup.js sets DBG)
+const FS_TRACE = WGSL_COMMON + WGSL_ATMO + WGSL_CLOUD + /* wgsl */ `
+const DBG = false;
+const HAZE_H = 2400.0;
+fn hazeOD(t: f32, h0: f32, dy: f32) -> f32 {
+  let e0 = u.hazeK * exp(-h0 / HAZE_H);
+  let k = (dy + t * INV2R) / HAZE_H;
+  if (abs(k) < 1e-7) { return e0 * t; }
   return e0 * (1.0 - exp(-k * t)) / k;
 }
 
-void main() {
-  vec2 frag = gl_FragCoord.xy;
-  vec2 ndc = (frag + uJitter) / uRes * 2.0 - 1.0;
-  vec3 dir = normalize(uCamFwd + ndc.x * uTanHalf.x * uCamRight + ndc.y * uTanHalf.y * uCamUp);
-  float h0 = uCamPos.y;
+struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
+@fragment fn fs(@builtin(position) pos: vec4f) -> Out {
+  let frag = pos.xy;
+  let ndc = (frag + u.jitter) / u.res * 2.0 - 1.0;
+  let dir = normalize(u.camFwd + ndc.x * u.tanHalf.x * u.camRight + ndc.y * u.tanHalf.y * u.camUp);
+  let h0 = u.camPos.y;
 
   // extent of the cloud shell along the ray (curved planet, parabolic approximation)
-  float tEnd = 250000.0;
+  var tEnd = 250000.0;
   {
     // h(t) = h0 + dy t + t^2 INV2R ; solve h(t) = CLOUD_TOP
-    float a = INV2R, b = dir.y, c0 = h0 - CLOUD_TOP;
-    float D = b * b - 4.0 * a * c0;
-    if (D > 0.0) tEnd = min(tEnd, (-b + sqrt(D)) / (2.0 * a));
-    float c1 = h0 - SEA_BASE;
-    float D1 = b * b - 4.0 * a * c1;
-    if (b < 0.0 && D1 > 0.0) tEnd = min(tEnd, (-b - sqrt(D1)) / (2.0 * a));
+    let a = INV2R;
+    let b = dir.y;
+    let c0 = h0 - CLOUD_TOP;
+    let D = b * b - 4.0 * a * c0;
+    if (D > 0.0) { tEnd = min(tEnd, (-b + sqrt(D)) / (2.0 * a)); }
+    let c1 = h0 - SEA_BASE;
+    let D1 = b * b - 4.0 * a * c1;
+    if (b < 0.0 && D1 > 0.0) { tEnd = min(tEnd, (-b - sqrt(D1)) / (2.0 * a)); }
   }
 
   // per-pixel low-discrepancy temporal sequences (R2) on top of a spatial IGN pattern
-  float fr = mod(uFrame, 1024.0);
-  float jit = fract(ign(frag) + fr * 0.75487767);
-  float jit2 = fract(ign(frag + vec2(47.0, 17.0)) + fr * 0.56984029);
+  let fr = mod1(u.frame, 1024.0);
+  let jit = fract(ign(frag) + fr * 0.75487767);
+  let jit2 = fract(ign(frag + vec2f(47.0, 17.0)) + fr * 0.56984029);
   // haze colour: the sky just above the horizon for downward rays (no seam at the horizon)
-  vec3 hazeDir = normalize(vec3(dir.x, max(dir.y, 0.004), dir.z));
-  vec3 skyHaze = skyLookup(uSky, hazeDir, uSunDir, h0 * 0.001);
-  vec3 ambUp = texelFetch(uAmb, ivec2(0, 0), 0).rgb * 1.95;
+  let hazeDir = normalize(vec3f(dir.x, max(dir.y, 0.004), dir.z));
+  let skyHaze = skyLookup(tSky, hazeDir, u.sunDir, h0 * 0.001);
+  let ambUp = textureLoad(tAmb, vec2i(0, 0), 0).rgb * 1.95;
   // light bounced off the sunlit sea of clouds below (Lambertian deck, sun 5 degrees up)
-  vec3 seaBounce = uAmbSea * 0.38;
-  vec3 ambSunS = texelFetch(uAmb, ivec2(2, 0), 0).rgb * 1.95 + seaBounce * 0.4;
+  let seaBounce = u.ambSea * 0.38;
+  let ambSunS = textureLoad(tAmb, vec2i(2, 0), 0).rgb * 1.95 + seaBounce * 0.4;
   // (a touch of violet: the anti-sun sky at dusk; on cloud sides it reads as cool, luminous shade)
-  vec3 ambAnti = texelFetch(uAmb, ivec2(3, 0), 0).rgb * 1.95 * vec3(1.06, 0.93, 1.1) + seaBounce * 0.15;
-  float cosT = dot(dir, uSunDir);
-  vec4 phase = phaseOctaves(cosT);
-  float powder = 1.0 - 0.28 * sat(0.5 - 0.5 * cosT);
+  let ambAnti = textureLoad(tAmb, vec2i(3, 0), 0).rgb * 1.95 * vec3f(1.06, 0.93, 1.1) + seaBounce * 0.15;
+  let cosT = dot(dir, u.sunDir);
+  let phase = phaseOctaves(cosT);
+  let powder = 1.0 - 0.28 * saturate(0.5 - 0.5 * cosT);
 
-  float T = 1.0;
-  vec3 L = vec3(0.0);
-  float zSum = 0.0, zW = 0.0;
-  float t = (0.2 + jit * 0.8) * 4.0;
-  bool done = false;
-  float tPrev = 0.0, dPrev = -1.0;   // last point outside the clouds
-  float tIn = 0.0, dIn = 0.0;        // nearest point known to be inside, while refining an entry
-  int nRef = 0, side = 0;
-  bool startIn = false;
-  float nIter = 0.0, nIn = 0.0, nSdf = 0.0;
-  float lastTau = 0.0, lastDepth = 0.0, lastNS = 0.0, lastNUp = 1.0;
-  for (int i = 0; i < 360; i++) {
+  var T = 1.0;
+  var L = vec3f(0.0);
+  var zSum = 0.0;
+  var zW = 0.0;
+  var t = (0.2 + jit * 0.8) * 4.0;
+  var done = false;
+  var tPrev = 0.0;      // last point outside the clouds
+  var dPrev = -1.0;
+  var tIn = 0.0;        // nearest point known to be inside, while refining an entry
+  var dIn = 0.0;
+  var nRef = 0;
+  var side = 0;
+  var startIn = false;
+  var nIter = 0.0;
+  var nIn = 0.0;
+  var nSdf = 0.0;
+  var lastTau = 0.0;
+  var lastDepth = 0.0;
+  var lastNS = 0.0;
+  var lastNUp = 1.0;
+  for (var i = 0; i < 360; i++) {
     nIter += 1.0;
     if (t >= tEnd || T < 0.02) { done = true; break; }
-    vec3 rel = dir * t;
-    float h = h0 + rel.y + dot(rel.xz, rel.xz) * INV2R;
-    vec3 wp = uCamPos + rel;
+    let rel = dir * t;
+    let h = h0 + rel.y + dot(rel.xz, rel.xz) * INV2R;
+    var wp = u.camPos + rel;
     wp.y = h;
     // stride floor grows with distance (far detail is softened by haze anyway), slowly enough
     // that distant towers are not stepped over
-    float minStep = 6.0 + t * 0.02 + max(t - 8000.0, 0.0) * 0.006;
-    float rj = fract(jit + float(i) * 0.61803399);
+    let minStep = 6.0 + t * 0.02 + max(t - 8000.0, 0.0) * 0.006;
+    let rj = fract(jit + f32(i) * 0.61803399);
     // empty space skipping: the distance to the large shapes, less the highest billows on them
-    int lv = levelAt(wp.xz, t, jit);
-    vec4 C = colAt(wp.xz, lv);
-    float dm = macroAt(vec3(wp.x, h, wp.z), lv);
-    float bound = dm - shellOf(C.y) - LV_MARGIN[lv];
+    let lv = levelAt(wp.xz, t, jit);
+    let C = colAt(wp.xz, lv);
+    let dm = macroAt(vec3f(wp.x, h, wp.z), lv);
+    let bound = dm - shellOf(C.y) - lvMargin(lv);
     if (bound > 0.0 && nRef == 0 && !startIn) { tPrev = t; dPrev = bound; t += max(bound * 0.95, minStep * (0.5 + rj)); continue; }
-    float lod = t * (1.0 / 15000.0);
+    let lod = t * (1.0 / 15000.0);
     nSdf += 1.0;
-    float d = cloudSDF(wp, h, dm, C, lod);
-    float edgeW = mix(14.0, EDGE_W, smoothstep(120.0, 4000.0, t));   // crisper rims up close
+    let d = cloudSDF(wp, h, dm, C, lod);
+    var edgeW = mix(14.0, EDGE_W, smoothstep(120.0, 4000.0, t));   // crisper rims up close
     // the billowy tops of the sea and everything piled on it have crisp outlines, only widened
     // enough at range not to alias; the deep troughs of the sea stay soft
-    float crisp = smoothstep(-150.0, 250.0, h - C.w);
+    let crisp = smoothstep(-150.0, 250.0, h - C.w);
     edgeW = mix(edgeW, min(edgeW, max(30.0, t * 0.003)), crisp);
-    float dtMin = 3.0 + t * 0.002;
+    let dtMin = 3.0 + t * 0.002;
     // Entering a cloud: locate the boundary within the last stride (Illinois regula falsi), then
     // start integrating a jittered fraction of a rim step past it. Starting anywhere within a far
     // stride (hundreds of metres deep) would light distant clouds as if from deep inside them.
-    float tol = max(edgeW * 0.15, 1.0);
+    let tol = max(edgeW * 0.15, 1.0);
     if (nRef > 0) {
-      if (d > 0.0) { tPrev = t; dPrev = d; if (side == 1) dIn *= 0.5; side = 1; }
-      else { tIn = t; dIn = d; if (side == 2) dPrev *= 0.5; side = 2; }
+      if (d > 0.0) { tPrev = t; dPrev = d; if (side == 1) { dIn *= 0.5; } side = 1; }
+      else { tIn = t; dIn = d; if (side == 2) { dPrev *= 0.5; } side = 2; }
       nRef--;
       t = tPrev + (tIn - tPrev) * dPrev / max(dPrev - dIn, 1e-3);
       if (nRef == 0 || tIn - tPrev < tol) { nRef = 0; dPrev = -1.0; startIn = true; t += 0.5 * jit2 * max(edgeW * 0.55, dtMin); }
@@ -1754,94 +1933,90 @@ void main() {
     }
     startIn = false;
     dPrev = -1.0;
-    float detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
+    let detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
     // (only on heaps piled above the sea)
-    float farW = h > C.w + 300.0 ? smoothstep(2500.0, 9000.0, t) : 0.0;
-    float nearW = (1.0 - smoothstep(150.0, 900.0, t)) * max(uInCloud, 1.0 - smoothstep(40.0, 120.0, -d));
-#ifdef DBG
-    if (uDbgMode > 0 && uDbgMode < 4) {
-      vec3 nrm;
-      float e = 4.0 + t * 0.002;
-      nrm.x = sceneSDF(wp + vec3(e, 0, 0), h, lv, lod) - sceneSDF(wp - vec3(e, 0, 0), h, lv, lod);
-      nrm.y = sceneSDF(wp + vec3(0, e, 0), h + e, lv, lod) - sceneSDF(wp - vec3(0, e, 0), h - e, lv, lod);
-      nrm.z = sceneSDF(wp + vec3(0, 0, e), h, lv, lod) - sceneSDF(wp - vec3(0, 0, e), h, lv, lod);
+    var farW = 0.0;
+    if (h > C.w + 300.0) { farW = smoothstep(2500.0, 9000.0, t); }
+    let nearW = (1.0 - smoothstep(150.0, 900.0, t)) * max(u.inCloud, 1.0 - smoothstep(40.0, 120.0, -d));
+    if (DBG && u.dbgMode > 0 && u.dbgMode < 4) {
+      let e = 4.0 + t * 0.002;
+      var nrm = vec3f(sceneSDF(wp + vec3f(e, 0.0, 0.0), h, lv, lod) - sceneSDF(wp - vec3f(e, 0.0, 0.0), h, lv, lod),
+                      sceneSDF(wp + vec3f(0.0, e, 0.0), h + e, lv, lod) - sceneSDF(wp - vec3f(0.0, e, 0.0), h - e, lv, lod),
+                      sceneSDF(wp + vec3f(0.0, 0.0, e), h, lv, lod) - sceneSDF(wp - vec3f(0.0, 0.0, e), h, lv, lod));
       nrm = normalize(nrm);
-      vec3 c;
-      if (uDbgMode == 1) c = vec3(0.08) + vec3(1.0, 0.85, 0.6) * max(dot(nrm, uSunDir), 0.0) + vec3(0.1, 0.15, 0.3) * (nrm.y * 0.5 + 0.5);
-      else if (uDbgMode == 2) c = vec3(exp(-lightTau(wp, h, lv, C, jit2, lod + 0.5)));
-      else c = vec3(exp(-tsvTau(wp, h)));
-      oCol = vec4(c * 0.12, 0.0);
-      oDepth = vec4(t * 0.001, 0.0, 0.0, 1.0);
-      return;
+      var c: vec3f;
+      if (u.dbgMode == 1) { c = vec3f(0.08) + vec3f(1.0, 0.85, 0.6) * max(dot(nrm, u.sunDir), 0.0) + vec3f(0.1, 0.15, 0.3) * (nrm.y * 0.5 + 0.5); }
+      else if (u.dbgMode == 2) { c = vec3f(exp(-lightTau(wp, h, lv, C, jit2, lod + 0.5))); }
+      else { c = vec3f(exp(-tsvTau(wp, h))); }
+      return Out(vec4f(c * 0.12, 0.0), t * 0.001);
     }
-#endif
-    float dens = densityEx(d, wp, detailW, edgeW, nearW, farW);
+    var dens = densityEx(d, wp, detailW, edgeW, nearW, farW);
     // inside a cloud the air right around the camera is kept thin: drifting mist, not a white wall
-    dens *= mix(1.0, mix(0.22, 1.0, smoothstep(12.0, 160.0, t)), uInCloud);
+    dens *= mix(1.0, mix(0.22, 1.0, smoothstep(12.0, 160.0, t)), u.inCloud);
     // stride: aim for a fixed optical depth per step (larger once little light gets through),
     // but stay fine inside the soft rim where most of the visible light is scattered
-    float sigma = dens * SIGMA;
-    float dt = clamp((0.45 + 1.6 * (1.0 - T)) / max(sigma, 0.004), dtMin, 8.0 + t * 0.016);
+    let sigma = dens * SIGMA;
+    var dt = clamp((0.45 + 1.6 * (1.0 - T)) / max(sigma, 0.004), dtMin, 8.0 + t * 0.016);
     dt = min(dt, max(edgeW * 0.55, -d * 0.6 + dtMin)) * (0.75 + 0.5 * jit2);
     if (dens > 0.003) {
       nIn += 1.0;
       // once little light gets through, deeper samples reuse the light of the previous one
-      bool reuse = T < 0.22 || (T < 0.65 && mod(nIn, 2.0) > 0.5);
-      float tau;
-      if (reuse) tau = lastTau + max(-d - lastDepth, 0.0) * SIGMA * 2.0;
+      let reuse = T < 0.22 || (T < 0.65 && mod1(nIn, 2.0) > 0.5);
+      var tau: f32;
+      if (reuse) { tau = lastTau + max(-d - lastDepth, 0.0) * SIGMA * 2.0; }
       else {
-        tau = lightTauN(wp, h, lv, C, jit2, lod + 0.25, lastNS);
+        let tn = lightTauN(wp, h, lv, C, jit2, lod + 0.25);
+        tau = tn.x;
+        lastNS = tn.y;
         // which way the surface faces: up from one distance tap above, toward the sun from the
         // light march. Each bulge then catches its own sky light, even in shadow. (Only near the
         // visible surface; deeper samples keep the last estimate.)
         if (T > 0.45) {
-          float S = 30.0 + t * 0.004;
-          lastNUp = clamp((cloudSDF(wp + vec3(0.0, S, 0.0), h + S, macroAt(vec3(wp.x, h + S, wp.z), lv), C, lod) - d) / S, -1.0, 1.0);
+          let S = 30.0 + t * 0.004;
+          lastNUp = clamp((cloudSDF(wp + vec3f(0.0, S, 0.0), h + S, macroAt(vec3f(wp.x, h + S, wp.z), lv), C, lod) - d) / S, -1.0, 1.0);
         }
       }
-      lastTau = tau; lastDepth = -d;
+      lastTau = tau;
+      lastDepth = -d;
       // distant occluders (towers) block all scattering orders: their shadow is a plain multiplier
-      float farT = exp(-tsvTau(wp, h));
-      float depthIn = -d;
-      float pw = mix(powder, 1.0, 1.0 - exp(-depthIn * 0.035));
+      let farT = exp(-tsvTau(wp, h));
+      let depthIn = -d;
+      let pw = mix(powder, 1.0, 1.0 - exp(-depthIn * 0.035));
       // diffusion: clouds barely absorb, so light soaks deep inside and glows; weaker right at
       // the surface where it leaks out (keeps shadowed sides cool)
-      float diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depthIn / 80.0));
+      let diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depthIn / 80.0));
       // light diffusing through the cloud glows golden in thin parts, cooler (blue-violet) where it
       // has travelled far through the cloud; in the shadow of distant towers only a soft, cool
       // isotropic fill remains
-      vec3 sc = sunColorAt(h);
-      vec3 cool = vec3(0.78, 0.8, 1.25) * luma(sc);
-      vec3 glow = mix(sc, cool, 0.6 * sat(tau / 35.0));
-      vec3 sunL = sc * (msScatterP(tau, phase) * pw * farT) + glow * diffu * farT + mix(sc, cool, 0.5) * (0.005 * (1.0 - farT));
-#ifdef DBG
-      if (uDbgMode >= 5) {
-        vec4 e = exp(-tau * vec4(1.0, 0.5, 0.25, 0.125));
-        float ms = dot(e * vec4(1.0, 0.55, 0.3025, 0.166375), phase) * pw;
-        float df = diffu;
-        sunL = sunColorAt(h) * farT * (uDbgMode == 5 ? ms : uDbgMode == 6 ? df : 0.0);
+      let sc = sunColorAt(h);
+      let cool = vec3f(0.78, 0.8, 1.25) * luma(sc);
+      let glow = mix(sc, cool, 0.6 * saturate(tau / 35.0));
+      var sunL = sc * (msScatterP(tau, phase) * pw * farT) + glow * diffu * farT + mix(sc, cool, 0.5) * (0.005 * (1.0 - farT));
+      if (DBG && u.dbgMode >= 5) {
+        let e = exp(-tau * vec4f(1.0, 0.5, 0.25, 0.125));
+        let ms = dot(e * vec4f(1.0, 0.55, 0.3025, 0.166375), phase) * pw;
+        sunL = sunColorAt(h) * farT * select(select(0.0, diffu, u.dbgMode == 6), ms, u.dbgMode == 5);
       }
-#endif
-      float up = sat((h - C.w + 250.0) / 1400.0);
+      let up = saturate((h - C.w + 250.0) / 1400.0);
       // sky light only reaches the first few tens of metres (short scale also hides the
       // discontinuous interior of the distance field)
-      float ao = mix(0.5, 1.0, exp(-depthIn / 55.0));
+      let ao = mix(0.5, 1.0, exp(-depthIn / 55.0));
       // sky light by orientation: the deep blue zenith on tops, the warm sunlit sea under bellies,
       // the golden sun-side or the cool violet anti-sun sky on the sides (a belly sees only part of
       // the sea below past the bulges around it)
-      vec3 eSide = mix(ambAnti, ambSunS, sat(0.5 + 0.5 * lastNS));
-      vec3 eDir = lastNUp > 0.0 ? mix(eSide, ambUp, lastNUp) : mix(eSide, seaBounce, -0.5 * lastNUp);
-      vec3 amb = (eDir * mix(0.45, 1.0, up) + uAmbSea * (1.0 - up) * 0.7) * ao;
-#ifdef DBG
-      if (uDbgMode == 5 || uDbgMode == 6) amb *= 0.0;
-#endif
-      vec3 S = sigma * 0.985 * (sunL + amb);
-      float st = exp(-sigma * dt);
-      vec3 Sint = (S - S * st) / sigma;
-      float th = exp(-hazeOD(t, h0, dir.y));
+      let eSide = mix(ambAnti, ambSunS, saturate(0.5 + 0.5 * lastNS));
+      var eDir: vec3f;
+      if (lastNUp > 0.0) { eDir = mix(eSide, ambUp, lastNUp); } else { eDir = mix(eSide, seaBounce, -0.5 * lastNUp); }
+      var amb = (eDir * mix(0.45, 1.0, up) + u.ambSea * (1.0 - up) * 0.7) * ao;
+      if (DBG && (u.dbgMode == 5 || u.dbgMode == 6)) { amb *= 0.0; }
+      let S = sigma * 0.985 * (sunL + amb);
+      let st = exp(-sigma * dt);
+      let Sint = (S - S * st) / sigma;
+      let th = exp(-hazeOD(t, h0, dir.y));
       L += T * (Sint * th + (1.0 - st) * skyHaze * (1.0 - th));
-      float w = T * (1.0 - st);
-      zSum += w * t; zW += w;
+      let w = T * (1.0 - st);
+      zSum += w * t;
+      zW += w;
       T *= st;
     }
     t += dt;
@@ -1853,249 +2028,251 @@ void main() {
   }
   if (!done && T > 0.02) {
     // ran out of steps while grazing the far cloud sea: let it melt into the haze
-    float th = exp(-hazeOD(t, h0, dir.y));
+    let th = exp(-hazeOD(t, h0, dir.y));
     L += T * skyHaze * (1.0 - th * 0.35);
-    zSum += T * t; zW += T;
+    zSum += T * t;
+    zW += T;
     T = 0.0;
   }
-#ifdef DBG
-  if (uDbgMode == 4) { oCol = vec4(vec3(nIter / 200.0, nSdf / 100.0, nIn / 40.0) * 0.12, 0.0); oDepth = vec4(1.0, 0.0, 0.0, 1.0); return; }
-#endif
-  oCol = vec4(L, T);
-  oDepth = vec4(zW > 1e-4 ? (zSum / zW) * 0.001 : 9000.0, 0.0, 0.0, 1.0);
+  if (DBG && u.dbgMode == 4) { return Out(vec4f(vec3f(nIter / 200.0, nSdf / 100.0, nIn / 40.0) * 0.12, 0.0), 1.0); }
+  return Out(vec4f(L, T), select(9000.0, (zSum / zW) * 0.001, zW > 1e-4));
 }`;
 
 // ======== src/shaders/taau.js
 // Temporal upsampling and the sky composite
 
-const FS_TAAU = GLSL_COMMON + GLSL_ATMO + /* glsl */ `
-uniform sampler2D uCur;
-uniform sampler2D uCurDepth;
-uniform sampler2D uHist;
-uniform sampler2D uSky;
-uniform sampler2D uCirrus;
-uniform vec2 uLowRes;
-uniform vec2 uLowTex;
-uniform vec2 uRes;
-uniform vec2 uJitter;
-uniform vec3 uCamRight, uCamUp, uCamFwd;
-uniform vec2 uTanHalf;
-uniform mat4 uPrevVP;
-uniform vec3 uCamDelta;
-uniform float uHistValid;
-uniform vec3 uSunDir;
-uniform vec3 uCamPos;
-uniform vec3 uSunDisk;
-uniform vec3 uCirrusCol;
-uniform vec2 uCirrusOff;
-uniform sampler2D uLayers;
-uniform vec2 uLayerOff;
-uniform vec3 uLayerCol[2];      // sunlight at the height of each high layer
-layout(location = 0) out vec4 oHist;
-layout(location = 1) out vec4 oScene;
-
-vec4 sampleHist(vec2 uv) {
+const U_TAAU = {
+  prevVP: 'mat4x4f',
+  lowRes: 'vec2f', lowTex: 'vec2f', res: 'vec2f', jitter: 'vec2f', tanHalf: 'vec2f', cirrusOff: 'vec2f', layerOff: 'vec2f',
+  camRight: 'vec3f', histValid: 'f32', camUp: 'vec3f', camFwd: 'vec3f', camDelta: 'vec3f', sunDir: 'vec3f', camPos: 'vec3f',
+  sunDisk: 'vec3f', cirrusCol: 'vec3f',
+  layerCol: 'vec3f[2]',      // sunlight at the height of each high layer
+};
+const FS_TAAU = WGSL_COMMON + WGSL_ATMO + /* wgsl */ `
+fn sampleHist(uv: vec2f) -> vec4f {
   // Catmull-Rom with 9 taps (5 bilinear) for a sharp, stable history
-  vec2 pos = uv * uRes;
-  vec2 tc = floor(pos - 0.5) + 0.5;
-  vec2 f = pos - tc;
-  vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
-  vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
-  vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
-  vec2 w3 = f * f * (-0.5 + 0.5 * f);
-  vec2 w12 = w1 + w2;
-  vec2 tc0 = (tc - 1.0) / uRes, tc3 = (tc + 2.0) / uRes, tc12 = (tc + w2 / w12) / uRes;
-  vec4 r = vec4(0.0);
-  r += textureLod(uHist, vec2(tc12.x, tc0.y), 0.0) * (w12.x * w0.y);
-  r += textureLod(uHist, vec2(tc0.x, tc12.y), 0.0) * (w0.x * w12.y);
-  r += textureLod(uHist, vec2(tc12.x, tc12.y), 0.0) * (w12.x * w12.y);
-  r += textureLod(uHist, vec2(tc3.x, tc12.y), 0.0) * (w3.x * w12.y);
-  r += textureLod(uHist, vec2(tc12.x, tc3.y), 0.0) * (w12.x * w3.y);
-  float wsum = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
-  return max(r / wsum, vec4(0.0));
+  let p = uv * u.res;
+  let tc = floor(p - 0.5) + 0.5;
+  let f = p - tc;
+  let w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+  let w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+  let w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+  let w3 = f * f * (-0.5 + 0.5 * f);
+  let w12 = w1 + w2;
+  let tc0 = (tc - 1.0) / u.res;
+  let tc3 = (tc + 2.0) / u.res;
+  let tc12 = (tc + w2 / w12) / u.res;
+  var r = vec4f(0.0);
+  r += textureSampleLevel(tHist, sLin, vec2f(tc12.x, tc0.y), 0.0) * (w12.x * w0.y);
+  r += textureSampleLevel(tHist, sLin, vec2f(tc0.x, tc12.y), 0.0) * (w0.x * w12.y);
+  r += textureSampleLevel(tHist, sLin, vec2f(tc12.x, tc12.y), 0.0) * (w12.x * w12.y);
+  r += textureSampleLevel(tHist, sLin, vec2f(tc3.x, tc12.y), 0.0) * (w3.x * w12.y);
+  r += textureSampleLevel(tHist, sLin, vec2f(tc12.x, tc3.y), 0.0) * (w12.x * w3.y);
+  let wsum = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
+  return max(r / wsum, vec4f(0.0));
 }
 
-vec3 skyColor(vec3 dir) {
-  float h = uCamPos.y * 0.001;
-  vec3 c = skyLookup(uSky, dir, uSunDir, h);
+fn skyColor(dir: vec3f) -> vec3f {
+  let h = u.camPos.y * 0.001;
+  var c = skyLookup(tSky, dir, u.sunDir, h);
   // high cirrus veil
   if (dir.y > 0.003) {
-    float hc = 9800.0 - uCamPos.y;
-    float t = hc / max(dir.y, 0.02);
-    vec2 p = (uCamPos.xz + dir.xz * t + uCirrusOff) / 32000.0;
-    vec4 cs = textureLod(uCirrus, p, 0.0);
-    float a = cs.r * smoothstep(0.003, 0.08, dir.y);
-    float cosT = dot(dir, uSunDir);
-    float g = 0.6;
-    float ph = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
-    vec3 cc = uCirrusCol * (0.25 + 4.0 * ph) * (0.75 + 0.5 * cs.g);
-    float fade = exp(-t / 60000.0);
+    let hc = 9800.0 - u.camPos.y;
+    let t = hc / max(dir.y, 0.02);
+    let p = (u.camPos.xz + dir.xz * t + u.cirrusOff) / 32000.0;
+    let cs = textureSampleLevel(tCirrus, sRep, p, 0.0);
+    let a = cs.r * smoothstep(0.003, 0.08, dir.y);
+    let cosT = dot(dir, u.sunDir);
+    let g = 0.6;
+    let ph = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
+    let cc = u.cirrusCol * (0.25 + 4.0 * ph) * (0.75 + 0.5 * cs.g);
+    let fade = exp(-t / 60000.0);
     c = mix(c, cc + c * 0.6, a * 0.32 * fade);
   }
   // sun disk with limb darkening
-  float cosA = dot(dir, uSunDir);
-  float ang = acos(clamp(cosA, -1.0, 1.0));
-  const float SUN_R = 0.0052;
+  let cosA = dot(dir, u.sunDir);
+  let ang = acos(clamp(cosA, -1.0, 1.0));
+  const SUN_R = 0.0052;
   if (ang < SUN_R * 1.6) {
-    float x = sat(ang / SUN_R);
-    float mu = sqrt(max(0.0, 1.0 - x * x));
-    float limb = 1.0 - 0.6 * (1.0 - mu) - 0.15 * (1.0 - mu) * (1.0 - mu);
-    float edge = 1.0 - smoothstep(SUN_R * 0.92, SUN_R * 1.08, ang);
-    c += uSunDisk * limb * edge;
+    let x = saturate(ang / SUN_R);
+    let mu = sqrt(max(0.0, 1.0 - x * x));
+    let limb = 1.0 - 0.6 * (1.0 - mu) - 0.15 * (1.0 - mu) * (1.0 - mu);
+    let edge = 1.0 - smoothstep(SUN_R * 0.92, SUN_R * 1.08, ang);
+    c += u.sunDisk * limb * edge;
   }
   return c;
 }
 
 // --- thin high layers, drawn as sheets at fixed heights (they are thin next to the distances they
 // are seen from) and sorted against the clouds by depth
-const float LAYER_INV2R = 0.5 / 6360000.0;
+const LAYER_INV2R = 0.5 / 6360000.0;
 // distance along dir to height H over the curved planet (parabolic approximation), -1 if none
-float distToHeight(float h0, float dy, float H) {
-  float c = h0 - H;
-  float D = dy * dy - 4.0 * LAYER_INV2R * c;
-  if (D < 0.0) return -1.0;
-  float q = -0.5 * (dy + (dy >= 0.0 ? 1.0 : -1.0) * sqrt(D));
-  if (abs(q) < 1e-9) return -1.0;
-  float r1 = q / LAYER_INV2R, r2 = c / q;
-  float tn = min(r1, r2), tf = max(r1, r2);
-  return tn > 0.0 ? tn : (tf > 0.0 ? tf : -1.0);
+fn distToHeight(h0: f32, dy: f32, H: f32) -> f32 {
+  let c = h0 - H;
+  let D = dy * dy - 4.0 * LAYER_INV2R * c;
+  if (D < 0.0) { return -1.0; }
+  let q = -0.5 * (dy + select(-1.0, 1.0, dy >= 0.0) * sqrt(D));
+  if (abs(q) < 1e-9) { return -1.0; }
+  let r1 = q / LAYER_INV2R;
+  let r2 = c / q;
+  let tn = min(r1, r2);
+  let tf = max(r1, r2);
+  return select(select(-1.0, tf, tf > 0.0), tn, tn > 0.0);
 }
 // premultiplied colour + alpha of high layer k at distance tL along dir
-vec4 highLayer(int k, vec3 dir, float tL, vec3 behind) {
-  float H = k == 0 ? 6300.0 : 7700.0;
-  vec2 p = (uCamPos.xz + dir.xz * tL + uLayerOff) / 64000.0;
-  float slope = abs(dir.y + 2.0 * tL * LAYER_INV2R);        // ray slope at the layer
-  float foot = tL * 2.0 * uTanHalf.y / uRes.y / max(slope, 0.03);
-  vec4 tx = textureLod(uLayers, p, log2(max(foot / 62.5, 1.0)));
-  float dens = k == 0 ? tx.r : tx.g;
-  if (dens < 0.003) return vec4(0.0);
-  float tau = min(dens * 0.32 / max(slope, 0.12), 3.0);
+fn highLayer(k: i32, dir: vec3f, tL: f32, behind: vec3f) -> vec4f {
+  let H = select(7700.0, 6300.0, k == 0);
+  let p = (u.camPos.xz + dir.xz * tL + u.layerOff) / 64000.0;
+  let slope = abs(dir.y + 2.0 * tL * LAYER_INV2R);        // ray slope at the layer
+  let foot = tL * 2.0 * u.tanHalf.y / u.res.y / max(slope, 0.03);
+  let tx = textureSampleLevel(tLayers, sMip, p, log2(max(foot / 62.5, 1.0)));
+  let dens = select(tx.g, tx.r, k == 0);
+  if (dens < 0.003) { return vec4f(0.0); }
+  let tau = min(dens * 0.32 / max(slope, 0.12), 3.0);
   // fade where the sheet is seen edge-on (no razor lines at the horizon) and into the far haze
-  float a = (1.0 - exp(-tau)) * exp(-tL / 75000.0) * smoothstep(0.02, 0.1, slope) * smoothstep(60.0, 450.0, abs(uCamPos.y - H));
+  let a = (1.0 - exp(-tau)) * exp(-tL / 75000.0) * smoothstep(0.02, 0.1, slope) * smoothstep(60.0, 450.0, abs(u.camPos.y - H));
   // thin and translucent: forward scattering makes them glow toward the sun, golden all over
-  float cosT = dot(dir, uSunDir);
-  float g = 0.7, ph = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
-  vec3 c = uLayerCol[k] * (0.22 + 3.2 * ph) * (0.7 + 0.5 * tx.b) + behind * 0.45;
-  return vec4(c * a, a);
+  let cosT = dot(dir, u.sunDir);
+  let g = 0.7;
+  let ph = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
+  let c = u.layerCol[k] * (0.22 + 3.2 * ph) * (0.7 + 0.5 * tx.b) + behind * 0.45;
+  return vec4f(c * a, a);
 }
 
-void main() {
-  vec2 uv = gl_FragCoord.xy / uRes;
-  vec2 ndc = uv * 2.0 - 1.0;
-  vec3 dir = normalize(uCamFwd + ndc.x * uTanHalf.x * uCamRight + ndc.y * uTanHalf.y * uCamUp);
+struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
+@fragment fn fs(@builtin(position) pos: vec4f) -> Out {
+  let uv = pos.xy / u.res;
+  let ndc = uv * 2.0 - 1.0;
+  let dir = normalize(u.camFwd + ndc.x * u.tanHalf.x * u.camRight + ndc.y * u.tanHalf.y * u.camUp);
 
   // current low-res estimate (low-res sample i sits at (i + 0.5 + jitter))
-  vec2 lp = uv * uLowRes - 0.5 - uJitter;
-  vec2 lpr = floor(lp + 0.5);
-  vec2 cuv = (lp + 0.5) / uLowTex;
-  cuv = clamp(cuv, 0.5 / uLowTex, (uLowRes - 0.5) / uLowTex);
-  vec4 cur = textureLod(uCur, cuv, 0.0);
+  let lp = uv * u.lowRes - 0.5 - u.jitter;
+  let lpr = floor(lp + 0.5);
+  var cuv = (lp + 0.5) / u.lowTex;
+  cuv = clamp(cuv, 0.5 / u.lowTex, (u.lowRes - 0.5) / u.lowTex);
+  let cur = textureSampleLevel(tCur, sLin, cuv, 0.0);
   // neighbourhood statistics: 3x3 bilinear taps centred on this pixel's exact position, so the
   // clamp box varies smoothly between output pixels (no blocky grid from the low-res lattice)
-  vec4 m1 = vec4(0.0), m2 = vec4(0.0);
-  vec2 lo2 = 0.5 / uLowTex, hi2 = (uLowRes - 0.5) / uLowTex;
-  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
-    vec4 s = textureLod(uCur, clamp(cuv + vec2(x, y) / uLowTex, lo2, hi2), 0.0);
-    m1 += s; m2 += s * s;
+  var m1 = vec4f(0.0);
+  var m2 = vec4f(0.0);
+  let lo2 = 0.5 / u.lowTex;
+  let hi2 = (u.lowRes - 0.5) / u.lowTex;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      let s = textureSampleLevel(tCur, sLin, clamp(cuv + vec2f(f32(x), f32(y)) / u.lowTex, lo2, hi2), 0.0);
+      m1 += s;
+      m2 += s * s;
+    }
   }
-  m1 /= 9.0; m2 /= 9.0;
-  vec4 sd = sqrt(max(m2 - m1 * m1, vec4(0.0)));
-  float dkm = texelFetch(uCurDepth, clamp(ivec2(lpr), ivec2(0), ivec2(uLowRes) - 1), 0).r;
-  vec3 prel = dkm > 5000.0 ? dir * 1.0e7 : dir * dkm * 1000.0 + uCamDelta;
-  vec4 pc = uPrevVP * vec4(prel, 1.0);
-  vec2 puv = pc.xy / pc.w * 0.5 + 0.5;
-  float valid = pc.w > 1e-6 ? uHistValid : 0.0;
+  m1 /= 9.0;
+  m2 /= 9.0;
+  let sd = sqrt(max(m2 - m1 * m1, vec4f(0.0)));
+  let dkm = textureLoad(tCurDepth, clamp(vec2i(lpr), vec2i(0), vec2i(u.lowRes) - 1), 0).r;
+  var prel = dir * dkm * 1000.0 + u.camDelta;
+  if (dkm > 5000.0) { prel = dir * 1.0e7; }
+  let pc = u.prevVP * vec4f(prel, 1.0);
+  let puv = pc.xy / pc.w * 0.5 + 0.5;
+  var valid = select(0.0, u.histValid, pc.w > 1e-6);
   valid *= step(0.0, puv.x) * step(puv.x, 1.0) * step(0.0, puv.y) * step(puv.y, 1.0);
-  vec4 res = cur;
+  var res = cur;
   if (valid > 0.5) {
-    vec4 hist = sampleHist(puv);
-    vec4 lo = m1 - 1.25 * sd, hi = m1 + 1.25 * sd;
-    lo = min(lo, cur); hi = max(hi, cur);
-    vec4 hc = clamp(hist, lo, hi);
-    vec2 fd = lp - lpr;
-    float wcur = exp(-2.2 * dot(fd, fd));
-    float motion = length((puv - uv) * uRes);
-    float alpha = mix(0.07, 0.38, sat(motion / 18.0)) * (0.55 + 0.45 * wcur);
+    let hist = sampleHist(puv);
+    var lo = m1 - 1.25 * sd;
+    var hi = m1 + 1.25 * sd;
+    lo = min(lo, cur);
+    hi = max(hi, cur);
+    let hc = clamp(hist, lo, hi);
+    let fd = lp - lpr;
+    let wcur = exp(-2.2 * dot(fd, fd));
+    let motion = length((puv - uv) * u.res);
+    let alpha = mix(0.07, 0.38, saturate(motion / 18.0)) * (0.55 + 0.45 * wcur);
     res = mix(hc, cur, alpha);
   }
-  oHist = res;
-  vec3 sky = skyColor(dir);
+  let sky = skyColor(dir);
   // high layers: behind the clouds they join the sky, in front of them they veil the clouds
-  float cd = dkm > 5000.0 ? 1.0e9 : dkm * 1000.0;
-  float t0 = distToHeight(uCamPos.y, dir.y, 6300.0), t1 = distToHeight(uCamPos.y, dir.y, 7700.0);
-  vec4 l0 = t0 > 0.0 ? highLayer(0, dir, t0, sky) : vec4(0.0);
-  vec4 l1 = t1 > 0.0 ? highLayer(1, dir, t1, sky) : vec4(0.0);
-  if (t1 > 0.0 && (t0 < 0.0 || t1 < t0)) { vec4 x = l0; l0 = l1; l1 = x; float y = t0; t0 = t1; t1 = y; }  // l0 nearest
-  vec3 back = sky, frontL = vec3(0.0);
-  float frontT = 1.0;
-  if (t1 > 0.0) { if (t1 < cd) { frontL = l1.rgb; frontT = 1.0 - l1.a; } else back = back * (1.0 - l1.a) + l1.rgb; }
-  if (t0 > 0.0) { if (t0 < cd) { frontL = l0.rgb + frontL * (1.0 - l0.a); frontT *= 1.0 - l0.a; } else back = back * (1.0 - l0.a) + l0.rgb; }
-  oScene = vec4(frontL + frontT * (back * res.a + res.rgb), 1.0);
+  let cd = select(dkm * 1000.0, 1.0e9, dkm > 5000.0);
+  var t0 = distToHeight(u.camPos.y, dir.y, 6300.0);
+  var t1 = distToHeight(u.camPos.y, dir.y, 7700.0);
+  var l0 = vec4f(0.0);
+  var l1 = vec4f(0.0);
+  if (t0 > 0.0) { l0 = highLayer(0, dir, t0, sky); }
+  if (t1 > 0.0) { l1 = highLayer(1, dir, t1, sky); }
+  if (t1 > 0.0 && (t0 < 0.0 || t1 < t0)) { let x = l0; l0 = l1; l1 = x; let y = t0; t0 = t1; t1 = y; }  // l0 nearest
+  var back = sky;
+  var frontL = vec3f(0.0);
+  var frontT = 1.0;
+  if (t1 > 0.0) { if (t1 < cd) { frontL = l1.rgb; frontT = 1.0 - l1.a; } else { back = back * (1.0 - l1.a) + l1.rgb; } }
+  if (t0 > 0.0) { if (t0 < cd) { frontL = l0.rgb + frontL * (1.0 - l0.a); frontT *= 1.0 - l0.a; } else { back = back * (1.0 - l0.a) + l0.rgb; } }
+  return Out(res, vec4f(frontL + frontT * (back * res.a + res.rgb), 1.0));
 }`;
 
 // ======== src/shaders/probe.js
 // The probe: lighting at the bird and mist at the camera
 
-const FS_PROBE = GLSL_COMMON + GLSL_ATMO + GLSL_CLOUD + /* glsl */ `
-uniform sampler2D uAmb;
-uniform vec3 uCamPos;     // render space
-uniform vec3 uBirdRel;    // bird - camera
-uniform vec3 uAmbSea;
-out vec4 o;
-float sigmaAt(vec3 wp, float h, out float sdf) {
-  vec4 C = colAt(wp.xz, 0);
-  float dm = macroAt(vec3(wp.x, h, wp.z), 0);
-  float b = dm - shellOf(C.y) - LV_MARGIN[0];
-  if (b > 0.0) { sdf = b; return 0.0; }
-  sdf = cloudSDF(wp, h, dm, C, 0.0);
-  return densityFromSDF(sdf, wp, 0.6, 40.0, 0.0) * SIGMA;
+const U_PROBE = {
+  ...U_CLIP, ...U_CLOUD,
+  camPos: 'vec3f',      // render space
+  birdRel: 'vec3f',     // bird - camera
+  ambSea: 'vec3f',
+};
+const FS_PROBE = WGSL_COMMON + WGSL_ATMO + WGSL_CLOUD + /* wgsl */ `
+// (extinction, signed distance) at a point
+fn sigmaAt(wp: vec3f, h: f32) -> vec2f {
+  let C = colAt(wp.xz, 0);
+  let dm = macroAt(vec3f(wp.x, h, wp.z), 0);
+  let b = dm - shellOf(C.y) - lvMargin(0);
+  if (b > 0.0) { return vec2f(0.0, b); }
+  let sdf = cloudSDF(wp, h, dm, C, 0.0);
+  return vec2f(densityFromSDF(sdf, wp, 0.6, 40.0, 0.0) * SIGMA, sdf);
 }
-float floorH(vec2 xz) { vec4 C = colAt(xz, 0); return min(C.x, C.w + 330.0); }
-void main() {
-  int px = int(gl_FragCoord.x);
-  vec3 bwp = uCamPos + uBirdRel;
-  float bh = bwp.y;
-  vec4 C = colAt(bwp.xz, 0);
-  vec3 ambSky = texelFetch(uAmb, ivec2(0, 0), 0).rgb;
+fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0); }
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let px = i32(pos.x);
+  let bwp = u.camPos + u.birdRel;
+  let bh = bwp.y;
+  let C = colAt(bwp.xz, 0);
+  let ambSky = textureLoad(tAmb, vec2i(0, 0), 0).rgb;
   if (px == 0) {
-    float tau = 0.0;
-    for (int k = 0; k < 4; k++) tau += lightTau(bwp, bh, 0, C, (float(k) + 0.5) / 4.0, 0.0);
+    var tau = 0.0;
+    for (var k = 0; k < 4; k++) { tau += lightTau(bwp, bh, 0, C, (f32(k) + 0.5) / 4.0, 0.0); }
     tau = tau * 0.25 * 0.6 + tsvTau(bwp, bh);
-    float tr = exp(-tau);
-    o = vec4(sunColorAt(bh) * tr, tr);
-  } else if (px == 1) {
-    float sdf; float s = sigmaAt(bwp, bh, sdf);
-    float occ = exp(-max(-sdf, 0.0) / 150.0);
-    o = vec4(ambSky * 3.14159 * occ, 1.0);
-  } else if (px == 2) {
+    let tr = exp(-tau);
+    return vec4f(sunColorAt(bh) * tr, tr);
+  }
+  if (px == 1) {
+    let sb = sigmaAt(bwp, bh);
+    let occ = exp(-max(-sb.y, 0.0) / 150.0);
+    return vec4f(ambSky * 3.14159 * occ, 1.0);
+  }
+  if (px == 2) {
     // light from the sunlit cloud sea below
-    o = vec4(uAmbSea * 3.14159, 1.0);
-  } else if (px == 3) {
-    float sdfC, sdfB;
-    float sc = sigmaAt(uCamPos, uCamPos.y, sdfC);
-    float sb = sigmaAt(bwp, bh, sdfB);
-    o = vec4(sc, sb, sdfB, C.x);
-  } else if (px == 5) {
+    return vec4f(u.ambSea * 3.14159, 1.0);
+  }
+  if (px == 3) {
+    let sc = sigmaAt(u.camPos, u.camPos.y);
+    let sb = sigmaAt(bwp, bh);
+    return vec4f(sc.x, sb.x, sb.y, C.x);
+  }
+  if (px == 5) {
     // distance to the sea of clouds the bird skims (heaps piled high above it and towers may be
     // entered): drives the gentle floor
-    vec4 Cf = C;
+    var Cf = C;
     Cf.x = min(C.x, C.w + 330.0);
-    float gx = floorH(bwp.xz + vec2(64.0, 0.0)) - floorH(bwp.xz - vec2(64.0, 0.0));
-    float gz = floorH(bwp.xz + vec2(0.0, 64.0)) - floorH(bwp.xz - vec2(0.0, 64.0));
-    float cs = inversesqrt(1.0 + (gx * gx + gz * gz) / (128.0 * 128.0));
-    float b = (bh - (Cf.x + shellOf(C.y))) * cs;
-    o = vec4(b > 0.0 ? b : cloudSDF(bwp, bh, (bh - Cf.x) * cs, Cf, 0.0), 0.0, 0.0, 1.0);
-  } else {
-    // in-cloud mist radiance around the camera (same light model as the cloud volume)
-    float sdfC;
-    sigmaAt(uCamPos, uCamPos.y, sdfC);
-    float depth = max(-sdfC, 0.0);
-    float tau = lightTau(uCamPos, uCamPos.y, 0, colAt(uCamPos.xz, 0), 0.5, 0.0);
-    float farT = exp(-tsvTau(uCamPos, uCamPos.y));
-    float diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depth / 80.0));
-    vec3 sunL = sunColorAt(uCamPos.y) * ((msScatterP(tau, phaseOctaves(0.3)) + diffu) * farT + 0.007 * (1.0 - farT));
-    o = vec4(sunL + ambSky * 1.95 * 0.75 * mix(0.5, 1.0, exp(-depth / 55.0)), 1.0);
+    let gx = floorH(bwp.xz + vec2f(64.0, 0.0)) - floorH(bwp.xz - vec2f(64.0, 0.0));
+    let gz = floorH(bwp.xz + vec2f(0.0, 64.0)) - floorH(bwp.xz - vec2f(0.0, 64.0));
+    let cs = inverseSqrt(1.0 + (gx * gx + gz * gz) / (128.0 * 128.0));
+    let b = (bh - (Cf.x + shellOf(C.y))) * cs;
+    if (b > 0.0) { return vec4f(b, 0.0, 0.0, 1.0); }
+    return vec4f(cloudSDF(bwp, bh, (bh - Cf.x) * cs, Cf, 0.0), 0.0, 0.0, 1.0);
   }
+  // in-cloud mist radiance around the camera (same light model as the cloud volume)
+  let scam = sigmaAt(u.camPos, u.camPos.y);
+  let depth = max(-scam.y, 0.0);
+  let tau = lightTau(u.camPos, u.camPos.y, 0, colAt(u.camPos.xz, 0), 0.5, 0.0);
+  let farT = exp(-tsvTau(u.camPos, u.camPos.y));
+  let diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depth / 80.0));
+  let sunL = sunColorAt(u.camPos.y) * ((msScatterP(tau, phaseOctaves(0.3)) + diffu) * farT + 0.007 * (1.0 - farT));
+  return vec4f(sunL + ambSky * 1.95 * 0.75 * mix(0.5, 1.0, exp(-depth / 55.0)), 1.0);
 }`;
 
 // ======== src/shaders/mist.js
@@ -2103,427 +2280,404 @@ void main() {
 // Each puff lives in a wrapped 180 m cell around the camera, samples the real cloud density at its
 // position and is lit with the same model as the volume, so it only shows where cloud really is.
 
-const VS_MIST = GLSL_COMMON + GLSL_CLOUD + /* glsl */ `
-uniform vec3 uCamPos;
-uniform vec3 uCamOffset;
-uniform vec3 uCamRight, uCamUp;
-uniform mat4 uViewProj;
-uniform sampler2D uAmb;
-uniform float uStrength;
-out vec2 vUv;
-out vec4 vCol;
-out float vSeed;
-const float CELL = 180.0;
-void main() {
-  vec3 h3 = hash33(uvec3(gl_InstanceID, 17, 71));
-  vec3 h4 = hash33(uvec3(gl_InstanceID, 5, 13));
-  vec3 rel = mod(h3 * CELL - uCamOffset, CELL) - CELL * 0.5;
-  float dist = length(rel);
-  vec3 wp = uCamPos + rel;
-  float h = wp.y;
-  vec4 C = colAt(wp.xz, 0);
-  float dm = macroAt(vec3(wp.x, h, wp.z), 0);
-  float d = dm - shellOf(C.y) - LV_MARGIN[0];
-  float dens = 0.0;
+const U_MIST = {
+  ...U_CLIP, ...U_CLOUD,
+  viewProj: 'mat4x4f',
+  camPos: 'vec3f', strength: 'f32', camOffset: 'vec3f', camRight: 'vec3f', camUp: 'vec3f',
+};
+const VS_MIST = WGSL_COMMON + WGSL_CLOUD + /* wgsl */ `
+struct Varyings { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) col: vec4f, @location(2) seed: f32 }
+const CELL = 180.0;
+@vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> Varyings {
+  let h3 = hash33(vec3u(ii, 17u, 71u));
+  let h4 = hash33(vec3u(ii, 5u, 13u));
+  let rel = mod3(h3 * CELL - u.camOffset, vec3f(CELL)) - CELL * 0.5;
+  let dist = length(rel);
+  let wp = u.camPos + rel;
+  let h = wp.y;
+  let C = colAt(wp.xz, 0);
+  let dm = macroAt(vec3f(wp.x, h, wp.z), 0);
+  var d = dm - shellOf(C.y) - lvMargin(0);
+  var dens = 0.0;
   if (d <= 0.0) { d = cloudSDF(wp, h, dm, C, 0.0); dens = densityFromSDF(d, wp, 1.0, 32.0, 1.0); }
-  float alpha = sat(dens * 1.6) * (1.0 - smoothstep(52.0, 84.0, dist)) * smoothstep(4.0, 12.0, dist) * uStrength;
-  vec3 col = vec3(0.0);
+  let alpha = saturate(dens * 1.6) * (1.0 - smoothstep(52.0, 84.0, dist)) * smoothstep(4.0, 12.0, dist) * u.strength;
+  var col = vec3f(0.0);
   if (alpha > 0.002) {
-    float tau = lightTau(wp, h, 0, C, 0.5, 0.0);
-    float farT = exp(-tsvTau(wp, h));
-    vec3 ambSky = texelFetch(uAmb, ivec2(0, 0), 0).rgb;
-    float cosT = dot(rel / max(dist, 1e-3), uSunDir);
-    float di = max(-d, 0.0);
+    let tau = lightTau(wp, h, 0, C, 0.5, 0.0);
+    let farT = exp(-tsvTau(wp, h));
+    let ambSky = textureLoad(tAmb, vec2i(0, 0), 0).rgb;
+    let cosT = dot(rel / max(dist, 1e-3), u.sunDir);
+    let di = max(-d, 0.0);
     col = sunColorAt(h) * ((msScatterP(tau, phaseOctaves(cosT)) + 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-di / 80.0))) * farT + 0.007 * (1.0 - farT))
         + ambSky * 1.95 * mix(0.5, 1.0, exp(-di / 55.0));
   }
-  vec2 c = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1)) * 2.0 - 1.0;
-  float size = mix(9.0, 26.0, h4.x);
-  float a = h4.y * 6.2831853;
-  vec2 rc = mat2(cos(a), sin(a), -sin(a), cos(a)) * c;
-  vec3 pos = rel + (uCamRight * rc.x + uCamUp * rc.y) * size;
-  gl_Position = uViewProj * vec4(pos, 1.0);
-  vUv = c;
-  vSeed = h4.z * 97.0;
-  vCol = vec4(col * alpha, alpha);
+  let c = vec2f(f32(vi & 1u), f32(vi >> 1u)) * 2.0 - 1.0;
+  let size = mix(9.0, 26.0, h4.x);
+  let a = h4.y * 6.2831853;
+  let rc = mat2x2f(cos(a), sin(a), -sin(a), cos(a)) * c;
+  let p = rel + (u.camRight * rc.x + u.camUp * rc.y) * size;
+  var o: Varyings;
+  o.pos = toClip(u.viewProj * vec4f(p, 1.0));
+  o.uv = c;
+  o.seed = h4.z * 97.0;
+  o.col = vec4f(col * alpha, alpha);
+  return o;
 }`;
-const FS_MIST = GLSL_COMMON + /* glsl */ `
-in vec2 vUv;
-in vec4 vCol;
-in float vSeed;
-out vec4 o;
-float vn(vec2 p) {
-  vec2 i = floor(p), f = p - i;
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  uvec3 c = uvec3(ivec3(ivec2(i) + 512, int(vSeed)));
-  float a = hash33(c).x, b = hash33(c + uvec3(1, 0, 0)).x, cc = hash33(c + uvec3(0, 1, 0)).x, d = hash33(c + uvec3(1, 1, 0)).x;
-  return mix(mix(a, b, u.x), mix(cc, d, u.x), u.y);
+const FS_MIST = WGSL_COMMON + /* wgsl */ `
+struct Varyings { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) col: vec4f, @location(2) seed: f32 }
+fn vn(p: vec2f, seed: f32) -> f32 {
+  let i = floor(p);
+  let f = p - i;
+  let fu = f * f * (3.0 - 2.0 * f);
+  let c = vec3u(vec3i(vec2i(i) + 512, i32(seed)));
+  let a = hash33(c).x;
+  let b = hash33(c + vec3u(1u, 0u, 0u)).x;
+  let cc = hash33(c + vec3u(0u, 1u, 0u)).x;
+  let d = hash33(c + vec3u(1u, 1u, 0u)).x;
+  return mix(mix(a, b, fu.x), mix(cc, d, fu.x), fu.y);
 }
-void main() {
-  float r = length(vUv);
-  float a = 1.0 - smoothstep(0.15, 1.0, r);
-  float n = vn(vUv * 2.5) * 0.6 + vn(vUv * 5.5 + 3.1) * 0.4;
-  a *= a * sat(n * 1.6 - 0.15);
-  o = vCol * a;
+@fragment fn fs(v: Varyings) -> @location(0) vec4f {
+  let r = length(v.uv);
+  var a = 1.0 - smoothstep(0.15, 1.0, r);
+  let n = vn(v.uv * 2.5, v.seed) * 0.6 + vn(v.uv * 5.5 + 3.1, v.seed) * 0.4;
+  a *= a * saturate(n * 1.6 - 0.15);
+  return v.col * a;
 }`;
 
 // ======== src/shaders/bird.js
 // The paper bird: its shading and its shadow map
 
-const VS_BIRD = /* glsl */ `#version 300 es
-precision highp float;
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aAttr;     // x: wing flex weight, y: side (-1, 0, 1), z: panel shade
-uniform mat4 uModel;
-uniform mat4 uViewProj;
-uniform mat4 uShadowVP;
-uniform vec4 uFlex;     // x: bend angle, y: tip twist, z: flutter
-out vec3 vPos;
-out vec3 vObj;
-out vec4 vShadow;
-out float vPanel;
-void main() {
-  vec3 p = aPos;
-  float w = aAttr.x, side = aAttr.y;
+const U_BIRD = {
+  model: 'mat4x4f', viewProj: 'mat4x4f', shadowVP: 'mat4x4f',
+  flex: 'vec4f',        // x: bend angle, y: tip twist, z: flutter
+  sunDir: 'vec3f', shadowTexel: 'f32',
+};
+// (also the shadow map's vertex shader, with viewProj = shadowVP)
+const VS_BIRD = WGSL_COMMON + /* wgsl */ `
+struct Varyings { @builtin(position) pos: vec4f, @location(0) wpos: vec3f, @location(1) obj: vec3f, @location(2) shadow: vec4f, @location(3) panel: f32 }
+// aAttr: x: wing flex weight, y: side (-1, 0, 1), z: panel shade
+@vertex fn vs(@location(0) aPos: vec3f, @location(1) aAttr: vec3f) -> Varyings {
+  var p = aPos;
+  let w = aAttr.x;
+  let side = aAttr.y;
   if (w > 0.0) {
-    float ang = side * (uFlex.x * w + uFlex.z * w * w);
-    float c = cos(ang), s = sin(ang);
-    p.xy = vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+    let ang = side * (u.flex.x * w + u.flex.z * w * w);
+    let c = cos(ang);
+    let s = sin(ang);
+    p = vec3f(c * p.x - s * p.y, s * p.x + c * p.y, p.z);
     // washout twist at the tip (rotate around the span axis)
-    float tw = uFlex.y * w * w;
-    float ct = cos(tw), st = sin(tw);
-    float y0 = p.y - 0.09;
-    p.yz = vec2(0.09 + ct * y0 - st * p.z, st * y0 + ct * p.z);
+    let tw = u.flex.y * w * w;
+    let ct = cos(tw);
+    let st = sin(tw);
+    let y0 = p.y - 0.09;
+    p = vec3f(p.x, 0.09 + ct * y0 - st * p.z, st * y0 + ct * p.z);
   }
-  vObj = aPos;
-  vPanel = aAttr.z;
-  vec4 wp = uModel * vec4(p, 1.0);
-  vPos = wp.xyz;
-  vShadow = uShadowVP * wp;
-  gl_Position = uViewProj * wp;
+  var o: Varyings;
+  o.obj = aPos;
+  o.panel = aAttr.z;
+  let wp = u.model * vec4f(p, 1.0);
+  o.wpos = wp.xyz;
+  o.shadow = u.shadowVP * wp;
+  o.pos = toClip(u.viewProj * wp);
+  return o;
 }`;
 
-const FS_BIRD = GLSL_COMMON + /* glsl */ `
-in vec3 vPos;
-in vec3 vObj;
-in vec4 vShadow;
-in float vPanel;
-uniform sampler2D uProbe;
-uniform sampler2DShadow uShadowMap;
-uniform vec3 uSunDir;
-uniform float uShadowTexel;
-out vec4 o;
-float vnoise3(vec3 p) {
-  vec3 i = floor(p), f = p - i;
-  vec3 u = f * f * (3.0 - 2.0 * f);
-  uvec3 c = uvec3(ivec3(i) + 4096);
-  float a = hash33(c).x, b = hash33(c + uvec3(1, 0, 0)).x, cc = hash33(c + uvec3(0, 1, 0)).x, d = hash33(c + uvec3(1, 1, 0)).x;
-  float e = hash33(c + uvec3(0, 0, 1)).x, f1 = hash33(c + uvec3(1, 0, 1)).x, g = hash33(c + uvec3(0, 1, 1)).x, h = hash33(c + uvec3(1, 1, 1)).x;
-  return mix(mix(mix(a, b, u.x), mix(cc, d, u.x), u.y), mix(mix(e, f1, u.x), mix(g, h, u.x), u.y), u.z);
+const FS_BIRD = WGSL_COMMON + /* wgsl */ `
+struct Varyings { @builtin(position) pos: vec4f, @location(0) wpos: vec3f, @location(1) obj: vec3f, @location(2) shadow: vec4f, @location(3) panel: f32 }
+fn vnoise3(p: vec3f) -> f32 {
+  let i = floor(p);
+  let f = p - i;
+  let fu = f * f * (3.0 - 2.0 * f);
+  let c = vec3u(vec3i(i) + 4096);
+  let a = hash33(c).x;
+  let b = hash33(c + vec3u(1u, 0u, 0u)).x;
+  let cc = hash33(c + vec3u(0u, 1u, 0u)).x;
+  let d = hash33(c + vec3u(1u, 1u, 0u)).x;
+  let e = hash33(c + vec3u(0u, 0u, 1u)).x;
+  let f1 = hash33(c + vec3u(1u, 0u, 1u)).x;
+  let g = hash33(c + vec3u(0u, 1u, 1u)).x;
+  let h = hash33(c + vec3u(1u, 1u, 1u)).x;
+  return mix(mix(mix(a, b, fu.x), mix(cc, d, fu.x), fu.y), mix(mix(e, f1, fu.x), mix(g, h, fu.x), fu.y), fu.z);
 }
-float shadowAt(vec4 sp) {
-  vec3 s = sp.xyz / sp.w * 0.5 + 0.5;
-  if (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) return 1.0;
-  float acc = 0.0;
-  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++)
-    acc += texture(uShadowMap, vec3(s.xy + vec2(x, y) * uShadowTexel * 1.2, s.z - 0.0025));
+fn shadowAt(sp: vec4f) -> f32 {
+  let s = sp.xyz / sp.w * 0.5 + 0.5;
+  if (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) { return 1.0; }
+  var acc = 0.0;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      acc += textureSampleCompareLevel(tShadowMap, sShadow, s.xy + vec2f(f32(x), f32(y)) * u.shadowTexel * 1.2, s.z - 0.0025);
+    }
+  }
   return acc / 9.0;
 }
-void main() {
-  vec3 Nr = cross(dFdx(vPos), dFdy(vPos));
-  vec3 N = dot(Nr, Nr) > 1e-20 ? normalize(Nr) : vec3(0.0, 1.0, 0.0);
-  vec3 V = normalize(-vPos);
-  if (dot(N, V) < 0.0) N = -N;
-  vec4 sun = texelFetch(uProbe, ivec2(0, 0), 0);
-  vec3 ambUp = texelFetch(uProbe, ivec2(1, 0), 0).rgb;
-  vec3 ambDn = texelFetch(uProbe, ivec2(2, 0), 0).rgb;
-  vec4 mist = texelFetch(uProbe, ivec2(3, 0), 0);
-  vec3 mistL = texelFetch(uProbe, ivec2(4, 0), 0).rgb;
+@fragment fn fs(v: Varyings) -> @location(0) vec4f {
+  let Nr = cross(dpdx(v.wpos), dpdy(v.wpos));
+  var N = select(vec3f(0.0, 1.0, 0.0), normalize(Nr), dot(Nr, Nr) > 1e-20);
+  let V = normalize(-v.wpos);
+  if (dot(N, V) < 0.0) { N = -N; }
+  let sun = textureLoad(tProbe, vec2i(0, 0), 0);
+  let ambUp = textureLoad(tProbe, vec2i(1, 0), 0).rgb;
+  let ambDn = textureLoad(tProbe, vec2i(2, 0), 0).rgb;
+  let mist = textureLoad(tProbe, vec2i(3, 0), 0);
+  let mistL = textureLoad(tProbe, vec2i(4, 0), 0).rgb;
 
   // paper fibres
-  float fib = vnoise3(vObj * 160.0) * 0.55 + vnoise3(vObj * vec3(520.0, 520.0, 90.0)) * 0.45;
-  float blot = vnoise3(vObj * 34.0);
-  vec3 albedo = vec3(0.93, 0.905, 0.855) * (0.955 + 0.07 * fib) * (0.985 + 0.03 * blot) * (1.0 - 0.035 * vPanel);
-  float NL = dot(N, uSunDir);
-  float sh = shadowAt(vShadow);
-  float layer = mix(0.2, 1.0, sh);   // paper layers let some light through
-  vec3 sunC = sun.rgb;
-  vec3 col = albedo * sunC * max(NL, 0.0) * layer / PI;
+  let fib = vnoise3(v.obj * 160.0) * 0.55 + vnoise3(v.obj * vec3f(520.0, 520.0, 90.0)) * 0.45;
+  let blot = vnoise3(v.obj * 34.0);
+  let albedo = vec3f(0.93, 0.905, 0.855) * (0.955 + 0.07 * fib) * (0.985 + 0.03 * blot) * (1.0 - 0.035 * v.panel);
+  let NL = dot(N, u.sunDir);
+  let sh = shadowAt(v.shadow);
+  let layer = mix(0.2, 1.0, sh);   // paper layers let some light through
+  let sunC = sun.rgb;
+  var col = albedo * sunC * max(NL, 0.0) * layer / PI;
   // translucency: light diffusing through the thin sheet. Strongest when looking toward the sun
   // through the paper (sun behind the bird), with the fibres showing in the glow.
-  float thick = 0.85 + 0.3 * fib + 0.25 * (blot - 0.5);
-  vec3 transCol = vec3(1.0, 0.78, 0.5);
-  float back = max(-NL, 0.0);                                   // sun on the far side of this face
-  float vdl = pow(sat(dot(-V, uSunDir)), 3.0);                 // looking toward the sun
-  float wrapT = sat(0.5 - NL) * vdl;                           // grazing / backlit sheets still glow
+  let thick = 0.85 + 0.3 * fib + 0.25 * (blot - 0.5);
+  let transCol = vec3f(1.0, 0.78, 0.5);
+  let back = max(-NL, 0.0);                                   // sun on the far side of this face
+  let vdl = pow(saturate(dot(-V, u.sunDir)), 3.0);           // looking toward the sun
+  let wrapT = saturate(0.5 - NL) * vdl;                       // grazing / backlit sheets still glow
   col += albedo * transCol * sunC * (back * 0.55 + wrapT * 1.1) * layer / (thick * PI);
   // soft sky & cloud-sea light; inside cloud the glowing mist lights the paper from all around
-  float up = N.y * 0.5 + 0.5;
-  float inC = sat(max(mist.x, mist.y) / 0.008);
+  let up = N.y * 0.5 + 0.5;
+  let inC = saturate(max(mist.x, mist.y) / 0.008);
   col += albedo * mix(mix(ambDn, ambUp * 1.5, up) / PI, mistL * 0.95, inC);
   // faint sheen at grazing angles
-  vec3 H = normalize(V + uSunDir);
-  float spec = pow(max(dot(N, H), 0.0), 24.0) * 0.06 * max(NL, 0.0);
+  let H = normalize(V + u.sunDir);
+  let spec = pow(max(dot(N, H), 0.0), 24.0) * 0.06 * max(NL, 0.0);
   col += sunC * spec * layer;
   // mist between the camera and the bird when flying through cloud
-  float dist = length(vPos);
-  float tm = exp(-mist.x * dist);
+  let dist = length(v.wpos);
+  let tm = exp(-mist.x * dist);
   col = col * tm + mistL * (1.0 - tm);
-  o = vec4(col, 1.0);
+  return vec4f(col, 1.0);
 }`;
-
-const FS_SHADOW = /* glsl */ `#version 300 es
-precision highp float;
-out vec4 o;
-void main() { o = vec4(1.0); }`;
 
 // ======== src/shaders/post.js
 // Post: bloom, sun rays, tone mapping
 
-const FS_DOWN = GLSL_COMMON + /* glsl */ `
-uniform sampler2D uSrc;
-uniform sampler2D uBird;
-uniform vec4 uBirdBox;
-uniform vec2 uSrcTexel;
-uniform int uFirst;
-uniform float uClampHi;
-out vec4 o;
-vec3 src(vec2 uv) {
-  vec3 c = textureLod(uSrc, uv, 0.0).rgb;
-  if (uFirst == 1 && uv.x > uBirdBox.x && uv.y > uBirdBox.y && uv.x < uBirdBox.z && uv.y < uBirdBox.w) {
-    vec4 b = textureLod(uBird, uv, 0.0);
+// NaN / infinity tests on the bits (a compiler may assume floats are never NaN)
+const WGSL_NAN = /* wgsl */ `
+fn isnan3(c: vec3f) -> bool {
+  let b = bitcast<vec3u>(c);
+  return any(((b & vec3u(0x7f800000u)) == vec3u(0x7f800000u)) & ((b & vec3u(0x007fffffu)) != vec3u(0u)));
+}
+fn isinf3(c: vec3f) -> bool { return any((bitcast<vec3u>(c) & vec3u(0x7fffffffu)) == vec3u(0x7f800000u)); }
+`;
+
+const U_DOWN = { birdBox: 'vec4f', srcTexel: 'vec2f', first: 'i32', clampHi: 'f32' };
+const FS_DOWN = WGSL_COMMON + WGSL_NAN + /* wgsl */ `
+fn src(uv: vec2f) -> vec3f {
+  var c = textureSampleLevel(tSrc, sLin, uv, 0.0).rgb;
+  if (u.first == 1 && uv.x > u.birdBox.x && uv.y > u.birdBox.y && uv.x < u.birdBox.z && uv.y < u.birdBox.w) {
+    let b = textureSampleLevel(tBird, sLin, uv, 0.0);
     c = c * (1.0 - b.a) + b.rgb;
   }
-  if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0);
-  return min(c, vec3(uClampHi));
+  if (isnan3(c) || isinf3(c)) { c = vec3f(0.0); }
+  return min(c, vec3f(u.clampHi));
 }
-void main() {
-  vec2 uv = (floor(gl_FragCoord.xy) * 2.0 + 1.0) * uSrcTexel;
-  vec2 t = uSrcTexel;
-  vec3 a = src(uv + t * vec2(-2, 2)), b = src(uv + t * vec2(0, 2)), c = src(uv + t * vec2(2, 2));
-  vec3 d = src(uv + t * vec2(-2, 0)), e = src(uv), f = src(uv + t * vec2(2, 0));
-  vec3 g = src(uv + t * vec2(-2, -2)), h = src(uv + t * vec2(0, -2)), i = src(uv + t * vec2(2, -2));
-  vec3 j = src(uv + t * vec2(-1, 1)), k = src(uv + t * vec2(1, 1)), l = src(uv + t * vec2(-1, -1)), m = src(uv + t * vec2(1, -1));
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let uv = (floor(pos.xy) * 2.0 + 1.0) * u.srcTexel;
+  let t = u.srcTexel;
+  let a = src(uv + t * vec2f(-2.0, 2.0));
+  let b = src(uv + t * vec2f(0.0, 2.0));
+  let c = src(uv + t * vec2f(2.0, 2.0));
+  let d = src(uv + t * vec2f(-2.0, 0.0));
+  let e = src(uv);
+  let f = src(uv + t * vec2f(2.0, 0.0));
+  let g = src(uv + t * vec2f(-2.0, -2.0));
+  let h = src(uv + t * vec2f(0.0, -2.0));
+  let i = src(uv + t * vec2f(2.0, -2.0));
+  let j = src(uv + t * vec2f(-1.0, 1.0));
+  let k = src(uv + t * vec2f(1.0, 1.0));
+  let l = src(uv + t * vec2f(-1.0, -1.0));
+  let m = src(uv + t * vec2f(1.0, -1.0));
   // 13-tap downsample (no Karis average: the sun is a big stable disk and must bloom fully)
-  vec3 r = e * 0.125 + (a + c + g + i) * 0.03125 + (b + d + f + h) * 0.0625 + (j + k + l + m) * 0.125;
-  o = vec4(r, 1.0);
+  let r = e * 0.125 + (a + c + g + i) * 0.03125 + (b + d + f + h) * 0.0625 + (j + k + l + m) * 0.125;
+  return vec4f(r, 1.0);
 }`;
 
-const FS_UP = GLSL_COMMON + /* glsl */ `
-uniform sampler2D uSrc;
-uniform vec2 uSrcTexel;
-uniform vec2 uDstTexel;
-uniform float uWeight;
-out vec4 o;
-void main() {
-  vec2 uv = gl_FragCoord.xy * uDstTexel;
-  vec2 t = uSrcTexel;
-  vec3 s = textureLod(uSrc, uv, 0.0).rgb * 4.0;
-  s += (textureLod(uSrc, uv + t * vec2(1, 0), 0.0).rgb + textureLod(uSrc, uv + t * vec2(-1, 0), 0.0).rgb + textureLod(uSrc, uv + t * vec2(0, 1), 0.0).rgb + textureLod(uSrc, uv + t * vec2(0, -1), 0.0).rgb) * 2.0;
-  s += textureLod(uSrc, uv + t * vec2(1, 1), 0.0).rgb + textureLod(uSrc, uv + t * vec2(-1, 1), 0.0).rgb + textureLod(uSrc, uv + t * vec2(1, -1), 0.0).rgb + textureLod(uSrc, uv + t * vec2(-1, -1), 0.0).rgb;
-  o = vec4(s / 16.0 * uWeight, 1.0);
+const U_UP = { srcTexel: 'vec2f', dstTexel: 'vec2f', weight: 'f32' };
+const FS_UP = WGSL_COMMON + /* wgsl */ `
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let uv = pos.xy * u.dstTexel;
+  let t = u.srcTexel;
+  var s = textureSampleLevel(tSrc, sLin, uv, 0.0).rgb * 4.0;
+  s += (textureSampleLevel(tSrc, sLin, uv + t * vec2f(1.0, 0.0), 0.0).rgb + textureSampleLevel(tSrc, sLin, uv + t * vec2f(-1.0, 0.0), 0.0).rgb
+      + textureSampleLevel(tSrc, sLin, uv + t * vec2f(0.0, 1.0), 0.0).rgb + textureSampleLevel(tSrc, sLin, uv + t * vec2f(0.0, -1.0), 0.0).rgb) * 2.0;
+  s += textureSampleLevel(tSrc, sLin, uv + t * vec2f(1.0, 1.0), 0.0).rgb + textureSampleLevel(tSrc, sLin, uv + t * vec2f(-1.0, 1.0), 0.0).rgb
+     + textureSampleLevel(tSrc, sLin, uv + t * vec2f(1.0, -1.0), 0.0).rgb + textureSampleLevel(tSrc, sLin, uv + t * vec2f(-1.0, -1.0), 0.0).rgb;
+  return vec4f(s / 16.0 * u.weight, 1.0);
 }`;
 
-const FS_RAYMASK = GLSL_COMMON + /* glsl */ `
-uniform sampler2D uHist;
-uniform sampler2D uBird;
-uniform vec4 uBirdBox;
-uniform vec3 uCamRight, uCamUp, uCamFwd;
-uniform vec2 uTanHalf;
-uniform vec3 uSunDir;
-uniform vec2 uDstTexel;
-out vec4 o;
-void main() {
-  vec2 uv = gl_FragCoord.xy * uDstTexel;
-  vec2 ndc = uv * 2.0 - 1.0;
-  vec3 dir = normalize(uCamFwd + ndc.x * uTanHalf.x * uCamRight + ndc.y * uTanHalf.y * uCamUp);
-  float c = max(dot(dir, uSunDir), 0.0);
-  float glow = pow(c, 600.0) * 3.0 + pow(c, 60.0) * 0.4 + pow(c, 8.0) * 0.04;
-  float T = textureLod(uHist, uv, 0.0).a;
-  if (uv.x > uBirdBox.x && uv.y > uBirdBox.y && uv.x < uBirdBox.z && uv.y < uBirdBox.w) T *= 1.0 - textureLod(uBird, uv, 0.0).a;
-  o = vec4(vec3(glow * T), 1.0);
+const U_RAYMASK = { birdBox: 'vec4f', camRight: 'vec3f', camUp: 'vec3f', camFwd: 'vec3f', sunDir: 'vec3f', tanHalf: 'vec2f', dstTexel: 'vec2f' };
+const FS_RAYMASK = WGSL_COMMON + /* wgsl */ `
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let uv = pos.xy * u.dstTexel;
+  let ndc = uv * 2.0 - 1.0;
+  let dir = normalize(u.camFwd + ndc.x * u.tanHalf.x * u.camRight + ndc.y * u.tanHalf.y * u.camUp);
+  let c = max(dot(dir, u.sunDir), 0.0);
+  let glow = pow(c, 600.0) * 3.0 + pow(c, 60.0) * 0.4 + pow(c, 8.0) * 0.04;
+  var T = textureSampleLevel(tHist, sLin, uv, 0.0).a;
+  if (uv.x > u.birdBox.x && uv.y > u.birdBox.y && uv.x < u.birdBox.z && uv.y < u.birdBox.w) { T *= 1.0 - textureSampleLevel(tBird, sLin, uv, 0.0).a; }
+  return vec4f(vec3f(glow * T), 1.0);
 }`;
 
-const FS_RAYBLUR = GLSL_COMMON + /* glsl */ `
-uniform sampler2D uSrc;
-uniform vec2 uSunUv;
-uniform vec2 uDstTexel;
-uniform float uStepScale;
-out vec4 o;
-uniform float uDecay;
-void main() {
+const U_RAYBLUR = { sunUv: 'vec2f', dstTexel: 'vec2f', stepScale: 'f32', decay: 'f32' };
+const FS_RAYBLUR = WGSL_COMMON + /* wgsl */ `
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   // radial blur toward the sun; run twice (short then long strides) for smooth, noise-free rays
-  vec2 uv = gl_FragCoord.xy * uDstTexel;
-  vec2 d = (uSunUv - uv) * uStepScale;
-  vec2 p = uv;
-  vec3 acc = vec3(0.0);
-  float w = 1.0, ws = 0.0;
-  for (int i = 0; i < 24; i++) {
-    acc += textureLod(uSrc, p, 0.0).rgb * w;
+  let uv = pos.xy * u.dstTexel;
+  let d = (u.sunUv - uv) * u.stepScale;
+  var p = uv;
+  var acc = vec3f(0.0);
+  var w = 1.0;
+  var ws = 0.0;
+  for (var i = 0; i < 24; i++) {
+    acc += textureSampleLevel(tSrc, sLin, p, 0.0).rgb * w;
     ws += w;
-    w *= uDecay;
+    w *= u.decay;
     p += d;
   }
-  o = vec4(acc / ws, 1.0);
+  return vec4f(acc / ws, 1.0);
 }`;
 
-const FS_FINAL = GLSL_COMMON + /* glsl */ `
-uniform sampler2D uScene;
-uniform sampler2D uBird;
-uniform sampler2D uBloom;
-uniform sampler2D uRays;
-uniform vec4 uBirdBox;
-uniform float uExposure;
-uniform float uBloomMix;
-uniform float uBloomScale;
-uniform vec3 uRayCol;
-uniform float uTime;
-uniform vec2 uRes;
-uniform int uView;
-uniform int uTM;
-uniform float uContrast;
-uniform sampler2D uDbg;
-uniform sampler2D uDbg2;
-uniform vec2 uDbgScale;
-out vec4 o;
+const U_FINAL = {
+  birdBox: 'vec4f', rayCol: 'vec3f', exposure: 'f32', res: 'vec2f', dbgScale: 'vec2f',
+  bloomMix: 'f32', bloomScale: 'f32', time: 'f32', contrast: 'f32', view: 'i32', tm: 'i32',
+};
+const FS_FINAL = WGSL_COMMON + WGSL_NAN + /* wgsl */ `
 // ACES fitted (Stephen Hill)
-vec3 RRTAndODTFit(vec3 v) { vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
-vec3 aces(vec3 c) {
-  const mat3 ACESIn = mat3(0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777);
-  const mat3 ACESOut = mat3(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);
-  c = ACESIn * c; c = RRTAndODTFit(c); c = ACESOut * c;
-  return sat(c);
+fn RRTAndODTFit(v: vec3f) -> vec3f { let a = v * (v + 0.0245786) - 0.000090537; let b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
+fn aces(c0: vec3f) -> vec3f {
+  let ACESIn = mat3x3f(0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777);
+  let ACESOut = mat3x3f(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);
+  var c = ACESIn * c0;
+  c = RRTAndODTFit(c);
+  c = ACESOut * c;
+  return saturate(c);
 }
-vec3 toSRGB(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
-void main() {
-  vec2 uv = gl_FragCoord.xy / uRes;
-  if (uView == 1) { o = vec4(vec3(textureLod(uDbg, uv, 0.0).a), 1.0); return; }
-  if (uView == 2) { o = vec4(toSRGB(sat(textureLod(uDbg, uv, 0.0).rgb * uExposure * 0.5)), 1.0); return; }
-  if (uView == 3) { float d = textureLod(uDbg2, uv * uDbgScale, 0.0).r; o = vec4(vec3(sat(log2(1.0 + d) / 8.0)), 1.0); return; }
-  if (uView == 4) { o = vec4(toSRGB(sat(textureLod(uRays, uv, 0.0).rgb * uRayCol * uExposure)), 1.0); return; }
-  if (uView == 5) { o = vec4(toSRGB(sat(textureLod(uBloom, uv, 0.0).rgb * uExposure * 0.25)), 1.0); return; }
-  vec3 c = textureLod(uScene, uv, 0.0).rgb;
-  if (uv.x > uBirdBox.x && uv.y > uBirdBox.y && uv.x < uBirdBox.z && uv.y < uBirdBox.w) {
-    vec4 b = textureLod(uBird, uv, 0.0);
+fn toSRGB(c: vec3f) -> vec3f { return mix(c * 12.92, 1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, step(vec3f(0.0031308), c)); }
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  // the canvas's rows run top-down: count them from the bottom, as every texture is laid out
+  let frag = vec2f(pos.x, u.res.y - pos.y);
+  let uv = frag / u.res;
+  if (u.view == 1) { return vec4f(vec3f(textureSampleLevel(tDbg, sLin, uv, 0.0).a), 1.0); }
+  if (u.view == 2) { return vec4f(toSRGB(saturate(textureSampleLevel(tDbg, sLin, uv, 0.0).rgb * u.exposure * 0.5)), 1.0); }
+  if (u.view == 3) { let d = textureSampleLevel(tDbg2, sNear, uv * u.dbgScale, 0.0).r; return vec4f(vec3f(saturate(log2(1.0 + d) / 8.0)), 1.0); }
+  if (u.view == 4) { return vec4f(toSRGB(saturate(textureSampleLevel(tRays, sLin, uv, 0.0).rgb * u.rayCol * u.exposure)), 1.0); }
+  if (u.view == 5) { return vec4f(toSRGB(saturate(textureSampleLevel(tBloom, sLin, uv, 0.0).rgb * u.exposure * 0.25)), 1.0); }
+  var c = textureSampleLevel(tScene, sLin, uv, 0.0).rgb;
+  if (uv.x > u.birdBox.x && uv.y > u.birdBox.y && uv.x < u.birdBox.z && uv.y < u.birdBox.w) {
+    let b = textureSampleLevel(tBird, sLin, uv, 0.0);
     c = c * (1.0 - b.a) + b.rgb;
   }
-  if (any(isnan(c))) c = vec3(0.0);
-  vec3 bloom = textureLod(uBloom, uv, 0.0).rgb;
-  c = c * (1.0 - uBloomMix) + bloom * uBloomScale;   // energy-conserving mix with the normalised bloom
-  c += textureLod(uRays, uv, 0.0).rgb * uRayCol;
-  c *= uExposure;
+  if (isnan3(c)) { c = vec3f(0.0); }
+  let bloom = textureSampleLevel(tBloom, sLin, uv, 0.0).rgb;
+  c = c * (1.0 - u.bloomMix) + bloom * u.bloomScale;   // energy-conserving mix with the normalised bloom
+  c += textureSampleLevel(tRays, sLin, uv, 0.0).rgb * u.rayCol;
+  c *= u.exposure;
   // gentle contrast around middle grey (pre-curve)
-  float lc = max(luma(c), 1e-6);
-  c *= pow(lc / 0.18, uContrast - 1.0);
-  if (uTM == 0) {
-    float l = luma(c);
-    c = mix(c, c * vec3(0.95, 0.985, 1.07), 0.35 * (1.0 - sat(l * 2.0)));
+  let lc = max(luma(c), 1e-6);
+  c *= pow(lc / 0.18, u.contrast - 1.0);
+  if (u.tm == 0) {
+    let l = luma(c);
+    c = mix(c, c * vec3f(0.95, 0.985, 1.07), 0.35 * (1.0 - saturate(l * 2.0)));
     c = aces(c * 1.05);
   } else {
     // hue-preserving filmic: tone map luminance, keep chroma; extreme highlights roll off to white
-    float l = max(luma(c), 1e-6);
-    vec3 a = aces(c);
-    float lt = luma(aces(vec3(l)));
-    vec3 hp = c * (lt / l);
+    let l = max(luma(c), 1e-6);
+    let a = aces(c);
+    let lt = luma(aces(vec3f(l)));
+    var hp = c * (lt / l);
     // keep saturated highlights in gamut by desaturating toward luminance as needed
-    float mx = max(hp.r, max(hp.g, hp.b));
-    if (mx > 1.0) hp = mix(vec3(lt), hp, (1.0 - lt) / max(mx - lt, 1e-4));
+    let mx = max(hp.r, max(hp.g, hp.b));
+    if (mx > 1.0) { hp = mix(vec3f(lt), hp, (1.0 - lt) / max(mx - lt, 1e-4)); }
     c = mix(hp, a, smoothstep(0.55, 1.0, lt) * 0.85);
     // golden hour split tone: warm highlights, cool violet shadows
-    float t = sat(lt * 1.4);
-    c *= mix(vec3(0.93, 0.95, 1.08), vec3(1.04, 1.0, 0.93), t);
-    c = sat(c);
+    let t = saturate(lt * 1.4);
+    c *= mix(vec3f(0.93, 0.95, 1.08), vec3f(1.04, 1.0, 0.93), t);
+    c = saturate(c);
   }
   // vignette
-  vec2 q = uv - 0.5;
-  q.x *= uRes.x / uRes.y;
+  var q = uv - 0.5;
+  q.x *= u.res.x / u.res.y;
   c *= mix(1.0, 0.74, smoothstep(0.35, 1.25, length(q)));
   c = toSRGB(c);
   // grain / dither
-  float n = ign(gl_FragCoord.xy + fract(uTime * 7.31) * vec2(113.0, 71.0)) - 0.5;
+  let n = ign(frag + fract(u.time * 7.31) * vec2f(113.0, 71.0)) - 0.5;
   c += n * (1.5 / 255.0);
-  o = vec4(c, 1.0);
+  return vec4f(c, 1.0);
 }`;
 
 // ======== src/render/setup.js
-// Programs, static textures and their framebuffers, and the one-off generation of the static data
+// Pipelines, static textures, and the one-off generation of the static data
 
+const F16 = 'rgba16float';
+const ADD = { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor: 'one', dstFactor: 'one' } };
+const OVER = { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
+// the bird: position and attributes (flex weight, side, panel shade), one buffer each
+const BIRD_BUFFERS = [0, 1].map(k => ({ arrayStride: 12, attributes: [{ shaderLocation: k, offset: 0, format: 'float32x3' }] }));
 const P = {
-  trans: makeProgram('transmittance', FS_TRANSMITTANCE),
-  ms: makeProgram('multiscatter', FS_MULTISCAT),
-  sky: makeProgram('skyview', FS_SKYVIEW),
-  amb: makeProgram('ambient', FS_AMBIENT),
-  noise: makeProgram('noise3d', FS_NOISE3D),
-  cirrus: makeProgram('cirrus', FS_CIRRUS),
-  layers: makeProgram('layers', FS_LAYERS),
-  tsv: makeProgram('tsv', FS_TSV),
-  bake: makeProgram('bake', FS_BAKE),
-  trace: makeProgram('trace', DBG_MODE ? FS_TRACE.replace('#version 300 es', '#version 300 es\n#define DBG') : FS_TRACE),
-  taau: makeProgram('taau', FS_TAAU),
-  probe: makeProgram('probe', FS_PROBE),
-  bird: makeProgram('bird', FS_BIRD, VS_BIRD),
-  shadow: makeProgram('shadow', FS_SHADOW, VS_BIRD),
-  down: makeProgram('down', FS_DOWN),
-  up: makeProgram('up', FS_UP),
-  raymask: makeProgram('raymask', FS_RAYMASK),
-  rayblur: makeProgram('rayblur', FS_RAYBLUR),
-  final: makeProgram('final', FS_FINAL),
-  mist: makeProgram('mist', FS_MIST, VS_MIST),
+  trans: pipeline('transmittance', { fs: FS_TRANSMITTANCE, targets: [F16] }),
+  ms: pipeline('multiscatter', { fs: FS_MULTISCAT, targets: [F16] }),
+  sky: pipeline('skyview', { fs: FS_SKYVIEW, uniforms: U_SKYVIEW, targets: [F16] }),
+  amb: pipeline('ambient', { fs: FS_AMBIENT, uniforms: U_AMBIENT, targets: [F16] }),
+  shape: pipeline('noise3d', { fs: FS_NOISE3D, uniforms: U_NOISE3D, targets: [F16] }),
+  detail: pipeline('noise3d', { fs: FS_NOISE3D, uniforms: U_NOISE3D, targets: ['rgba8unorm'] }),
+  cirrus: pipeline('cirrus', { fs: FS_CIRRUS, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
+  layers: pipeline('layers', { fs: FS_LAYERS, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
+  mip: pipeline('mip', { fs: FS_MIP, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
+  tsv: pipeline('tsv', { fs: FS_TSV, uniforms: U_TSV, targets: Array(NOUT).fill('r16float') }),
+  bake: pipeline('bake', { fs: FS_BAKE, uniforms: U_BAKE, targets: Array(NOUT).fill('r16float') }),
+  trace: pipeline('trace', { fs: DBG_MODE ? FS_TRACE.replace('const DBG = false;', 'const DBG = true;') : FS_TRACE, uniforms: U_TRACE, targets: [F16, 'r16float'] }),
+  taau: pipeline('taau', { fs: FS_TAAU, uniforms: U_TAAU, targets: [F16, F16] }),
+  probe: pipeline('probe', { fs: FS_PROBE, uniforms: U_PROBE, targets: ['rgba32float'] }),
+  bird: pipeline('bird', {
+    vs: VS_BIRD, fs: FS_BIRD, uniforms: U_BIRD, targets: [F16], buffers: BIRD_BUFFERS, samples: 4,
+    depth: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less-equal' },
+  }),
+  shadow: pipeline('shadow', {
+    vs: VS_BIRD, uniforms: U_BIRD, buffers: BIRD_BUFFERS,
+    depth: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less-equal', depthBias: 2, depthBiasSlopeScale: 1.5 },
+  }),
+  down: pipeline('down', { fs: FS_DOWN, uniforms: U_DOWN, targets: [F16] }),
+  up: pipeline('up', { fs: FS_UP, uniforms: U_UP, targets: [F16], blend: ADD }),
+  raymask: pipeline('raymask', { fs: FS_RAYMASK, uniforms: U_RAYMASK, targets: [F16] }),
+  rayblur: pipeline('rayblur', { fs: FS_RAYBLUR, uniforms: U_RAYBLUR, targets: [F16] }),
+  final: pipeline('final', { fs: FS_FINAL, uniforms: U_FINAL, targets: [CANVAS_FORMAT] }),
+  mist: pipeline('mist', { vs: VS_MIST, fs: FS_MIST, uniforms: U_MIST, targets: [F16], blend: OVER, topology: 'triangle-strip' }),
 };
 
 // --- static textures
 const T = {};
-T.trans = texture2D(256, 64, RGBA16F, gl.RGBA, HALF);
-T.ms = texture2D(32, 32, RGBA16F, gl.RGBA, HALF);
-T.sky = texture2D(192, 108, RGBA16F, gl.RGBA, HALF);
-T.amb = texture2D(4, 1, RGBA16F, gl.RGBA, HALF, { filter: gl.NEAREST });
-T.shape = texture3D(SHAPE_N, SHAPE_N, SHAPE_N, gl.RGBA16F, gl.RGBA, HALF);
-T.detail = texture3D(DETAIL_N, DETAIL_N, DETAIL_N, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
-T.cirrus = texture2D(512, 512, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, { wrap: gl.REPEAT });
-T.layers = texture2D(1024, 1024, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, { wrap: gl.REPEAT });
-T.probe = texture2D(8, 1, FLOAT_RT, gl.RGBA, extCBF ? gl.FLOAT : HALF, { filter: gl.NEAREST });
+T.trans = texture(256, 64, F16);
+T.ms = texture(32, 32, F16);
+T.sky = texture(192, 108, F16);
+T.amb = texture(4, 1, F16, { usage: RENDER | GPUTextureUsage.COPY_SRC });
+T.shape = texture(SHAPE_N, SHAPE_N, F16, { depth: SHAPE_N, dim: '3d' });
+T.detail = texture(DETAIL_N, DETAIL_N, 'rgba8unorm', { depth: DETAIL_N, dim: '3d' });
+T.cirrus = texture(512, 512, 'rgba8unorm');
+T.layers = texture(1024, 1024, 'rgba8unorm', { mips: 11 });   // seen at grazing angles far away: mipmaps
+T.probe = texture(8, 1, 'rgba32float', { usage: RENDER | GPUTextureUsage.COPY_SRC });
 
-const FB = {};
-FB.trans = framebuffer([T.trans]);
-FB.ms = framebuffer([T.ms]);
-FB.sky = framebuffer([T.sky]);
-FB.amb = framebuffer([T.amb]);
-FB.cirrus = framebuffer([T.cirrus]);
-FB.layers = framebuffer([T.layers]);
-FB.probe = framebuffer([T.probe]);
-const fbLayer = gl.createFramebuffer();
+const sunColUniform = sunColTable;
+const layerColUniform = new Float32Array([...sunColorAt(6300), ...sunColorAt(7700)]);
 
-function renderVolume(tex, depth, uniformsFor) {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fbLayer);
-  gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
-  for (let z = 0; z < depth; z++) {
-    gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, tex.tex, 0, z);
-    const u = uniformsFor(z);
-    gl.viewport(0, 0, tex.w, tex.h);
-    gl.useProgram(u.prog.p);
-    setUniforms(u.prog, u.uniforms);
-    gl.bindVertexArray(emptyVAO);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-  }
-}
-
-const sunColUniform = { v3: sunColTable };
-const layerColUniform = { v3: new Float32Array([...sunColorAt(6300), ...sunColorAt(7700)]) };
-
-// one-off generation of all static GPU data (runs once the shaders are compiled)
+// one-off generation of all static GPU data (once the pipelines are compiled)
 function generateStatic() {
-// noise volumes
-renderVolume(T.shape, SHAPE_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / SHAPE_N, uSize: SHAPE_N, uCells: [4, 8, 16, 32], uMode: { i: 0 } } }));
-renderVolume(T.detail, DETAIL_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / DETAIL_N, uSize: DETAIL_N, uCells: [4, 8, 16, 24], uMode: { i: 1 } } }));
-pass(P.cirrus, FB.cirrus, 512, 512, { uSize: 512 });
-pass(P.layers, FB.layers, 1024, 1024, { uSize: 1024 });
-gl.bindTexture(gl.TEXTURE_2D, T.layers.tex);           // seen at grazing angles far away: mipmaps
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-gl.generateMipmap(gl.TEXTURE_2D);
-
-// atmosphere LUTs
-pass(P.trans, FB.trans, 256, 64, {});
-pass(P.ms, FB.ms, 32, 32, { uTrans: T.trans });
+  // noise volumes
+  for (let z = 0; z < SHAPE_N; z++) pass(P.shape, slices(T.shape, z), { z: (z + 0.5) / SHAPE_N, size: SHAPE_N, cells: [4, 8, 16, 32], mode: 0 });
+  for (let z = 0; z < DETAIL_N; z++) pass(P.detail, slices(T.detail, z), { z: (z + 0.5) / DETAIL_N, size: DETAIL_N, cells: [4, 8, 16, 24], mode: 1 });
+  pass(P.cirrus, [T.cirrus], { size: 512 });
+  // the high layers and their mip levels
+  const lv = Array.from({ length: 11 }, (_, k) => mipLevel(T.layers, k));
+  pass(P.layers, [lv[0]], { size: 1024 });
+  for (let k = 1; k < lv.length; k++) pass(P.mip, [lv[k]], { tSrc: lv[k - 1], size: lv[k].w });
+  // atmosphere LUTs
+  pass(P.trans, [T.trans], {});
+  pass(P.ms, [T.ms], { tTrans: T.trans });
+  flush();
 }
 
 // ======== src/world/columns.js
@@ -2633,16 +2787,18 @@ const LEVELS = [
   { cell: 2048, cellV: 512, nz: 32, maxD: 12000, minBR: 900, lod: 2, step: 4, chunk: 16 },
 ];
 const TSVL = { cell: 768, cellV: 360, nz: 40, step: 8, chunk: 32, tsv: true };
+const VOL_USE = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC;
+const DATA_USE = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST;
 for (const L of [...LEVELS, TSVL]) {
-  L.vol = texture3D(CLIP_N, CLIP_N, L.nz, gl.R16F, gl.RED, HALF, { wrapR: gl.CLAMP_TO_EDGE });
-  if (!L.tsv) L.col = texture2D(CLIP_N, CLIP_N, RGBA16F, gl.RGBA, HALF, { filter: gl.LINEAR, wrap: gl.REPEAT });
+  L.vol = texture(CLIP_N, CLIP_N, 'r16float', { depth: L.nz, dim: '3d', usage: VOL_USE });
+  if (!L.tsv) L.col = texture(CLIP_N, CLIP_N, 'rgba16float', { usage: DATA_USE | GPUTextureUsage.COPY_SRC });
   L.gi = null; L.gj = 0; L.valid = null; L.pending = 0;
 }
 T.tsv = TSVL.vol;
 const BUB_MAX = 4096;
-T.bub = texture2D(1024, (BUB_MAX >> 10) * 3, gl.RGBA32F, gl.RGBA, gl.FLOAT, { filter: gl.NEAREST });
+T.bub = texture(1024, (BUB_MAX >> 10) * 3, 'rgba32float', { usage: DATA_USE });
 const bubData = new Float32Array(1024 * (BUB_MAX >> 10) * 3 * 4);
-const fbBake = gl.createFramebuffer();
+let bubUsed = false;     // a bake that reads the bubbles is encoded but not yet submitted
 const bakeQueue = [];
 const worldStats = { jobs: 0, bubbles: 0, maxBub: 0, ms: 0 };
 
@@ -2686,32 +2842,23 @@ function shiftLevel(L, cx, cz) {
   L.pending = queueBatch(L, blocks);
   if (!L.pending) L.valid = [ti, tj, ti + CLIP_N, tj + CLIP_N];
 }
-function bindBakeLayers(L, z) {
-  for (let k = 0; k < NOUT; k++) gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + k, L.vol.tex, 0, z + k);
-}
 function runJob(job, O) {
   const L = job.L, tx = job.gi & CLIP_M, ty = job.gj & CLIP_M;
   if (job.fill) {
     // column data of the block
     const col = new Float32Array(job.ni * job.nj * 4);
     fillColumns(L.cell, L.lod, job.gi, job.gj, job.ni, job.nj, col);
-    gl.bindTexture(gl.TEXTURE_2D, L.col.tex);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, tx, ty, job.ni, job.nj, gl.RGBA, gl.FLOAT, col);
+    device.queue.writeTexture({ texture: L.col.tex, origin: [tx, ty] }, toHalf(col), { bytesPerRow: job.ni * 8 }, [job.ni, job.nj]);
     worldStats.jobs++;
     L.pending--;
     return;
   }
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fbBake);
-  gl.drawBuffers(Array.from({ length: NOUT }, (_, k) => gl.COLOR_ATTACHMENT0 + k));
-  gl.viewport(tx, ty, job.ni, job.nj);
-  gl.bindVertexArray(emptyVAO);
+  const viewport = [tx, ty, job.ni, job.nj];
   if (L.tsv) {
-    for (let u = 0; u < 16; u++) { gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_3D, null); }
-    gl.useProgram(P.tsv.p);
-    setUniforms(P.tsv, Object.assign(worldUniforms(O), {
-      uTex0: { iv2: [tx, ty] }, uP0: [(job.gi + 0.5) * L.cell - O[0], (job.gj + 0.5) * L.cell - O[2]], uCellT: L.cell, uCellTV: L.cellV, uSunDir: SUN_DIR,
-    }));
-    for (let z = 0; z < L.nz; z += NOUT) { bindBakeLayers(L, z); gl.uniform1i(uloc(P.tsv, 'uZ0'), z); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+    const vals = Object.assign(worldUniforms(O), {
+      tex0: [tx, ty], p0: [(job.gi + 0.5) * L.cell - O[0], (job.gj + 0.5) * L.cell - O[2]], cellT: L.cell, cellTV: L.cellV, sunDir: SUN_DIR, z0: 0,
+    });
+    for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.tsv, slices(L.vol, z, NOUT), vals, { viewport }); }
   } else {
     // the tower bubbles near it, relative to its corner (the coarsest level takes them from the
     // cells grown for it: far cheaper, and all it can show)
@@ -2719,13 +2866,14 @@ function runJob(job, O) {
     const nb = gatherBubbles(ox, oz, ox + job.ni * L.cell, oz + job.nj * L.cell, L.maxD + 300, L.minBR, ox, oz, bubData, BUB_MAX, L.lod >= 2);
     worldStats.bubbles += nb; worldStats.maxBub = Math.max(worldStats.maxBub, nb);
     if (nb) {
-      gl.bindTexture(gl.TEXTURE_2D, T.bub.tex);
+      // (the queue writes at once: submit the bakes that read the previous bubbles first)
+      if (bubUsed) { flush(); bubUsed = false; }
       const rows = ((nb + 1023) >> 10) * 3;
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, rows, gl.RGBA, gl.FLOAT, bubData.subarray(0, rows * 1024 * 4));
+      device.queue.writeTexture({ texture: T.bub.tex }, bubData.subarray(0, rows * 1024 * 4), { bytesPerRow: 1024 * 16 }, [1024, rows]);
+      bubUsed = true;
     }
-    gl.useProgram(P.bake.p);
-    setUniforms(P.bake, { uCol: L.col, uBub: T.bub, uNB: { i: nb }, uTex0: { iv2: [tx, ty] }, uCellH: L.cell, uCellV: L.cellV, uMaxD: L.maxD, uMask: { i: CLIP_M } });
-    for (let z = 0; z < L.nz; z += NOUT) { bindBakeLayers(L, z); gl.uniform1i(uloc(P.bake, 'uZ0'), z); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+    const vals = { tCol: L.col, tBub: T.bub, nb, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0 };
+    for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.bake, slices(L.vol, z, NOUT), vals, { viewport }); }
   }
   worldStats.jobs++;
   if (--L.pending === 0) L.valid = [L.gi, L.gj, L.gi + CLIP_N, L.gj + CLIP_N];
@@ -2736,7 +2884,7 @@ function streamWorld(camPos, O, budgetMs, frame) {
   if (frame % 900 === 899) worldGC(camPos[0], camPos[2]);
   for (let l = LEVELS.length - 1; l >= 0; l--) shiftLevel(LEVELS[l], camPos[0], camPos[2]);
   const t0 = performance.now();
-  for (let pass = 0; pass < 2; pass++) {
+  for (let round = 0; round < 2; round++) {
     // the shadow volume reads the coarser levels: it shifts once they are settled
     if (!LEVELS[1].pending && !LEVELS[2].pending) shiftLevel(TSVL, camPos[0], camPos[2]);
     while (bakeQueue.length) {
@@ -2749,7 +2897,6 @@ function streamWorld(camPos, O, budgetMs, frame) {
     if (budgetMs >= 0) break;
   }
   worldStats.ms = performance.now() - t0;
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 // render-space uniforms of the world volumes
 const _lvA = new Float32Array(12), _lvV = new Float32Array(12);
@@ -2767,9 +2914,9 @@ function worldUniforms(O) {
   // phases of the billow warp's waves at the origin (computed in double precision)
   const ph = (kx, kz) => { const a = kx * O[0] + kz * O[2]; return a - 2 * PI * Math.floor(a / (2 * PI)); };
   return {
-    uVol0: LEVELS[0].vol, uVol1: LEVELS[1].vol, uVol2: LEVELS[2].vol, uCol0: LEVELS[0].col, uCol1: LEVELS[1].col, uCol2: LEVELS[2].col,
-    uLvA: { v4: _lvA }, uLvV: { v4: _lvV }, uTsvA: Array.from(ta), uTsvV: Array.from(tv),
-    uWarpPh: [ph(0, 8.37e-4), ph(3.41e-4, 0), ph(1.49e-4, 2.53e-4), ph(9.29e-4, 0)], uWarpPh2: [ph(0, 3.97e-4), ph(1.93e-4, -2.91e-4)],
+    tVol0: LEVELS[0].vol, tVol1: LEVELS[1].vol, tVol2: LEVELS[2].vol, tCol0: LEVELS[0].col, tCol1: LEVELS[1].col, tCol2: LEVELS[2].col,
+    lvA: _lvA, lvV: _lvV, tsvA: ta, tsvV: tv,
+    warpPh: [ph(0, 8.37e-4), ph(3.41e-4, 0), ph(1.49e-4, 2.53e-4), ph(9.29e-4, 0)], warpPh2: [ph(0, 3.97e-4), ph(1.93e-4, -2.91e-4)],
   };
 }
 const originOf = p => [Math.round(p[0] / ORIGIN_Q) * ORIGIN_Q, 0, Math.round(p[2] / ORIGIN_Q) * ORIGIN_Q];
@@ -2778,68 +2925,49 @@ const originOf = p => [Math.round(p[0] / ORIGIN_Q) * ORIGIN_Q, 0, Math.round(p[2
 // Size-dependent render targets: allocated for the canvas size, retried smaller when GPU memory runs out
 
 const R = { w: 0, h: 0, lowW: 0, lowH: 0, lowMaxW: 0, lowMaxH: 0, scale: TEST ? parseFloat(Q.get('scale') || '0.5') : 0.5, histValid: 0 };
-// largest MSAA sample count (up to 4) that both bird attachment formats support
-let msaaSamples = 0;
-try {
-  const c = gl.getInternalformatParameter(gl.RENDERBUFFER, RGBA16F, gl.SAMPLES) || [];
-  const d = gl.getInternalformatParameter(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, gl.SAMPLES) || [];
-  for (const n of c) if (n <= 4 && Array.prototype.includes.call(d, n)) { msaaSamples = n; break; }
-} catch (_) { msaaSamples = Math.min(4, gl.getParameter(gl.MAX_SAMPLES) || 0); }
+const HALF4 = 'rgba16float';
 const bloomLevels = [];
+const SIZED = ['cloudCol', 'cloudDepth', 'histA', 'histB', 'scene', 'birdTex', 'birdMS', 'birdDepth', 'rayA', 'rayB'];
 function freeRes() {
-  for (const k of ['cloudCol', 'cloudDepth', 'histA', 'histB', 'scene', 'birdTex', 'rayA', 'rayB']) if (T[k]) { gl.deleteTexture(T[k].tex); T[k] = null; }
-  for (const b of bloomLevels) { gl.deleteTexture(b.tex.tex); gl.deleteFramebuffer(b.fb); }
+  for (const k of SIZED) if (T[k]) { T[k].tex.destroy(); T[k] = null; }
+  for (const b of bloomLevels) b.tex.destroy();
   bloomLevels.length = 0;
-  for (const k of ['trace', 'taauA', 'taauB', 'scene', 'birdMS', 'birdResolve', 'rayA', 'rayB']) if (FB[k]) { gl.deleteFramebuffer(FB[k]); FB[k] = null; }
-  if (R.rbColor) { gl.deleteRenderbuffer(R.rbColor); gl.deleteRenderbuffer(R.rbDepth); }
+  forgetBindGroups();
 }
+let allocGen = 0;
 function allocate(w, h) {
   freeRes();
   R.w = w; R.h = h;
   R.lowMaxW = Math.ceil(w * 0.75); R.lowMaxH = Math.ceil(h * 0.75);
-  T.cloudCol = texture2D(R.lowMaxW, R.lowMaxH, RGBA16F, gl.RGBA, HALF);
-  T.cloudDepth = texture2D(R.lowMaxW, R.lowMaxH, gl.R16F, gl.RED, HALF, { filter: gl.NEAREST });
-  FB.trace = framebuffer([T.cloudCol, T.cloudDepth]);
-  T.histA = texture2D(w, h, RGBA16F, gl.RGBA, HALF);
-  T.histB = texture2D(w, h, RGBA16F, gl.RGBA, HALF);
-  T.scene = texture2D(w, h, RGBA16F, gl.RGBA, HALF);
-  FB.taauA = framebuffer([T.histA, T.scene]);
-  FB.taauB = framebuffer([T.histB, T.scene]);
-  FB.scene = framebuffer([T.scene]);
-  // bird: MSAA color + depth, resolved into a texture
-  T.birdTex = texture2D(w, h, RGBA16F, gl.RGBA, HALF);
-  FB.birdResolve = framebuffer([T.birdTex]);
-  R.rbColor = gl.createRenderbuffer();
-  R.rbDepth = gl.createRenderbuffer();
-  const tryMS = s => {
-    gl.bindRenderbuffer(gl.RENDERBUFFER, R.rbColor);
-    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, s, RGBA16F, w, h);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, R.rbDepth);
-    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, s, gl.DEPTH_COMPONENT24, w, h);
-    const fb = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, R.rbColor);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, R.rbDepth);
-    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
-    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { gl.deleteFramebuffer(fb); return null; }
-    return fb;
-  };
-  FB.birdMS = tryMS(msaaSamples) || (msaaSamples = 0, tryMS(0));
+  // (running out of memory shows only later: an error scope reports it, and the next frame
+  // allocates smaller)
+  device.pushErrorScope('out-of-memory');
+  T.cloudCol = texture(R.lowMaxW, R.lowMaxH, HALF4);
+  T.cloudDepth = texture(R.lowMaxW, R.lowMaxH, 'r16float');
+  T.histA = texture(w, h, HALF4);
+  T.histB = texture(w, h, HALF4);
+  T.scene = texture(w, h, HALF4);
+  // bird: 4x MSAA colour + depth, resolved into a texture
+  T.birdTex = texture(w, h, HALF4);
+  T.birdMS = texture(w, h, HALF4, { samples: 4, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+  T.birdDepth = texture(w, h, 'depth24plus', { samples: 4, usage: GPUTextureUsage.RENDER_ATTACHMENT });
   // bloom chain
   let bw = w, bh = h;
   for (let i = 0; i < 7; i++) {
     bw = Math.max(1, Math.ceil(bw / 2)); bh = Math.max(1, Math.ceil(bh / 2));
-    const tex = texture2D(bw, bh, RGBA16F, gl.RGBA, HALF);
-    bloomLevels.push({ tex, fb: framebuffer([tex]), w: bw, h: bh });
+    bloomLevels.push(texture(bw, bh, HALF4));
   }
   // sun rays (quarter res)
   const rw = Math.max(1, Math.ceil(w / 4)), rh = Math.max(1, Math.ceil(h / 4));
-  T.rayA = texture2D(rw, rh, RGBA16F, gl.RGBA, HALF);
-  T.rayB = texture2D(rw, rh, RGBA16F, gl.RGBA, HALF);
-  FB.rayA = framebuffer([T.rayA]);
-  FB.rayB = framebuffer([T.rayB]);
+  T.rayA = texture(rw, rh, HALF4);
+  T.rayB = texture(rw, rh, HALF4);
   R.rayW = rw; R.rayH = rh;
   R.histValid = 0;
+  const gen = ++allocGen;
+  device.popErrorScope().then(e => {
+    if (gen !== allocGen) return;
+    if (e) R.oom = true; else allocFails = 0;
+  });
 }
 
 R.maxPixels = COARSE ? 1.15e6 : 2.3e6;
@@ -2849,17 +2977,19 @@ function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
   if (TEST) { w = parseInt(Q.get('w') || '960'); h = parseInt(Q.get('h') || '540'); }
+  if (R.oom) {
+    // out of GPU memory (typically on phones): try again smaller
+    R.oom = false;
+    if (++allocFails > 3) throw new Error('out of GPU memory');
+    R.maxPixels = Math.max(0.3e6, Math.min(R.maxPixels, R.w * R.h) * 0.6);
+    freeRes();
+    R.w = R.h = 0;
+  }
   const px = w * h;
   if (px > R.maxPixels) { const k = Math.sqrt(R.maxPixels / px); w = Math.round(w * k); h = Math.round(h * k); }
   if (w !== R.w || h !== R.h) {
     canvas.width = w; canvas.height = h;
-    try { allocate(w, h); allocFails = 0; }
-    catch (e) {
-      // out of GPU memory (typically on phones): try again smaller on the next frame
-      R.w = R.h = 0;
-      if (++allocFails > 3) throw e;
-      R.maxPixels = Math.max(0.3e6, Math.min(R.maxPixels, w * h) * 0.6);
-    }
+    allocate(w, h);
   }
   return R.w > 0;
 }
@@ -2869,34 +2999,30 @@ function resize() {
 
 let probeData = null; // async readback: [sigmaCam, sigmaBird, sdfBird, seaTop, sdfSeaOnlyBird]
 let inCloud = 0;      // smoothed: is the camera inside cloud?
-let probePBO = null, probeSync = null, probeNext = null;
-const probeBuf = new Float32Array(32);
+const probeBuf = device.createBuffer({ label: 'probe', size: 8 * 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+let probeState = 0;          // 0 idle, 1 copy encoded (mapped after the submit), 2 mapping
+let probeNext = null;
+// (tests wait for each readback before the next frame)
+const probeBusy = () => probeState !== 0;
 
+// after the probe pass: copy it out, unless the last copy is still being read
 function readProbeAsync() {
-  if (!extCBF) return;
-  if (TEST) { // tests: as if the GPU were always done by the next frame (when a fence signals varies)
-    if (probeNext) probeData = probeNext;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.probe);
-    gl.readPixels(0, 0, 8, 1, gl.RGBA, gl.FLOAT, probeBuf);
-    probeNext = [probeBuf[12], probeBuf[13], probeBuf[14], probeBuf[15], probeBuf[20]];
-    return;
-  }
-  if (probeSync) {
-    const st = gl.getSyncParameter(probeSync, gl.SYNC_STATUS);
-    if (st !== gl.SIGNALED) return;
-    gl.deleteSync(probeSync); probeSync = null;
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, probePBO);
-    gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, probeBuf);
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    probeData = [probeBuf[12], probeBuf[13], probeBuf[14], probeBuf[15], probeBuf[20]];
-  }
-  if (!probePBO) { probePBO = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, probePBO); gl.bufferData(gl.PIXEL_PACK_BUFFER, 8 * 16, gl.STREAM_READ); }
-  gl.bindFramebuffer(gl.FRAMEBUFFER, FB.probe);
-  gl.bindBuffer(gl.PIXEL_PACK_BUFFER, probePBO);
-  gl.readPixels(0, 0, 8, 1, gl.RGBA, gl.FLOAT, 0);
-  gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-  probeSync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-  gl.flush();
+  if (TEST && probeNext) probeData = probeNext;   // tests: as if the GPU were always done by the next frame
+  if (probeState) return;
+  enc().copyTextureToBuffer({ texture: T.probe.tex }, { buffer: probeBuf }, [8, 1]);
+  probeState = 1;
+}
+// after the frame is submitted: read the copy when the GPU is done with it
+function mapProbe() {
+  if (probeState !== 1) return;
+  probeState = 2;
+  probeBuf.mapAsync(GPUMapMode.READ).then(() => {
+    const b = new Float32Array(probeBuf.getMappedRange());
+    const d = [b[12], b[13], b[14], b[15], b[20]];
+    probeBuf.unmap();
+    if (TEST) probeNext = d; else probeData = d;
+    probeState = 0;
+  }, () => { probeState = 0; });
 }
 
 function updateInCloud(dt) {
@@ -3238,63 +3364,71 @@ if (Q.has('pose')) {
 }
 
 // ======== src/render/timing.js
-// GPU timing (EXT_disjoint_timer_query_webgl2), which drives dynamic resolution when available;
-// ?cpuprof times the passes on software GL
+// GPU timing (timestamp queries), which drives dynamic resolution when available. Each group of
+// passes (tBegin .. tEnd) writes two timestamps: at the start of its first pass and at the end
+// of each pass (the last one stays); a group without passes this frame (the world, mostly) took
+// no GPU time. ?cpuprof sums the times over a test run (tools/checks/profile.mjs).
 
-const gpuTimer = (() => {
-  if (!extTimer) return null;
-  const pool = [], pending = [], ms = {};
-  let cur = null;
-  return {
-    ms,
-    begin(label) {
-      if (cur || pending.length > 64) return;
-      const q = pool.pop() || gl.createQuery();
-      gl.beginQuery(extTimer.TIME_ELAPSED_EXT, q);
-      cur = { label, q };
-    },
-    end() {
-      if (!cur) return;
-      gl.endQuery(extTimer.TIME_ELAPSED_EXT);
-      pending.push(cur); cur = null;
-    },
-    poll() {
-      const disjoint = gl.getParameter(extTimer.GPU_DISJOINT_EXT);
-      const frameMs = {};
-      while (pending.length) {
-        const p = pending[0];
-        if (!gl.getQueryParameter(p.q, gl.QUERY_RESULT_AVAILABLE)) break;
-        pending.shift();
-        if (!disjoint) {
-          const v = gl.getQueryParameter(p.q, gl.QUERY_RESULT) / 1e6;
-          ms[p.label] = ms[p.label] === undefined ? v : ms[p.label] * 0.85 + v * 0.15;
-          frameMs[p.label] = v;
-        }
-        pool.push(p.q);
-      }
-      return frameMs;
-    },
-    total() { let t = 0; for (const k in ms) t += ms[k]; return t; },
-  };
-})();
-// ?cpuprof (testing on software GL): fence each pass group and measure wall time
 const CPUPROF = Q.has('cpuprof');
-const cpuProf = {}; let cpuLabel = null, cpuT0 = 0;
-const syncPx = new Float32Array(4);
-function hardSync() { // readPixels blocks until all submitted GPU work is done
-  const prev = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, FB.probe);
-  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, syncPx);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, prev);
-}
-const tBegin = l => {
-  if (CPUPROF) { hardSync(); cpuLabel = l; cpuT0 = performance.now(); return; }
-  if (gpuTimer) gpuTimer.begin(l);
-};
-const tEnd = () => {
-  if (CPUPROF) { hardSync(); const v = performance.now() - cpuT0; cpuProf[cpuLabel] = (cpuProf[cpuLabel] || 0) + v; window.__gpu = cpuProf; return; }
-  if (gpuTimer) gpuTimer.end();
-};
+const gpuTimer = TIMESTAMPS ? (() => {
+  const N = 32;
+  const querySet = device.createQuerySet({ type: 'timestamp', count: N });
+  const resolveBuf = device.createBuffer({ size: N * 8, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
+  const free = [];
+  let made = 0, pairs = 0, groups = [], cur = null, toMap = null, fresh = {};
+  const ms = {}, sum = {}, maps = new Set();
+  const record = (label, v) => {
+    ms[label] = ms[label] === undefined ? v : ms[label] * 0.85 + v * 0.15;
+    sum[label] = (sum[label] || 0) + v;
+    fresh[label] = v;
+  };
+  hooks.timestamps = () => {
+    if (!cur) return undefined;
+    if (cur.q >= 0) return { querySet, endOfPassWriteIndex: cur.q + 1 };
+    if (pairs * 2 + 2 > N) { cur = null; return undefined; }
+    cur.q = 2 * pairs++;
+    return { querySet, beginningOfPassWriteIndex: cur.q, endOfPassWriteIndex: cur.q + 1 };
+  };
+  return {
+    ms, sum,
+    begin(label) { cur = { label, q: -1 }; },
+    end() { if (cur) groups.push(cur); cur = null; },
+    // after the last pass of a frame: resolve its timestamps into a buffer to read
+    resolve() {
+      if (!groups.length) return;
+      const buf = pairs ? free.pop() || (made < 4 ? (made++, device.createBuffer({ size: N * 8, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })) : null) : null;
+      if (buf) {
+        const e = enc();
+        e.resolveQuerySet(querySet, 0, pairs * 2, resolveBuf, 0);
+        e.copyBufferToBuffer(resolveBuf, 0, buf, 0, pairs * 16);
+      }
+      if (buf || !pairs) toMap = { buf, groups };
+      groups = []; pairs = 0;
+    },
+    // after the frame is submitted: read them when the GPU is done
+    map() {
+      if (!toMap) return;
+      const { buf, groups: gs } = toMap;
+      toMap = null;
+      if (!buf) { for (const g of gs) record(g.label, 0); return; }
+      const m = buf.mapAsync(GPUMapMode.READ).then(() => {
+        const t = new BigUint64Array(buf.getMappedRange());
+        for (const g of gs) {
+          const v = g.q < 0 ? 0 : Number(t[g.q + 1] - t[g.q]) / 1e6;
+          if (v >= 0 && v < 1e5) record(g.label, v);       // (else not a valid pair)
+        }
+        buf.unmap();
+        free.push(buf);
+      }, () => {}).finally(() => maps.delete(m));
+      maps.add(m);
+    },
+    poll() { const f = fresh; fresh = {}; return f; },     // the results read since the last poll
+    total() { let t = 0; for (const k in ms) t += ms[k]; return t; },
+    settled() { return Promise.all([...maps]); },
+  };
+})() : null;
+const tBegin = l => { if (gpuTimer) gpuTimer.begin(l); };
+const tEnd = () => { if (gpuTimer) gpuTimer.end(); };
 
 // ======== src/render/bird.js
 // The paper bird: its mesh and shadow map, and drawing it
@@ -3339,33 +3473,17 @@ const bird = (() => {
     tri('Wa', 'Wm', 'Lm', side, 0.0, true); tri('Wa', 'Lm', 'La', side, 0.04, true); tri('La', 'Lm', 'Wt', side, 0.0, true);
     tri('Wm', 'Wb', 'Lb', side, 0.12, true); tri('Wm', 'Lb', 'Lm', side, 0.1, true); tri('Lm', 'Lb', 'Wt', side, 0.12, true);
   }
-  const vao = gl.createVertexArray();
-  gl.bindVertexArray(vao);
-  const b0 = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, b0); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-  const b1 = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, b1); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(attr), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
-  gl.bindVertexArray(null);
-  return { vao, count: pos.length / 3 };
+  const buffer = data => {
+    const b = device.createBuffer({ size: data.length * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+    device.queue.writeBuffer(b, 0, new Float32Array(data));
+    return b;
+  };
+  return { pos: buffer(pos), attr: buffer(attr), count: pos.length / 3 };
 })();
 
 // bird shadow map
 const SHADOW_N = 1024;
-T.shadow = (() => {
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, SHADOW_N, SHADOW_N, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-  return { tex, w: SHADOW_N, h: SHADOW_N, target: gl.TEXTURE_2D };
-})();
-FB.shadow = framebuffer([], T.shadow);
+T.shadow = texture(SHADOW_N, SHADOW_N, 'depth24plus');
 
 function renderBird(time, VP, birdRel) {
   const b = bird_;
@@ -3386,18 +3504,19 @@ function renderBird(time, VP, birdRel) {
   const SV = viewFromBasis(sR, sU, sF, eye);
   const SP = ortho(-0.62, 0.62, -0.62, 0.62, 0.5, 6);
   const shadowVP = mat4Mul(SP, SV);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, FB.shadow);
-  gl.viewport(0, 0, SHADOW_N, SHADOW_N);
-  gl.enable(gl.DEPTH_TEST);
-  gl.depthFunc(gl.LEQUAL);
-  gl.clear(gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.POLYGON_OFFSET_FILL);
-  gl.polygonOffset(1.5, 2.0);
-  gl.useProgram(P.shadow.p);
-  setUniforms(P.shadow, { uModel: M, uViewProj: shadowVP, uShadowVP: shadowVP, uFlex: flex });
-  gl.bindVertexArray(bird.vao);
-  gl.drawArrays(gl.TRIANGLES, 0, bird.count);
-  gl.disable(gl.POLYGON_OFFSET_FILL);
+  const vals = { model: M, viewProj: shadowVP, shadowVP, flex, sunDir: SUN_DIR, shadowTexel: 1 / SHADOW_N, tProbe: T.probe, tShadowMap: T.shadow };
+  let offsets = uniforms(P.shadow, vals);
+  let rp = enc().beginRenderPass({
+    colorAttachments: [],
+    depthStencilAttachment: { view: T.shadow.view, depthLoadOp: 'clear', depthClearValue: 1, depthStoreOp: 'store' },
+    timestampWrites: hooks.timestamps ? hooks.timestamps() : undefined,
+  });
+  rp.setPipeline(P.shadow.pipe);
+  rp.setBindGroup(0, bindGroup(P.shadow, vals), offsets);
+  rp.setVertexBuffer(0, bird.pos);
+  rp.setVertexBuffer(1, bird.attr);
+  rp.draw(bird.count);
+  rp.end();
   // screen bounding box of the bird (generous sphere projection)
   const c = [dot(birdRel, cam.right), dot(birdRel, cam.up), dot(birdRel, cam.fwd)];
   let box = [0, 0, 0, 0];
@@ -3409,28 +3528,23 @@ function renderBird(time, VP, birdRel) {
     box = [clamp(cx - ex, 0, 1), clamp(cy - ey, 0, 1), clamp(cx + ex, 0, 1), clamp(cy + ey, 0, 1)];
   }
   const px = [Math.floor(box[0] * R.w), Math.floor(box[1] * R.h), Math.ceil(box[2] * R.w), Math.ceil(box[3] * R.h)];
-  if (px[2] - px[0] < 1 || px[3] - px[1] < 1) { gl.disable(gl.DEPTH_TEST); return [2, 2, -1, -1]; }
-  gl.bindFramebuffer(gl.FRAMEBUFFER, FB.birdMS);
-  gl.viewport(0, 0, R.w, R.h);
-  gl.enable(gl.SCISSOR_TEST);
-  gl.scissor(px[0], px[1], px[2] - px[0], px[3] - px[1]);
-  gl.clearColor(0, 0, 0, 0);
-  gl.clearDepth(1);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.useProgram(P.bird.p);
-  setUniforms(P.bird, { uModel: M, uViewProj: VP, uShadowVP: shadowVP, uFlex: flex, uProbe: T.probe, uShadowMap: T.shadow, uSunDir: SUN_DIR, uShadowTexel: 1 / SHADOW_N });
-  gl.bindVertexArray(bird.vao);
-  gl.drawArrays(gl.TRIANGLES, 0, bird.count);
-  gl.disable(gl.DEPTH_TEST);
-  // resolve
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, FB.birdMS);
-  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, FB.birdResolve);
-  gl.blitFramebuffer(px[0], px[1], px[2], px[3], px[0], px[1], px[2], px[3], gl.COLOR_BUFFER_BIT, gl.NEAREST);
-  gl.disable(gl.SCISSOR_TEST);
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-  gl.bindVertexArray(null);
-  // shrink by half a pixel to avoid sampling stale texels outside the scissor
+  if (px[2] - px[0] < 1 || px[3] - px[1] < 1) return [2, 2, -1, -1];
+  // the bird (4x MSAA, resolved into T.birdTex; only its box is drawn and read)
+  vals.viewProj = VP;
+  offsets = uniforms(P.bird, vals);
+  rp = enc().beginRenderPass({
+    colorAttachments: [{ view: T.birdMS.view, resolveTarget: T.birdTex.view, loadOp: 'clear', clearValue: [0, 0, 0, 0], storeOp: 'discard' }],
+    depthStencilAttachment: { view: T.birdDepth.view, depthLoadOp: 'clear', depthClearValue: 1, depthStoreOp: 'discard' },
+    timestampWrites: hooks.timestamps ? hooks.timestamps() : undefined,
+  });
+  rp.setPipeline(P.bird.pipe);
+  rp.setBindGroup(0, bindGroup(P.bird, vals), offsets);
+  rp.setScissorRect(px[0], px[1], px[2] - px[0], px[3] - px[1]);
+  rp.setVertexBuffer(0, bird.pos);
+  rp.setVertexBuffer(1, bird.attr);
+  rp.draw(bird.count);
+  rp.end();
+  // shrink by half a pixel to avoid sampling texels outside the box
   return [(px[0] + 0.5) / R.w, (px[1] + 0.5) / R.h, (px[2] - 0.5) / R.w, (px[3] - 0.5) / R.h];
 }
 
@@ -3464,30 +3578,30 @@ function render(time) {
   const detailOff = [fmod(WIND[0] * time * 1.6, 512), fmod(-time * 2.2, 512), fmod(WIND[2] * time * 1.6, 512)];
   const ambSea = scl(sunColorAt(1500), 0.065);
   const common = Object.assign(worldUniforms(O), {
-    uShape: T.shape, uDetail: T.detail, uTSV: T.tsv,
-    uShapeOff: shapeOff, uDetailOff: detailOff, uSunDir: SUN_DIR, uSunCol: sunColUniform,
+    tShape: T.shape, tDetail: T.detail, tTsv: T.tsv,
+    shapeOff, detailOff, sunDir: SUN_DIR, sunCol: sunColUniform,
   });
 
   // --- sky view LUT for the current altitude + ambient
   tBegin('sky');
-  pass(P.sky, FB.sky, 192, 108, { uTrans: T.trans, uMS: T.ms, uCamH: cam.pos[1] * 0.001, uSunDir: SUN_DIR });
-  pass(P.amb, FB.amb, 4, 1, { uSky: T.sky, uSunDir: SUN_DIR, uCamH: cam.pos[1] * 0.001 });
+  pass(P.sky, [T.sky], { tTrans: T.trans, tMS: T.ms, camH: cam.pos[1] * 0.001, sunDir: SUN_DIR });
+  pass(P.amb, [T.amb], { tSky: T.sky, sunDir: SUN_DIR, camH: cam.pos[1] * 0.001 });
 
   // --- probe (bird lighting, mist)
   const birdRel = sub(bird_.pos, cam.pos);
-  pass(P.probe, FB.probe, 8, 1, Object.assign({}, common, {
-    uAmb: T.amb, uCamPos: camR, uBirdRel: birdRel, uAmbSea: ambSea,
+  pass(P.probe, [T.probe], Object.assign({}, common, {
+    tAmb: T.amb, camPos: camR, birdRel, ambSea,
   }));
   tEnd();
   readProbeAsync();
 
   // --- clouds (low res)
   tBegin('trace');
-  pass(P.trace, FB.trace, R.lowW, R.lowH, Object.assign({}, common, {
-    uSky: T.sky, uAmb: T.amb, uRes: [R.lowW, R.lowH], uJitter: jitter, uCamPos: camR,
-    uCamRight: cam.right, uCamUp: cam.up, uCamFwd: cam.fwd, uTanHalf: [tanX, tanY], uFrame: frame,
-    uAmbSea: ambSea, uHazeK: HAZE_K, uDbgMode: { i: DBG_MODE }, uInCloud: inCloud,
-  }));
+  pass(P.trace, [T.cloudCol, T.cloudDepth], Object.assign({}, common, {
+    tSky: T.sky, tAmb: T.amb, res: [R.lowW, R.lowH], jitter, camPos: camR,
+    camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], frame,
+    ambSea, hazeK: HAZE_K, dbgMode: DBG_MODE, inCloud,
+  }), { viewport: [0, 0, R.lowW, R.lowH] });
 
   tEnd();
   // --- temporal upsample + sky composite
@@ -3495,28 +3609,20 @@ function render(time) {
   const curVP = viewProjRot(cam.right, cam.up, cam.fwd, cam.fov, aspect);
   const readA = frame % 2 === 0;
   const sunDisk = scl(sunColorAt(cam.pos[1]), 1 / (PI * 0.0052 * 0.0052) * 0.9);
-  pass(P.taau, readA ? FB.taauB : FB.taauA, w, h, {
-    uCur: T.cloudCol, uCurDepth: T.cloudDepth, uHist: readA ? T.histA : T.histB, uSky: T.sky, uCirrus: T.cirrus,
-    uLowRes: [R.lowW, R.lowH], uLowTex: [R.lowMaxW, R.lowMaxH], uRes: [w, h], uJitter: jitter,
-    uCamRight: cam.right, uCamUp: cam.up, uCamFwd: cam.fwd, uTanHalf: [tanX, tanY],
-    uPrevVP: prevVP || curVP, uCamDelta: camDelta, uHistValid: R.histValid, uSunDir: SUN_DIR, uCamPos: camR,
-    uSunDisk: sunDisk, uCirrusCol: scl(sunColorAt(9800), 1.0), uCirrusOff: [fmod(O[0] + time * 6, 32000), fmod(O[2] + time * 2, 32000)],
-    uLayers: T.layers, uLayerOff: [fmod(O[0] + time * WIND[0] * 1.5, 64000), fmod(O[2] + time * WIND[2] * 1.5, 64000)], uLayerCol: layerColUniform,
+  pass(P.taau, [readA ? T.histB : T.histA, T.scene], {
+    tCur: T.cloudCol, tCurDepth: T.cloudDepth, tHist: readA ? T.histA : T.histB, tSky: T.sky, tCirrus: T.cirrus,
+    lowRes: [R.lowW, R.lowH], lowTex: [R.lowMaxW, R.lowMaxH], res: [w, h], jitter,
+    camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY],
+    prevVP: prevVP || curVP, camDelta, histValid: R.histValid, sunDir: SUN_DIR, camPos: camR,
+    sunDisk, cirrusCol: scl(sunColorAt(9800), 1.0), cirrusOff: [fmod(O[0] + time * 6, 32000), fmod(O[2] + time * 2, 32000)],
+    tLayers: T.layers, layerOff: [fmod(O[0] + time * WIND[0] * 1.5, 64000), fmod(O[2] + time * WIND[2] * 1.5, 64000)], layerCol: layerColUniform,
   });
   // drifting mist puffs: only while the camera is inside cloud (they float in the fog around us)
   if (inCloud > 0.02) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.scene);
-    gl.viewport(0, 0, w, h);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.useProgram(P.mist.p);
-    setUniforms(P.mist, Object.assign({}, common, {
-      uAmb: T.amb, uCamPos: camR, uCamOffset: [fmod(cam.pos[0], 180), fmod(cam.pos[1], 180), fmod(cam.pos[2], 180)],
-      uCamRight: cam.right, uCamUp: cam.up, uViewProj: curVP, uStrength: 0.42 * inCloud,
-    }));
-    gl.bindVertexArray(emptyVAO);
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 64);
-    gl.disable(gl.BLEND);
+    pass(P.mist, [T.scene], Object.assign({}, common, {
+      tAmb: T.amb, camPos: camR, camOffset: [fmod(cam.pos[0], 180), fmod(cam.pos[1], 180), fmod(cam.pos[2], 180)],
+      camRight: cam.right, camUp: cam.up, viewProj: curVP, strength: 0.42 * inCloud,
+    }), { load: true, count: 4, instances: 64 });
   }
   tEnd();
   const histTex = readA ? T.histB : T.histA;
@@ -3530,19 +3636,17 @@ function render(time) {
 
   // --- bloom
   tBegin('post');
-  let src = T.scene, sw = w, sh = h;
+  let src = T.scene;
   for (let i = 0; i < bloomLevels.length; i++) {
     const L = bloomLevels[i];
-    pass(P.down, L.fb, L.w, L.h, { uSrc: src, uBird: T.birdTex, uBirdBox: birdBox, uSrcTexel: [1 / sw, 1 / sh], uFirst: { i: i === 0 ? 1 : 0 }, uClampHi: BLOOM_CLAMP });
-    src = L.tex; sw = L.w; sh = L.h;
+    pass(P.down, [L], { tSrc: src, tBird: T.birdTex, birdBox, srcTexel: [1 / src.w, 1 / src.h], first: i === 0 ? 1 : 0, clampHi: BLOOM_CLAMP });
+    src = L;
   }
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.ONE, gl.ONE);
+  // (added onto each finer level)
   for (let i = bloomLevels.length - 1; i > 0; i--) {
     const S = bloomLevels[i], D = bloomLevels[i - 1];
-    pass(P.up, D.fb, D.w, D.h, { uSrc: S.tex, uSrcTexel: [1 / S.w, 1 / S.h], uDstTexel: [1 / D.w, 1 / D.h], uWeight: BLOOM_UP_W });
+    pass(P.up, [D], { tSrc: S, srcTexel: [1 / S.w, 1 / S.h], dstTexel: [1 / D.w, 1 / D.h], weight: BLOOM_UP_W }, { load: true });
   }
-  gl.disable(gl.BLEND);
 
   // --- sun rays
   const sunView = [dot(SUN_DIR, cam.right), dot(SUN_DIR, cam.up), dot(SUN_DIR, cam.fwd)];
@@ -3554,23 +3658,32 @@ function render(time) {
     rayStrength = 1 - smoothstep(0.6, 1.3, off);
   }
   if (rayStrength > 0.001) {
-    pass(P.raymask, FB.rayA, R.rayW, R.rayH, { uHist: histTex, uBird: T.birdTex, uBirdBox: birdBox, uCamRight: cam.right, uCamUp: cam.up, uCamFwd: cam.fwd, uTanHalf: [tanX, tanY], uSunDir: SUN_DIR, uDstTexel: [1 / R.rayW, 1 / R.rayH] });
-    pass(P.rayblur, FB.rayB, R.rayW, R.rayH, { uSrc: T.rayA, uSunUv: sunUv, uDstTexel: [1 / R.rayW, 1 / R.rayH], uStepScale: 1 / 24 / 24 * 0.95, uDecay: 1.0 });
-    pass(P.rayblur, FB.rayA, R.rayW, R.rayH, { uSrc: T.rayB, uSunUv: sunUv, uDstTexel: [1 / R.rayW, 1 / R.rayH], uStepScale: 1 / 24 * 0.95, uDecay: 0.93 });
+    pass(P.raymask, [T.rayA], { tHist: histTex, tBird: T.birdTex, birdBox, camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], sunDir: SUN_DIR, dstTexel: [1 / R.rayW, 1 / R.rayH] });
+    pass(P.rayblur, [T.rayB], { tSrc: T.rayA, sunUv, dstTexel: [1 / R.rayW, 1 / R.rayH], stepScale: 1 / 24 / 24 * 0.95, decay: 1.0 });
+    pass(P.rayblur, [T.rayA], { tSrc: T.rayB, sunUv, dstTexel: [1 / R.rayW, 1 / R.rayH], stepScale: 1 / 24 * 0.95, decay: 0.93 });
   } else {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.rayA);
-    gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    clearPass(T.rayA, [0, 0, 0, 1]);
   }
 
   // --- final
   const sunC = sunColorAt(cam.pos[1]);
-  pass(P.final, null, w, h, {
-    uScene: T.scene, uBird: T.birdTex, uBloom: bloomLevels[0].tex, uRays: T.rayA, uBirdBox: birdBox,
-    uExposure: exposure * (1.0 + 0.45 * inCloud), uBloomMix: BLOOM_MIX, uBloomScale: BLOOM_MIX / BLOOM_NORM, uRayCol: scl(sunC, RAYS_K * rayStrength), uTime: time % 1000, uRes: [w, h], uView: { i: VIEW }, uTM: { i: TONEMAP }, uContrast: CONTRAST, uDbg: histTex, uDbg2: T.cloudDepth, uDbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
+  const out = { view: context.getCurrentTexture().createView(), w, h };
+  pass(P.final, [out], {
+    tScene: T.scene, tBird: T.birdTex, tBloom: bloomLevels[0], tRays: T.rayA, birdBox,
+    exposure: exposure * (1.0 + 0.45 * inCloud), bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
   });
   tEnd();
+  if (gpuTimer) gpuTimer.resolve();
+  const captured = capture ? capture(context.getCurrentTexture()) : null;
+  flush();
+  if (captured) captured();
+  mapProbe();
+  if (gpuTimer) gpuTimer.map();
   frame++;
 }
+// tests: a hook that copies the image out of the canvas texture before it is presented
+let capture = null;
+function captureNext(fn) { capture = fn; }
 
 let exposure = Q.has('exp') ? parseFloat(Q.get('exp')) : 14.0;
 const RAYS_K = Q.has('rays') ? parseFloat(Q.get('rays')) : 0.18;
@@ -3588,7 +3701,7 @@ const DR = { acc: [], cool: 0, ceiling: 0.75, gpuN: 0, gpuFresh: 0, gpuMiss: 0, 
   cap: 0, probe: null, calm: 0, calmNeed: 12, settled: false, fastWait: 0, win: 0, raisedWin: -99 };
 const GPU_BUDGET = 12.5; // ms: leaves headroom for the browser at 60 Hz
 function adaptResolution(dtMs) {
-  if (TEST) { if (gpuTimer && !CPUPROF) { gpuTimer.poll(); window.__gpu = gpuTimer.ms; } return; }
+  if (TEST) { if (gpuTimer) { gpuTimer.poll(); window.__gpu = CPUPROF ? gpuTimer.sum : gpuTimer.ms; } return; }
   if (++DR.warm < 8) { if (gpuTimer) gpuTimer.poll(); return; }    // shader warm-up frames
   if (gpuTimer && DR.gpuMiss < 5) {
     DR.gpuFresh += Object.keys(gpuTimer.poll()).length;
@@ -3681,18 +3794,20 @@ const FIXED_DT = TEST ? parseFloat(Q.get('dt') || '0.0166') : 0;
 const TEST_FRAMES = parseInt(Q.get('frames') || '24', 10);
 const FREEZE = Q.has('freeze');
 
-let startWall = -1;
+let startWall = -1, stopped = false;
 function loop(now) {
-  if (window.__done) return;
+  if (stopped || window.__done) return;
   try { frameStep(now); }
   catch (e) {
-    window.__done = true;
-    if (!gl.isContextLost()) fail('Something went wrong while rendering — ' + (e && e.message || e));
+    stopped = window.__done = true;
+    if (!gpuState.lost) fail('Something went wrong while rendering — ' + (e && e.message || e));
   }
 }
 function frameStep(now) {
   if (startWall < 0) startWall = now;
   requestAnimationFrame(loop);
+  // (tests: each frame waits for the probe of the last one, as if the GPU were always that quick)
+  if (TEST && probeBusy()) return;
   const t = now * 0.001;
   let dt = last < 0 ? 1 / 60 : Math.min(t - last, 0.1);
   const dtMs = (t - last) * 1000;
@@ -3705,6 +3820,7 @@ function frameStep(now) {
   else updateFlight(0, clock);
   updateCamera(dt, frame === 0, clock);
   updateInCloud(dt);
+  if (TEST && frame >= TEST_FRAMES - 1) captureNext(captureImage);
   render(clock);
   if (frame === 2) canvas.classList.add('on');
   // hint (wall-clock timing so it behaves the same at any frame rate)
@@ -3728,12 +3844,40 @@ function frameStep(now) {
       +bird_.speed.toFixed(2), +(bird_.bank / DEG).toFixed(1), +(bird_.gamma / DEG).toFixed(2), +(bird_.yaw / DEG).toFixed(1),
       +seaTopAt(bird_.pos[0], bird_.pos[2]).toFixed(0), probeData ? +probeData[2].toFixed(0) : null, +(cam.roll / DEG).toFixed(1), +(cam.fov / DEG).toFixed(1)]);
   }
-  if (TEST && frame >= TEST_FRAMES) { gl.finish(); window.__done = true; }
+  if (TEST && frame >= TEST_FRAMES) stopped = true;
+}
+// tests: the last frame's image as PNG (window.__png), then window.__done once the GPU is done.
+// (Encoded after the frame's last pass; the returned function runs once the frame is submitted.)
+function captureImage(tex) {
+  captureNext(null);
+  const w = tex.width, h = tex.height, row = Math.ceil(w * 4 / 256) * 256;
+  const buf = device.createBuffer({ size: row * h, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  enc().copyTextureToBuffer({ texture: tex }, { buffer: buf, bytesPerRow: row }, [w, h]);
+  return () => buf.mapAsync(GPUMapMode.READ).then(async () => {
+    const src = new Uint8Array(buf.getMappedRange()), px = new Uint8ClampedArray(w * h * 4);
+    const bgra = tex.format.startsWith('bgra');
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * row + x * 4, o = (y * w + x) * 4;
+      px[o] = src[i + (bgra ? 2 : 0)]; px[o + 1] = src[i + 1]; px[o + 2] = src[i + (bgra ? 0 : 2)]; px[o + 3] = 255;
+    }
+    buf.unmap();
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').putImageData(new ImageData(px, w, h), 0, 0);
+    window.__png = c.toDataURL('image/png');
+    if (gpuTimer) await gpuTimer.settled();
+    await device.queue.onSubmittedWorkDone();
+    window.__done = true;
+  }, e => { window.__error = 'capture failed: ' + e.message; });
 }
 
-// GPU reset (driver update, sleep, too many contexts): rebuild everything by reloading
-canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); window.__done = true; });
-canvas.addEventListener('webglcontextrestored', () => location.reload());
+// GPU reset (driver update, sleep): rebuild everything by reloading, once a GPU is there again
+device.lost.then(async info => {
+  stopped = window.__done = true;
+  if (info.reason === 'destroyed') return;
+  const a = navigator.gpu && performance.now() > 10000 ? await navigator.gpu.requestAdapter().catch(() => null) : null;
+  if (a) location.reload(); else fail('The graphics device stopped working. Please reload the page.');
+});
 // quiet extras: double-click or F toggles fullscreen
 function toggleFullscreen() {
   const d = document;
@@ -3743,33 +3887,18 @@ function toggleFullscreen() {
 canvas.addEventListener('dblclick', toggleFullscreen);
 window.addEventListener('keydown', e => { if (e.code === 'KeyF' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) toggleFullscreen(); });
 document.addEventListener('visibilitychange', () => { last = -1; });
-// Boot: let the driver compile all shaders in parallel without blocking the page, then
-// generate the static data and start flying.
-function programsReady() {
-  if (!extParallel) return true;
-  for (const p of programs) if (!gl.getProgramParameter(p.p, extParallel.COMPLETION_STATUS_KHR)) return false;
-  return true;
-}
-function boot() {
-  if (gl.isContextLost()) return;   // reloads on restore
-  if (!programsReady()) { requestAnimationFrame(boot); return; }
-  try { checkPrograms(); } catch (e) { fail('Shader error — ' + e.message); return; }
-  generateStatic();
-  requestAnimationFrame(loop);
-}
-boot();
+// Boot: the shaders compile in parallel without blocking the page; then generate the static
+// data and start flying.
 window.__debug = {
-  bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, worldStats,
-  probe: () => {
-    const b = new Float32Array(32);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.probe);
-    gl.readPixels(0, 0, 8, 1, gl.RGBA, gl.FLOAT, b);
-    const amb = new Float32Array(16);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.amb);
-    gl.readPixels(0, 0, 4, 1, gl.RGBA, gl.FLOAT, amb);
+  bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, worldStats, device, T, readTexture,
+  probe: async () => {
+    const b = await readTexture(T.probe), amb = await readTexture(T.amb);
     return { sun: Array.from(b.slice(0, 4)), ambUp: Array.from(b.slice(4, 7)), ambDn: Array.from(b.slice(8, 11)), misc: Array.from(b.slice(12, 16)), mist: Array.from(b.slice(16, 19)), ambTex: Array.from(amb) };
   },
 };
+try { await pipelinesReady(); } catch (e) { fail('Shader error — ' + e.message); throw e; }
+generateStatic();
+requestAnimationFrame(loop);
 })();
 </script>
 </body>

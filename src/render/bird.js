@@ -2,8 +2,8 @@
 
 import { add, clamp, cross, dot, mat4Mul, norm, ortho, sat, scl, viewFromBasis } from '../math.js';
 import { SUN_DIR } from '../constants.js';
-import { framebuffer, gl, setUniforms } from './gl.js';
-import { FB, P, T } from './setup.js';
+import { bindGroup, device, enc, hooks, texture, uniforms } from './gpu.js';
+import { P, T } from './setup.js';
 import { R } from './targets.js';
 import { bird_, FLIGHT } from '../flight.js';
 import { cam } from '../camera.js';
@@ -48,33 +48,17 @@ const bird = (() => {
     tri('Wa', 'Wm', 'Lm', side, 0.0, true); tri('Wa', 'Lm', 'La', side, 0.04, true); tri('La', 'Lm', 'Wt', side, 0.0, true);
     tri('Wm', 'Wb', 'Lb', side, 0.12, true); tri('Wm', 'Lb', 'Lm', side, 0.1, true); tri('Lm', 'Lb', 'Wt', side, 0.12, true);
   }
-  const vao = gl.createVertexArray();
-  gl.bindVertexArray(vao);
-  const b0 = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, b0); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-  const b1 = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, b1); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(attr), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
-  gl.bindVertexArray(null);
-  return { vao, count: pos.length / 3 };
+  const buffer = data => {
+    const b = device.createBuffer({ size: data.length * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+    device.queue.writeBuffer(b, 0, new Float32Array(data));
+    return b;
+  };
+  return { pos: buffer(pos), attr: buffer(attr), count: pos.length / 3 };
 })();
 
 // bird shadow map
 const SHADOW_N = 1024;
-T.shadow = (() => {
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, SHADOW_N, SHADOW_N, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-  return { tex, w: SHADOW_N, h: SHADOW_N, target: gl.TEXTURE_2D };
-})();
-FB.shadow = framebuffer([], T.shadow);
+T.shadow = texture(SHADOW_N, SHADOW_N, 'depth24plus');
 
 export function renderBird(time, VP, birdRel) {
   const b = bird_;
@@ -95,18 +79,19 @@ export function renderBird(time, VP, birdRel) {
   const SV = viewFromBasis(sR, sU, sF, eye);
   const SP = ortho(-0.62, 0.62, -0.62, 0.62, 0.5, 6);
   const shadowVP = mat4Mul(SP, SV);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, FB.shadow);
-  gl.viewport(0, 0, SHADOW_N, SHADOW_N);
-  gl.enable(gl.DEPTH_TEST);
-  gl.depthFunc(gl.LEQUAL);
-  gl.clear(gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.POLYGON_OFFSET_FILL);
-  gl.polygonOffset(1.5, 2.0);
-  gl.useProgram(P.shadow.p);
-  setUniforms(P.shadow, { uModel: M, uViewProj: shadowVP, uShadowVP: shadowVP, uFlex: flex });
-  gl.bindVertexArray(bird.vao);
-  gl.drawArrays(gl.TRIANGLES, 0, bird.count);
-  gl.disable(gl.POLYGON_OFFSET_FILL);
+  const vals = { model: M, viewProj: shadowVP, shadowVP, flex, sunDir: SUN_DIR, shadowTexel: 1 / SHADOW_N, tProbe: T.probe, tShadowMap: T.shadow };
+  let offsets = uniforms(P.shadow, vals);
+  let rp = enc().beginRenderPass({
+    colorAttachments: [],
+    depthStencilAttachment: { view: T.shadow.view, depthLoadOp: 'clear', depthClearValue: 1, depthStoreOp: 'store' },
+    timestampWrites: hooks.timestamps ? hooks.timestamps() : undefined,
+  });
+  rp.setPipeline(P.shadow.pipe);
+  rp.setBindGroup(0, bindGroup(P.shadow, vals), offsets);
+  rp.setVertexBuffer(0, bird.pos);
+  rp.setVertexBuffer(1, bird.attr);
+  rp.draw(bird.count);
+  rp.end();
   // screen bounding box of the bird (generous sphere projection)
   const c = [dot(birdRel, cam.right), dot(birdRel, cam.up), dot(birdRel, cam.fwd)];
   let box = [0, 0, 0, 0];
@@ -118,27 +103,22 @@ export function renderBird(time, VP, birdRel) {
     box = [clamp(cx - ex, 0, 1), clamp(cy - ey, 0, 1), clamp(cx + ex, 0, 1), clamp(cy + ey, 0, 1)];
   }
   const px = [Math.floor(box[0] * R.w), Math.floor(box[1] * R.h), Math.ceil(box[2] * R.w), Math.ceil(box[3] * R.h)];
-  if (px[2] - px[0] < 1 || px[3] - px[1] < 1) { gl.disable(gl.DEPTH_TEST); return [2, 2, -1, -1]; }
-  gl.bindFramebuffer(gl.FRAMEBUFFER, FB.birdMS);
-  gl.viewport(0, 0, R.w, R.h);
-  gl.enable(gl.SCISSOR_TEST);
-  gl.scissor(px[0], px[1], px[2] - px[0], px[3] - px[1]);
-  gl.clearColor(0, 0, 0, 0);
-  gl.clearDepth(1);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.useProgram(P.bird.p);
-  setUniforms(P.bird, { uModel: M, uViewProj: VP, uShadowVP: shadowVP, uFlex: flex, uProbe: T.probe, uShadowMap: T.shadow, uSunDir: SUN_DIR, uShadowTexel: 1 / SHADOW_N });
-  gl.bindVertexArray(bird.vao);
-  gl.drawArrays(gl.TRIANGLES, 0, bird.count);
-  gl.disable(gl.DEPTH_TEST);
-  // resolve
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, FB.birdMS);
-  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, FB.birdResolve);
-  gl.blitFramebuffer(px[0], px[1], px[2], px[3], px[0], px[1], px[2], px[3], gl.COLOR_BUFFER_BIT, gl.NEAREST);
-  gl.disable(gl.SCISSOR_TEST);
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-  gl.bindVertexArray(null);
-  // shrink by half a pixel to avoid sampling stale texels outside the scissor
+  if (px[2] - px[0] < 1 || px[3] - px[1] < 1) return [2, 2, -1, -1];
+  // the bird (4x MSAA, resolved into T.birdTex; only its box is drawn and read)
+  vals.viewProj = VP;
+  offsets = uniforms(P.bird, vals);
+  rp = enc().beginRenderPass({
+    colorAttachments: [{ view: T.birdMS.view, resolveTarget: T.birdTex.view, loadOp: 'clear', clearValue: [0, 0, 0, 0], storeOp: 'discard' }],
+    depthStencilAttachment: { view: T.birdDepth.view, depthLoadOp: 'clear', depthClearValue: 1, depthStoreOp: 'discard' },
+    timestampWrites: hooks.timestamps ? hooks.timestamps() : undefined,
+  });
+  rp.setPipeline(P.bird.pipe);
+  rp.setBindGroup(0, bindGroup(P.bird, vals), offsets);
+  rp.setScissorRect(px[0], px[1], px[2] - px[0], px[3] - px[1]);
+  rp.setVertexBuffer(0, bird.pos);
+  rp.setVertexBuffer(1, bird.attr);
+  rp.draw(bird.count);
+  rp.end();
+  // shrink by half a pixel to avoid sampling texels outside the box
   return [(px[0] + 0.5) / R.w, (px[1] + 0.5) / R.h, (px[2] - 0.5) / R.w, (px[3] - 0.5) / R.h];
 }

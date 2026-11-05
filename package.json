@@ -10,10 +10,10 @@
     "regress": "node tools/regress.mjs",
     "check:modules": "node tools/checks/modules.mjs",
     "check:presets": "node tools/checks/presets.mjs",
-    "check:gl": "node tools/checks/gl-errors.mjs",
+    "check:gpu": "node tools/checks/gpu-errors.mjs",
     "world:stats": "node tools/world/stats.js"
   },
   "devDependencies": {
-    "playwright": "1.56.1"
+    "playwright": "1.63.0"
   }
 }

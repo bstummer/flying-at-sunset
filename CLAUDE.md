@@ -1,8 +1,8 @@
 # Flying at Sunset
 
-A paper bird gliding over an endless sea of clouds at golden hour: one self-contained WebGL 2 page,
+A paper bird gliding over an endless sea of clouds at golden hour: one self-contained WebGPU page,
 `index.html`, built from the ES modules in `src/` and published with GitHub Pages from this public
-repository.
+repository. Shaders are WGSL (`src/shaders/`).
 
 Read before changing anything:
 
@@ -30,7 +30,10 @@ Working on the code:
   it is current.
 - The build joins all modules into one scope: top-level names must be unique across `src/` (the
   build checks), imports are named and never renamed, and a module never assigns to a binding it
-  imports. `src/world/` must stay free of the DOM and WebGL (the Node tools run it).
+  imports. `src/world/` must stay free of the DOM and the GPU (the Node tools run it).
+- A shader names its uniforms `u.x` (fields declared next to it as `U_...`) and its textures `tX`
+  (registered in `src/render/gpu.js`); a pass passes them by those names. Textures keep GL's row
+  order (row 0 at the bottom): see `docs/DEVELOPMENT.md` §2.
 - `node tools/serve.mjs` serves the sources as ES modules at http://localhost:8000/src/.
 
 Checking a change:
@@ -40,7 +43,8 @@ Checking a change:
   bit-identical on the same Chromium build).
 - `node tools/checks/modules.mjs`: the sources run as modules render what the build renders.
 - `node tools/checks/presets.mjs`: every test view renders without errors.
-- Rendering in the cloud container uses software GL (SwiftShader): slow, timings only relative,
-  nothing measured on real GPUs or phones yet.
+- `node tools/checks/gpu-errors.mjs`: WebGPU validation errors of a test render.
+- Rendering in the cloud container uses WebGPU on SwiftShader (software Vulkan; the tools pass the
+  flags): slow, timings only relative, nothing measured on real GPUs or phones yet.
 - After a deliberate change to the world or the look, re-record (`fingerprint.js --write`,
   `regress.mjs record`) and say so in the commit.

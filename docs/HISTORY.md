@@ -2,7 +2,8 @@
 
 How the piece was built, request by request (the requests are quoted in full in `docs/BRIEF.md`).
 All work happened on the branch `claude/awesome-fermi-i208te`; commits are listed per round.
-Measurements were made with software GL (SwiftShader) in a headless browser, so they are relative.
+Measurements were made with software rendering (SwiftShader: GL until round 8, Vulkan for WebGPU
+since round 9) in a headless browser, so they are relative.
 
 ## Round 1 — the core piece (1 Oct 2026)
 
@@ -152,3 +153,35 @@ Commits: `bdd8cdc`, `38751c6`.
   world in (images byte-identical); and all presets, input, UI timing, out-of-memory recovery,
   dynamic resolution, the baked volumes. The sources run as modules render exactly what the build
   renders.
+
+## Round 9 — WebGPU (5 Nov)
+
+- The author: port everything from WebGL to WebGPU; the game should stay approximately the same.
+- Every shader rewritten in WGSL with the same structure, names and comments; the renderer on
+  WebGPU: pipelines compiled in parallel, with bind group layouts made from the textures each
+  shader names; the uniforms of all draws in one buffer at dynamic offsets, written just before
+  each submit; the world volumes baked 8 slices of a 3D texture per pass (8 colour attachments,
+  as the 8 draw buffers before); the probe read back by mapping a copy (a fence before); GPU
+  timestamps instead of timer queries for dynamic resolution and `?cpuprof`; running out of
+  memory seen through an error scope around the size-dependent targets (framebuffer checks
+  before); the bird's shadow map sampled with a comparison sampler, the MSAA bird resolved by its
+  render pass; the high layers' mip levels drawn by a pass (no `generateMipmap`); the column
+  maps converted to half floats on the CPU, rounding as GL did; a lost device reloads the page
+  once a GPU is back.
+- Textures keep GL's row order (row 0 at the bottom of the view), so the screen-space passes
+  work on unchanged: geometry flips y in clip space, and the final pass turns the image the
+  right way up for the canvas.
+- The device is awaited at the top level of `render/gpu.js`, so the built script became an
+  async function. Without WebGPU the page shows a note, as it did without WebGL 2.
+- Tools: headless Chromium renders WebGPU on SwiftShader's Vulkan (`--enable-unsafe-webgpu
+  --enable-features=Vulkan --use-vulkan=swiftshader`: without the Vulkan flags presenting a
+  WebGPU canvas lost the device); test renders copy their last frame out of the canvas texture
+  (`window.__png`); `gpu-errors.mjs` replaces `gl-errors.mjs`; the out-of-memory check fakes the
+  error scope's answer; the volume check reads the textures back; the profile uses timestamps.
+- Checked against the WebGL version on the same Chromium build (153; the container had moved
+  on from 141): the 14 regression views differ by at most 7 levels of 255 (mean ≤ 0.006 per
+  channel), bird close-ups (lit, backlit, front, in cloud), all debug views (`?view=1..5`,
+  `?dbg=1..7`) and the other tone curve (`?tm=0`) by at most 5; the flight logs of seven scripted
+  flights (dives, climbs, turns, a flight into a tower, skimming the sea) are identical, probe
+  readings included; the baked volumes have the same statistics. The world generator is
+  untouched (fingerprint unchanged). Baselines re-recorded with WebGPU on Chromium 153.

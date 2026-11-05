@@ -3,15 +3,15 @@
 import { CONTRAST, DBG_MODE, HAZE_K, Q, TEST, TONEMAP, VIEW } from '../params.js';
 import { dot, fmod, halton, mat4Mul, perspective, PI, scl, smoothstep, sub, viewFromBasis } from '../math.js';
 import { SUN_DIR, WIND } from '../constants.js';
-import { emptyVAO, gl, pass, setUniforms } from './gl.js';
+import { clearPass, context, flush, pass } from './gpu.js';
 import { sunColorAt } from './sun.js';
-import { FB, layerColUniform, P, sunColUniform, T } from './setup.js';
+import { layerColUniform, P, sunColUniform, T } from './setup.js';
 import { originOf, streamWorld, worldUniforms } from './stream.js';
 import { bloomLevels, R } from './targets.js';
-import { inCloud, readProbeAsync } from './probe.js';
+import { inCloud, mapProbe, readProbeAsync } from './probe.js';
 import { bird_ } from '../flight.js';
 import { cam } from '../camera.js';
-import { tBegin, tEnd } from './timing.js';
+import { gpuTimer, tBegin, tEnd } from './timing.js';
 import { renderBird } from './bird.js';
 
 export let frame = 0;
@@ -41,30 +41,30 @@ export function render(time) {
   const detailOff = [fmod(WIND[0] * time * 1.6, 512), fmod(-time * 2.2, 512), fmod(WIND[2] * time * 1.6, 512)];
   const ambSea = scl(sunColorAt(1500), 0.065);
   const common = Object.assign(worldUniforms(O), {
-    uShape: T.shape, uDetail: T.detail, uTSV: T.tsv,
-    uShapeOff: shapeOff, uDetailOff: detailOff, uSunDir: SUN_DIR, uSunCol: sunColUniform,
+    tShape: T.shape, tDetail: T.detail, tTsv: T.tsv,
+    shapeOff, detailOff, sunDir: SUN_DIR, sunCol: sunColUniform,
   });
 
   // --- sky view LUT for the current altitude + ambient
   tBegin('sky');
-  pass(P.sky, FB.sky, 192, 108, { uTrans: T.trans, uMS: T.ms, uCamH: cam.pos[1] * 0.001, uSunDir: SUN_DIR });
-  pass(P.amb, FB.amb, 4, 1, { uSky: T.sky, uSunDir: SUN_DIR, uCamH: cam.pos[1] * 0.001 });
+  pass(P.sky, [T.sky], { tTrans: T.trans, tMS: T.ms, camH: cam.pos[1] * 0.001, sunDir: SUN_DIR });
+  pass(P.amb, [T.amb], { tSky: T.sky, sunDir: SUN_DIR, camH: cam.pos[1] * 0.001 });
 
   // --- probe (bird lighting, mist)
   const birdRel = sub(bird_.pos, cam.pos);
-  pass(P.probe, FB.probe, 8, 1, Object.assign({}, common, {
-    uAmb: T.amb, uCamPos: camR, uBirdRel: birdRel, uAmbSea: ambSea,
+  pass(P.probe, [T.probe], Object.assign({}, common, {
+    tAmb: T.amb, camPos: camR, birdRel, ambSea,
   }));
   tEnd();
   readProbeAsync();
 
   // --- clouds (low res)
   tBegin('trace');
-  pass(P.trace, FB.trace, R.lowW, R.lowH, Object.assign({}, common, {
-    uSky: T.sky, uAmb: T.amb, uRes: [R.lowW, R.lowH], uJitter: jitter, uCamPos: camR,
-    uCamRight: cam.right, uCamUp: cam.up, uCamFwd: cam.fwd, uTanHalf: [tanX, tanY], uFrame: frame,
-    uAmbSea: ambSea, uHazeK: HAZE_K, uDbgMode: { i: DBG_MODE }, uInCloud: inCloud,
-  }));
+  pass(P.trace, [T.cloudCol, T.cloudDepth], Object.assign({}, common, {
+    tSky: T.sky, tAmb: T.amb, res: [R.lowW, R.lowH], jitter, camPos: camR,
+    camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], frame,
+    ambSea, hazeK: HAZE_K, dbgMode: DBG_MODE, inCloud,
+  }), { viewport: [0, 0, R.lowW, R.lowH] });
 
   tEnd();
   // --- temporal upsample + sky composite
@@ -72,28 +72,20 @@ export function render(time) {
   const curVP = viewProjRot(cam.right, cam.up, cam.fwd, cam.fov, aspect);
   const readA = frame % 2 === 0;
   const sunDisk = scl(sunColorAt(cam.pos[1]), 1 / (PI * 0.0052 * 0.0052) * 0.9);
-  pass(P.taau, readA ? FB.taauB : FB.taauA, w, h, {
-    uCur: T.cloudCol, uCurDepth: T.cloudDepth, uHist: readA ? T.histA : T.histB, uSky: T.sky, uCirrus: T.cirrus,
-    uLowRes: [R.lowW, R.lowH], uLowTex: [R.lowMaxW, R.lowMaxH], uRes: [w, h], uJitter: jitter,
-    uCamRight: cam.right, uCamUp: cam.up, uCamFwd: cam.fwd, uTanHalf: [tanX, tanY],
-    uPrevVP: prevVP || curVP, uCamDelta: camDelta, uHistValid: R.histValid, uSunDir: SUN_DIR, uCamPos: camR,
-    uSunDisk: sunDisk, uCirrusCol: scl(sunColorAt(9800), 1.0), uCirrusOff: [fmod(O[0] + time * 6, 32000), fmod(O[2] + time * 2, 32000)],
-    uLayers: T.layers, uLayerOff: [fmod(O[0] + time * WIND[0] * 1.5, 64000), fmod(O[2] + time * WIND[2] * 1.5, 64000)], uLayerCol: layerColUniform,
+  pass(P.taau, [readA ? T.histB : T.histA, T.scene], {
+    tCur: T.cloudCol, tCurDepth: T.cloudDepth, tHist: readA ? T.histA : T.histB, tSky: T.sky, tCirrus: T.cirrus,
+    lowRes: [R.lowW, R.lowH], lowTex: [R.lowMaxW, R.lowMaxH], res: [w, h], jitter,
+    camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY],
+    prevVP: prevVP || curVP, camDelta, histValid: R.histValid, sunDir: SUN_DIR, camPos: camR,
+    sunDisk, cirrusCol: scl(sunColorAt(9800), 1.0), cirrusOff: [fmod(O[0] + time * 6, 32000), fmod(O[2] + time * 2, 32000)],
+    tLayers: T.layers, layerOff: [fmod(O[0] + time * WIND[0] * 1.5, 64000), fmod(O[2] + time * WIND[2] * 1.5, 64000)], layerCol: layerColUniform,
   });
   // drifting mist puffs: only while the camera is inside cloud (they float in the fog around us)
   if (inCloud > 0.02) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.scene);
-    gl.viewport(0, 0, w, h);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.useProgram(P.mist.p);
-    setUniforms(P.mist, Object.assign({}, common, {
-      uAmb: T.amb, uCamPos: camR, uCamOffset: [fmod(cam.pos[0], 180), fmod(cam.pos[1], 180), fmod(cam.pos[2], 180)],
-      uCamRight: cam.right, uCamUp: cam.up, uViewProj: curVP, uStrength: 0.42 * inCloud,
-    }));
-    gl.bindVertexArray(emptyVAO);
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 64);
-    gl.disable(gl.BLEND);
+    pass(P.mist, [T.scene], Object.assign({}, common, {
+      tAmb: T.amb, camPos: camR, camOffset: [fmod(cam.pos[0], 180), fmod(cam.pos[1], 180), fmod(cam.pos[2], 180)],
+      camRight: cam.right, camUp: cam.up, viewProj: curVP, strength: 0.42 * inCloud,
+    }), { load: true, count: 4, instances: 64 });
   }
   tEnd();
   const histTex = readA ? T.histB : T.histA;
@@ -107,19 +99,17 @@ export function render(time) {
 
   // --- bloom
   tBegin('post');
-  let src = T.scene, sw = w, sh = h;
+  let src = T.scene;
   for (let i = 0; i < bloomLevels.length; i++) {
     const L = bloomLevels[i];
-    pass(P.down, L.fb, L.w, L.h, { uSrc: src, uBird: T.birdTex, uBirdBox: birdBox, uSrcTexel: [1 / sw, 1 / sh], uFirst: { i: i === 0 ? 1 : 0 }, uClampHi: BLOOM_CLAMP });
-    src = L.tex; sw = L.w; sh = L.h;
+    pass(P.down, [L], { tSrc: src, tBird: T.birdTex, birdBox, srcTexel: [1 / src.w, 1 / src.h], first: i === 0 ? 1 : 0, clampHi: BLOOM_CLAMP });
+    src = L;
   }
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.ONE, gl.ONE);
+  // (added onto each finer level)
   for (let i = bloomLevels.length - 1; i > 0; i--) {
     const S = bloomLevels[i], D = bloomLevels[i - 1];
-    pass(P.up, D.fb, D.w, D.h, { uSrc: S.tex, uSrcTexel: [1 / S.w, 1 / S.h], uDstTexel: [1 / D.w, 1 / D.h], uWeight: BLOOM_UP_W });
+    pass(P.up, [D], { tSrc: S, srcTexel: [1 / S.w, 1 / S.h], dstTexel: [1 / D.w, 1 / D.h], weight: BLOOM_UP_W }, { load: true });
   }
-  gl.disable(gl.BLEND);
 
   // --- sun rays
   const sunView = [dot(SUN_DIR, cam.right), dot(SUN_DIR, cam.up), dot(SUN_DIR, cam.fwd)];
@@ -131,23 +121,32 @@ export function render(time) {
     rayStrength = 1 - smoothstep(0.6, 1.3, off);
   }
   if (rayStrength > 0.001) {
-    pass(P.raymask, FB.rayA, R.rayW, R.rayH, { uHist: histTex, uBird: T.birdTex, uBirdBox: birdBox, uCamRight: cam.right, uCamUp: cam.up, uCamFwd: cam.fwd, uTanHalf: [tanX, tanY], uSunDir: SUN_DIR, uDstTexel: [1 / R.rayW, 1 / R.rayH] });
-    pass(P.rayblur, FB.rayB, R.rayW, R.rayH, { uSrc: T.rayA, uSunUv: sunUv, uDstTexel: [1 / R.rayW, 1 / R.rayH], uStepScale: 1 / 24 / 24 * 0.95, uDecay: 1.0 });
-    pass(P.rayblur, FB.rayA, R.rayW, R.rayH, { uSrc: T.rayB, uSunUv: sunUv, uDstTexel: [1 / R.rayW, 1 / R.rayH], uStepScale: 1 / 24 * 0.95, uDecay: 0.93 });
+    pass(P.raymask, [T.rayA], { tHist: histTex, tBird: T.birdTex, birdBox, camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], sunDir: SUN_DIR, dstTexel: [1 / R.rayW, 1 / R.rayH] });
+    pass(P.rayblur, [T.rayB], { tSrc: T.rayA, sunUv, dstTexel: [1 / R.rayW, 1 / R.rayH], stepScale: 1 / 24 / 24 * 0.95, decay: 1.0 });
+    pass(P.rayblur, [T.rayA], { tSrc: T.rayB, sunUv, dstTexel: [1 / R.rayW, 1 / R.rayH], stepScale: 1 / 24 * 0.95, decay: 0.93 });
   } else {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.rayA);
-    gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    clearPass(T.rayA, [0, 0, 0, 1]);
   }
 
   // --- final
   const sunC = sunColorAt(cam.pos[1]);
-  pass(P.final, null, w, h, {
-    uScene: T.scene, uBird: T.birdTex, uBloom: bloomLevels[0].tex, uRays: T.rayA, uBirdBox: birdBox,
-    uExposure: exposure * (1.0 + 0.45 * inCloud), uBloomMix: BLOOM_MIX, uBloomScale: BLOOM_MIX / BLOOM_NORM, uRayCol: scl(sunC, RAYS_K * rayStrength), uTime: time % 1000, uRes: [w, h], uView: { i: VIEW }, uTM: { i: TONEMAP }, uContrast: CONTRAST, uDbg: histTex, uDbg2: T.cloudDepth, uDbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
+  const out = { view: context.getCurrentTexture().createView(), w, h };
+  pass(P.final, [out], {
+    tScene: T.scene, tBird: T.birdTex, tBloom: bloomLevels[0], tRays: T.rayA, birdBox,
+    exposure: exposure * (1.0 + 0.45 * inCloud), bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
   });
   tEnd();
+  if (gpuTimer) gpuTimer.resolve();
+  const captured = capture ? capture(context.getCurrentTexture()) : null;
+  flush();
+  if (captured) captured();
+  mapProbe();
+  if (gpuTimer) gpuTimer.map();
   frame++;
 }
+// tests: a hook that copies the image out of the canvas texture before it is presented
+let capture = null;
+export function captureNext(fn) { capture = fn; }
 
 let exposure = Q.has('exp') ? parseFloat(Q.get('exp')) : 14.0;
 const RAYS_K = Q.has('rays') ? parseFloat(Q.get('rays')) : 0.18;

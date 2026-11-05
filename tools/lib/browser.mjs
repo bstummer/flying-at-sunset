@@ -49,7 +49,10 @@ export async function playwright() {
   throw new Error('Playwright not found. Install it (npm i -D playwright) or set PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs');
 }
 
-export const SWGL_ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
+// WebGPU on SwiftShader's Vulkan (so the canvas can be presented headless), and its GL for the
+// rest of the browser
+export const SWGL_ARGS = ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader',
+  '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
   '--disable-gpu-watchdog', '--disable-features=GpuWatchdog'];
 
 export async function launch() {
@@ -68,14 +71,38 @@ export async function openPage(browser, viewport = { width: 640, height: 360 }, 
   return { ctx, page, logs };
 }
 
+// collect the page's WebGPU errors (validation, out of memory, internal) in window.__gpuErrors
+export async function watchGpuErrors(page) {
+  await page.addInitScript(() => {
+    window.__gpuErrors = [];
+    if (!window.GPUAdapter) return;
+    const req = GPUAdapter.prototype.requestDevice;
+    GPUAdapter.prototype.requestDevice = async function (...a) {
+      const d = await req.apply(this, a);
+      d.addEventListener('uncapturederror', e => { if (window.__gpuErrors.length < 50) window.__gpuErrors.push(`${e.error.constructor.name}: ${e.error.message}`); });
+      return d;
+    };
+  });
+}
+
+// the WebGPU errors so far (errors arrive from the GPU process only while the page talks to it:
+// wait for the queue first)
+export async function gpuErrors(page) {
+  return page.evaluate(async () => {
+    const d = window.__debug && window.__debug.device;
+    if (d) { await d.queue.onSubmittedWorkDone(); await new Promise(r => setTimeout(r, 200)); }
+    return window.__gpuErrors || [];
+  });
+}
+
 // wait until a ?test render finished (window.__done) or failed (window.__error)
 export async function waitDone(page, timeoutMs = 1200000) {
   await page.waitForFunction(() => window.__done || window.__error, null, { timeout: timeoutMs, polling: 500 });
 }
 
-// the canvas as PNG bytes (the page keeps its drawing buffer in ?test mode)
+// the image of a ?test render as PNG bytes (the page copies its last frame out: window.__png)
 export async function canvasPNG(page) {
-  const dataUrl = await page.evaluate(() => document.getElementById('view').toDataURL('image/png'));
+  const dataUrl = await page.evaluate(() => window.__png || document.getElementById('view').toDataURL('image/png'));
   return Buffer.from(dataUrl.split(',')[1], 'base64');
 }
 

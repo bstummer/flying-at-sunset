@@ -4,7 +4,7 @@ A small folded paper bird glides over an endless sea of clouds at golden hour, s
 No goals, no score — just the light, the clouds and the glide.
 
 Everything lives in one self-contained file: **`index.html`** (built from the sources in `src/`).
-Open it in a recent desktop or mobile browser with WebGL 2 (Chrome, Edge, Firefox, Safari 15+). It
+Open it in a browser with WebGPU (current Chrome, Edge and Safari; Firefox where it has WebGPU). It
 works straight from disk (`file://`) or from any static web server; there are no dependencies or
 assets to load.
 
@@ -78,7 +78,7 @@ rise above the sea, but the bird is softly kept from sinking deep into the cloud
 * **Speed** — empty space skipping (the baked distance volumes, coarse to fine),
   optical-depth driven steps, clouds traced at a reduced, dynamically adjusted resolution and
   reconstructed with temporal upsampling (reprojection + variance clipping). Dynamic
-  resolution uses GPU timer queries when available and falls back to frame times otherwise,
+  resolution uses GPU timestamps when available and falls back to frame times otherwise,
   recognising displays and browsers that cap the frame rate (50 Hz screens, 30 fps power saving).
 * **The bird** — an origami crane mesh with flat-shaded crisp creases, a procedural paper fibre
   texture, translucent paper (it glows when the sun is behind it), a self-shadow map in which
@@ -89,6 +89,8 @@ rise above the sea, but the bird is softly kept from sinking deep into the cloud
   flying through cloud.
 * **Image** — HDR throughout, bloom, occlusion-aware sun rays, a hue-preserving filmic tone
   curve with a golden-hour split tone, vignette and fine grain.
+* **WebGPU** — all of it is drawn with WebGPU and shaders in WGSL (the piece was written for
+  WebGL 2 and ported in November 2026, looking the same).
 
 ## For developers
 
@@ -122,4 +124,4 @@ These are for working on the piece and are not needed to enjoy it.
 | `?view=1..5` | show cloud transmittance, raw cloud light, depth, sun rays or bloom |
 | `?dbg=1..7` | cloud debug: normals, sun visibility, shadow volume, march cost, lighting terms |
 | `?exp=`, `?con=`, `?haze=`, `?bloom=`, `?rays=` | exposure, contrast, haze density, bloom and sun-ray strength |
-| `?cpuprof` | per-pass timing on software GL (fences every pass) |
+| `?cpuprof` | per-pass GPU times summed over a test render (timestamp queries) |

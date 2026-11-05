@@ -2,7 +2,8 @@
 
 import { PI } from '../math.js';
 import { ORIGIN_Q, SUN_DIR } from '../constants.js';
-import { emptyVAO, gl, HALF, NOUT, RGBA16F, setUniforms, texture2D, texture3D, uloc } from './gl.js';
+import { device, flush, pass, slices, texture, toHalf } from './gpu.js';
+import { NOUT } from '../shaders/volumes.js';
 import { worldGC } from '../world/cells.js';
 import { fillColumns, gatherBubbles } from '../world/columns.js';
 import { P, T } from './setup.js';
@@ -19,16 +20,18 @@ export const LEVELS = [
   { cell: 2048, cellV: 512, nz: 32, maxD: 12000, minBR: 900, lod: 2, step: 4, chunk: 16 },
 ];
 export const TSVL = { cell: 768, cellV: 360, nz: 40, step: 8, chunk: 32, tsv: true };
+const VOL_USE = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC;
+const DATA_USE = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST;
 for (const L of [...LEVELS, TSVL]) {
-  L.vol = texture3D(CLIP_N, CLIP_N, L.nz, gl.R16F, gl.RED, HALF, { wrapR: gl.CLAMP_TO_EDGE });
-  if (!L.tsv) L.col = texture2D(CLIP_N, CLIP_N, RGBA16F, gl.RGBA, HALF, { filter: gl.LINEAR, wrap: gl.REPEAT });
+  L.vol = texture(CLIP_N, CLIP_N, 'r16float', { depth: L.nz, dim: '3d', usage: VOL_USE });
+  if (!L.tsv) L.col = texture(CLIP_N, CLIP_N, 'rgba16float', { usage: DATA_USE | GPUTextureUsage.COPY_SRC });
   L.gi = null; L.gj = 0; L.valid = null; L.pending = 0;
 }
 T.tsv = TSVL.vol;
 const BUB_MAX = 4096;
-T.bub = texture2D(1024, (BUB_MAX >> 10) * 3, gl.RGBA32F, gl.RGBA, gl.FLOAT, { filter: gl.NEAREST });
+T.bub = texture(1024, (BUB_MAX >> 10) * 3, 'rgba32float', { usage: DATA_USE });
 const bubData = new Float32Array(1024 * (BUB_MAX >> 10) * 3 * 4);
-const fbBake = gl.createFramebuffer();
+let bubUsed = false;     // a bake that reads the bubbles is encoded but not yet submitted
 export const bakeQueue = [];
 export const worldStats = { jobs: 0, bubbles: 0, maxBub: 0, ms: 0 };
 
@@ -72,32 +75,23 @@ function shiftLevel(L, cx, cz) {
   L.pending = queueBatch(L, blocks);
   if (!L.pending) L.valid = [ti, tj, ti + CLIP_N, tj + CLIP_N];
 }
-function bindBakeLayers(L, z) {
-  for (let k = 0; k < NOUT; k++) gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + k, L.vol.tex, 0, z + k);
-}
 function runJob(job, O) {
   const L = job.L, tx = job.gi & CLIP_M, ty = job.gj & CLIP_M;
   if (job.fill) {
     // column data of the block
     const col = new Float32Array(job.ni * job.nj * 4);
     fillColumns(L.cell, L.lod, job.gi, job.gj, job.ni, job.nj, col);
-    gl.bindTexture(gl.TEXTURE_2D, L.col.tex);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, tx, ty, job.ni, job.nj, gl.RGBA, gl.FLOAT, col);
+    device.queue.writeTexture({ texture: L.col.tex, origin: [tx, ty] }, toHalf(col), { bytesPerRow: job.ni * 8 }, [job.ni, job.nj]);
     worldStats.jobs++;
     L.pending--;
     return;
   }
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fbBake);
-  gl.drawBuffers(Array.from({ length: NOUT }, (_, k) => gl.COLOR_ATTACHMENT0 + k));
-  gl.viewport(tx, ty, job.ni, job.nj);
-  gl.bindVertexArray(emptyVAO);
+  const viewport = [tx, ty, job.ni, job.nj];
   if (L.tsv) {
-    for (let u = 0; u < 16; u++) { gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_3D, null); }
-    gl.useProgram(P.tsv.p);
-    setUniforms(P.tsv, Object.assign(worldUniforms(O), {
-      uTex0: { iv2: [tx, ty] }, uP0: [(job.gi + 0.5) * L.cell - O[0], (job.gj + 0.5) * L.cell - O[2]], uCellT: L.cell, uCellTV: L.cellV, uSunDir: SUN_DIR,
-    }));
-    for (let z = 0; z < L.nz; z += NOUT) { bindBakeLayers(L, z); gl.uniform1i(uloc(P.tsv, 'uZ0'), z); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+    const vals = Object.assign(worldUniforms(O), {
+      tex0: [tx, ty], p0: [(job.gi + 0.5) * L.cell - O[0], (job.gj + 0.5) * L.cell - O[2]], cellT: L.cell, cellTV: L.cellV, sunDir: SUN_DIR, z0: 0,
+    });
+    for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.tsv, slices(L.vol, z, NOUT), vals, { viewport }); }
   } else {
     // the tower bubbles near it, relative to its corner (the coarsest level takes them from the
     // cells grown for it: far cheaper, and all it can show)
@@ -105,13 +99,14 @@ function runJob(job, O) {
     const nb = gatherBubbles(ox, oz, ox + job.ni * L.cell, oz + job.nj * L.cell, L.maxD + 300, L.minBR, ox, oz, bubData, BUB_MAX, L.lod >= 2);
     worldStats.bubbles += nb; worldStats.maxBub = Math.max(worldStats.maxBub, nb);
     if (nb) {
-      gl.bindTexture(gl.TEXTURE_2D, T.bub.tex);
+      // (the queue writes at once: submit the bakes that read the previous bubbles first)
+      if (bubUsed) { flush(); bubUsed = false; }
       const rows = ((nb + 1023) >> 10) * 3;
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, rows, gl.RGBA, gl.FLOAT, bubData.subarray(0, rows * 1024 * 4));
+      device.queue.writeTexture({ texture: T.bub.tex }, bubData.subarray(0, rows * 1024 * 4), { bytesPerRow: 1024 * 16 }, [1024, rows]);
+      bubUsed = true;
     }
-    gl.useProgram(P.bake.p);
-    setUniforms(P.bake, { uCol: L.col, uBub: T.bub, uNB: { i: nb }, uTex0: { iv2: [tx, ty] }, uCellH: L.cell, uCellV: L.cellV, uMaxD: L.maxD, uMask: { i: CLIP_M } });
-    for (let z = 0; z < L.nz; z += NOUT) { bindBakeLayers(L, z); gl.uniform1i(uloc(P.bake, 'uZ0'), z); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+    const vals = { tCol: L.col, tBub: T.bub, nb, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0 };
+    for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.bake, slices(L.vol, z, NOUT), vals, { viewport }); }
   }
   worldStats.jobs++;
   if (--L.pending === 0) L.valid = [L.gi, L.gj, L.gi + CLIP_N, L.gj + CLIP_N];
@@ -122,7 +117,7 @@ export function streamWorld(camPos, O, budgetMs, frame) {
   if (frame % 900 === 899) worldGC(camPos[0], camPos[2]);
   for (let l = LEVELS.length - 1; l >= 0; l--) shiftLevel(LEVELS[l], camPos[0], camPos[2]);
   const t0 = performance.now();
-  for (let pass = 0; pass < 2; pass++) {
+  for (let round = 0; round < 2; round++) {
     // the shadow volume reads the coarser levels: it shifts once they are settled
     if (!LEVELS[1].pending && !LEVELS[2].pending) shiftLevel(TSVL, camPos[0], camPos[2]);
     while (bakeQueue.length) {
@@ -135,7 +130,6 @@ export function streamWorld(camPos, O, budgetMs, frame) {
     if (budgetMs >= 0) break;
   }
   worldStats.ms = performance.now() - t0;
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 // render-space uniforms of the world volumes
 const _lvA = new Float32Array(12), _lvV = new Float32Array(12);
@@ -153,9 +147,9 @@ export function worldUniforms(O) {
   // phases of the billow warp's waves at the origin (computed in double precision)
   const ph = (kx, kz) => { const a = kx * O[0] + kz * O[2]; return a - 2 * PI * Math.floor(a / (2 * PI)); };
   return {
-    uVol0: LEVELS[0].vol, uVol1: LEVELS[1].vol, uVol2: LEVELS[2].vol, uCol0: LEVELS[0].col, uCol1: LEVELS[1].col, uCol2: LEVELS[2].col,
-    uLvA: { v4: _lvA }, uLvV: { v4: _lvV }, uTsvA: Array.from(ta), uTsvV: Array.from(tv),
-    uWarpPh: [ph(0, 8.37e-4), ph(3.41e-4, 0), ph(1.49e-4, 2.53e-4), ph(9.29e-4, 0)], uWarpPh2: [ph(0, 3.97e-4), ph(1.93e-4, -2.91e-4)],
+    tVol0: LEVELS[0].vol, tVol1: LEVELS[1].vol, tVol2: LEVELS[2].vol, tCol0: LEVELS[0].col, tCol1: LEVELS[1].col, tCol2: LEVELS[2].col,
+    lvA: _lvA, lvV: _lvV, tsvA: ta, tsvV: tv,
+    warpPh: [ph(0, 8.37e-4), ph(3.41e-4, 0), ph(1.49e-4, 2.53e-4), ph(9.29e-4, 0)], warpPh2: [ph(0, 3.97e-4), ph(1.93e-4, -2.91e-4)],
   };
 }
 export const originOf = p => [Math.round(p[0] / ORIGIN_Q) * ORIGIN_Q, 0, Math.round(p[2] / ORIGIN_Q) * ORIGIN_Q];

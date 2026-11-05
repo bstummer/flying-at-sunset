@@ -31,10 +31,10 @@ published (section 2).
 These come from the brief and the feedback; keep them when changing anything.
 
 - **One self-contained HTML file** as the output: no network, no libraries, no assets; works from
-  `file://` and any static server; WebGL 2 (needs float render targets: `EXT_color_buffer_float`
-  or `..._half_float`). It is published with GitHub Pages from this repository.
+  `file://` and any static server; WebGPU (core only: no optional feature is needed, timestamp
+  queries are used when there). It is published with GitHub Pages from this repository.
 - **Calm and clean**: no UI except a steering hint that fades in at ~1.8 s and out at ~10 s (or
-  after 3 s of steering); a note only when WebGL 2 is missing or something fails.
+  after 3 s of steering); a note only when WebGPU is missing or something fails.
 - **Smooth before sharp**: the frame rate is protected by dynamic resolution; detail gives way.
 - **Everything procedural and random**, generated from a hash of position and seed. Nothing is
   placed by hand, there is no kit of set shapes, nothing repeats visibly, and the world is endless.
@@ -55,67 +55,90 @@ tools test.
 - **Building**: `node build.mjs` writes `index.html`; commit it with the sources. `node build.mjs
   --check` fails if it is out of date, and the browser tools warn when it is.
 - **What the build does**: it inlines `style.css` and turns the modules into one classic script
-  (an IIFE in strict mode), each module after the modules it imports, the order the browser runs
-  them in; import lines are removed and `export` keywords dropped. So in the built page all
-  modules share one scope: every top-level name must be unique across modules (the build checks),
-  imports are named and never renamed, and there are no default or namespace imports. The native
-  run and the build render the same, bit for bit (`tools/checks/modules.mjs`).
+  (an async function in strict mode), each module after the modules it imports, the order the
+  browser runs them in; import lines are removed and `export` keywords dropped. So in the built
+  page all modules share one scope: every top-level name must be unique across modules (the build
+  checks), imports are named and never renamed, and there are no default or namespace imports. A
+  module may wait at its top level (`render/gpu.js` waits for the GPU device, `main.js` for the
+  pipelines): in the build everything after it waits, as modules only what imports it (nothing
+  depends on the difference). The native run and the build render the same, bit for bit
+  (`tools/checks/modules.mjs`).
 - **Shared state**: a module never assigns to a binding it imports (ES modules forbid it). State
-  that other modules change lives in objects (`R`, `T`, `FB`, `bird_`, `cam`, `input`, `DR`) or is
-  changed through a function of its own module (`setRestOffset`, `updateInCloud`).
-- **Order of loading**: `main.js` imports the modules in the order they are set up: the WebGL
-  context (`render/gl.js`), the world (`world/`: its spawn draw runs as `cells.js` loads), the
-  shaders and static resources (`render/setup.js`, which compiles every program), the streamed
-  volumes, the render targets, the flight, the test views, the frame. Without WebGL 2 or float
-  render targets `render/gl.js` shows the note and throws, which stops everything after it.
+  that other modules change lives in objects (`R`, `T`, `bird_`, `cam`, `input`, `DR`, `hooks`) or
+  is changed through a function of its own module (`setRestOffset`, `updateInCloud`).
+- **Order of loading**: `main.js` imports the modules in the order they are set up: the GPU
+  device and the canvas (`render/gpu.js`), the world (`world/`: its spawn draw runs as `cells.js`
+  loads), the shaders and static resources (`render/setup.js`, which creates every pipeline: they
+  compile in parallel, `main.js` waits for them before the first frame), the streamed volumes, the
+  render targets, the flight, the test views, the frame. Without WebGPU `render/gpu.js` shows the
+  note and throws, which stops everything after it.
 
 | file | contents |
 |---|---|
 | `src/index.html`, `src/style.css` | the page: canvas, hint, touch ring, note; loads `main.js` |
-| `src/main.js` | the hint, the main loop (`frameStep`), context loss, fullscreen, `boot()`, `window.__debug` |
+| `src/main.js` | the hint, the main loop (`frameStep`), the test image (`captureImage`), device loss, fullscreen, `window.__debug`, the start (waits for the pipelines) |
 | `src/params.js` | URL parameters: `Q`, `TEST`, `DEBUG`, `VIEW`, `DBG_MODE`, `TONEMAP`, `CONTRAST`, `HAZE_K` |
 | `src/page.js` | the page's elements, `fail()` (the note), `COARSE` (a touch device) |
 | `src/math.js` | `clamp lerp sat smoothstep damp fmod add sub scl dot cross len norm mix3 mulberry32 halton spring mat4Mul perspective ortho viewFromBasis` |
 | `src/constants.js` | `SUN_DIR` (5° up, toward −Z), `WIND`, `WIND_ANG`, `SHAPE_N`, `DETAIL_N`, `ORIGIN_Q`, `CLOUD_TOP` |
-| `src/world/` | **the CPU world generator** (section 5): `noise.js`, `air.js`, `shapes.js`, `thermals.js`, `cells.js`, `queries.js`, `columns.js`; no DOM, no WebGL (the Node tools run it) |
-| `src/render/gl.js` | WebGL 2 context and extensions; textures, framebuffers, programs (compiled in parallel, checked at boot), uniforms, `pass()`, `VS_FULLSCREEN`, multiple render targets (`NOUT`, `MRT_OUT`, `MRT_WRITE`) |
+| `src/world/` | **the CPU world generator** (section 5): `noise.js`, `air.js`, `shapes.js`, `thermals.js`, `cells.js`, `queries.js`, `columns.js`; no DOM, no GPU (the Node tools run it) |
+| `src/render/gpu.js` | the WebGPU device and the canvas; `texture()`, `toHalf()`, the samplers, the textures shaders may name, uniform structs (`uniforms()`: every draw's uniforms in one buffer until the next submit), `pipeline()` (compiled in parallel), `pass()`, `enc()` / `flush()` (the commands of a frame and their submit), `readTexture()` |
 | `src/render/sun.js` | sun colours by altitude (a CPU copy of the transmittance) |
-| `src/shaders/` | **GLSL** as template strings (marked `/* glsl */` for editors): `common`, `sky` (atmosphere LUTs), `textures` (noise volumes, cirrus, high layers), `cloud` (shared cloud functions), `volumes` (shadow volume, bake), `trace`, `taau`, `probe`, `mist`, `bird`, `post` |
-| `src/render/setup.js` | the programs `P`, static textures `T`, framebuffers `FB`, `generateStatic()` |
+| `src/shaders/` | **WGSL** as template strings (marked `/* wgsl */` for editors), each with the fields of its uniform struct (`U_...`): `common`, `sky` (atmosphere LUTs), `textures` (noise volumes, cirrus, high layers and their mip levels), `cloud` (clipmap lookups `WGSL_CLIP`, shared cloud functions `WGSL_CLOUD`), `volumes` (shadow volume, bake, `NOUT`), `trace`, `taau`, `probe`, `mist`, `bird`, `post` |
+| `src/render/setup.js` | the pipelines `P`, static textures `T`, `generateStatic()` |
 | `src/render/stream.js` | the streamed world volumes (section 6) |
 | `src/render/targets.js` | size-dependent targets: `R`, `allocate`, `resize` (out-of-memory retry) |
-| `src/render/probe.js` | the probe readback (`probeData`) and `inCloud` |
-| `src/render/timing.js` | GPU timer queries, `?cpuprof` |
+| `src/render/probe.js` | the probe readback (`probeData`: copied out, mapped when the GPU is done) and `inCloud` |
+| `src/render/timing.js` | GPU timestamps (`gpuTimer`), `?cpuprof` |
 | `src/render/bird.js` | the crane mesh, its shadow map, `renderBird` |
 | `src/render/frame.js` | `render()`: the passes of one frame (section 3) |
 | `src/render/resolution.js` | dynamic resolution (section 10) |
 | `src/flight.js`, `src/input.js`, `src/camera.js` | the glider, steering, the chase camera (section 8) |
 | `src/presets.js` | the test views (`?preset`, `?pose`) |
 
-Shaders are composed by concatenation (`GLSL_COMMON + GLSL_ATMO + GLSL_CLOUD + ...`) and
-interpolation (`${MRT_OUT}`, `${MRT_WRITE(...)}`, with `#define NOUT` from JS); `?dbg` injects
-`#define DBG` into the trace.
+Shaders are composed by concatenation (`WGSL_COMMON + WGSL_ATMO + WGSL_CLOUD + ...`) and
+interpolation (`${MRT_OUT}`, `${MRT_WRITE(...)}` in `volumes.js`: the world volumes are baked
+`NOUT` = 8 slices of a 3D texture per pass, as 8 colour attachments); `?dbg` sets `const DBG =
+true` in the trace. `pipeline()` puts a header in front of each shader: its uniform struct `U`
+(bound as `u`, laid out by WGSL's rules from the shader's `U_...` fields), the samplers (`sLin`,
+`sNear`, `sRep`, `sVol`, `sMip`, `sShadow`) and every texture the code names (the names are
+registered in `gpu.js`: `tSky`, `tVol0`, ...). A pass hands over uniform values and textures by
+those names (`pass(P.sky, [T.sky], { tTrans: T.trans, camH: ..., sunDir: ... })`); a missing one
+throws. Functions shared with a pass that renders a lookup table take the table as a parameter
+(`sampleTrans`, `skyLookup`), so that pass does not bind its own target. Uniforms go into one
+buffer per submit at 256-byte steps (dynamic offsets) and are written just before the submit;
+`flush()` submits (at the end of a frame, and before a world bake writes new bubbles while
+earlier bakes that read the old ones wait unsubmitted: queue writes take effect at once).
+
+**Orientation**: every texture keeps GL's row order, row 0 at the bottom of the view, as when the
+piece was written for WebGL. Fullscreen passes work in pixel coordinates (`@builtin(position)`
+numbers rows like `gl_FragCoord`), geometry flips y in clip space (`toClip`, which also maps GL's
+depth range to WebGPU's), and only the final pass turns the image the right way up for the
+canvas.
 
 ## 3. One frame
 
-`frameStep` (`main.js`): fixed `dt` in tests, otherwise the real one (capped at 0.1 s).
+`frameStep` (`main.js`): fixed `dt` in tests (where each frame also waits until the probe of the
+last one is read back), otherwise the real one (capped at 0.1 s).
 
 1. `resize()`: canvas size (device pixels, capped at 2.3 Mpx, 1.15 Mpx on touch devices); on
-   change `allocate()` all size-dependent targets; if that fails (GPU memory) retry smaller.
+   change `allocate()` all size-dependent targets; if the GPU reports running out of memory (an
+   error scope around the allocation, answered a frame or two later) retry smaller.
 2. `updateInput` → `updateFlight` → `updateCamera`.
 3. `render()`:
    - **world**: `streamWorld` shifts the clipmap windows and runs bake jobs (all on the first frame
      and in tests, else within 4 ms).
    - **sky**: the sky-view LUT for the camera altitude (192×108) and the 4 ambient texels.
    - **probe** (8×1 texels): light at the bird, in-cloud density at camera and bird, distance to the
-     real billowy surface below the bird (drives the flight floor), mist radiance. Read back
-     asynchronously with a fence (`readProbeAsync`), used one or two frames later.
+     real billowy surface below the bird (drives the flight floor), mist radiance. Copied out and
+     read back when the GPU is done (`readProbeAsync`, `mapProbe`), used one or two frames later.
    - **trace**: the cloud raymarch at reduced resolution (`R.scale` × full, jittered per frame).
    - **taau**: temporal upsampling to full resolution + sky + sun disk + cirrus veil + the two thin
      high layers (sheets), then drifting mist puffs if inside cloud.
    - **bird**: shadow map, MSAA mesh, resolve.
    - **post**: bloom (7-level down/up chain), sun rays (quarter-res mask + 2 radial blurs), final
      (exposure, hue-preserving filmic curve, golden split tone, vignette, grain).
+   - the frame's commands are submitted (`flush`), then the probe and the timestamps are mapped.
 4. Hint timing (wall clock), dynamic resolution (`adaptResolution`), debug overlay, test hooks.
 
 ## 4. The sky
@@ -130,7 +153,7 @@ known issues).
 ## 5. The world generator (CPU)
 
 `src/world/`, with `params.js`, `math.js` and `constants.js`. It is pure JavaScript (no DOM, no
-GL) and deterministic: every value is a function of position, `WORLD_SEED` (`?seed=N`, default 7)
+GPU) and deterministic: every value is a function of position, `WORLD_SEED` (`?seed=N`, default 7)
 and `TOWER_RATE` (`?towers=K`). The Node tools run these very modules (`tools/world/load.js`).
 
 ### 5.1 Hashing and noise (`world/noise.js`)
@@ -252,8 +275,9 @@ What became of each piece by the moment the world shows:
 
 ## 6. Streaming the world to the GPU (`render/stream.js`)
 
-- Three **clipmap levels**, each a 256×256×nz R16F 3D distance volume plus a 256×256 RGBA16F column
-  map, centred on the camera, addressed toroidally (only strips that enter are rebuilt):
+- Three **clipmap levels**, each a 256×256×nz `r16float` 3D distance volume plus a 256×256
+  `rgba16float` column map, centred on the camera, addressed toroidally (only strips that enter
+  are rebuilt):
 
   | level | cell (h × v) | nz | reach | maxD | minBR | shift step | block |
   |---|---|---|---|---|---|---|---|
@@ -263,8 +287,9 @@ What became of each piece by the moment the world shows:
 
 - A **shadow volume** (TSV: 768 × 360 m cells, 40 slices) holds optical depth toward the sun,
   marched through the coarser levels; it shifts once L1/L2 are settled.
-- Jobs: per block first the column fill (CPU, `texSubImage2D`), then the volume bake (GPU, `NOUT`
-  slices per draw). Until a shift is baked a level is valid only in the overlap of old and new
+- Jobs: per block first the column fill (CPU, written into the column map as half floats with
+  `writeTexture`), then the volume bake (GPU, `NOUT` = 8 slices per pass; the block's bubbles go
+  into a texture first, after submitting the bakes that read the last block's). Until a shift is baked a level is valid only in the overlap of old and new
   windows (`valid`), and the shaders fall back to a coarser level.
 - Bake (`FS_BAKE`): per texel the sea (`above·cs`, slope-corrected distance) united with the union
   of bubble ellipsoids (smooth min with each bubble's k), with a broad fillet where they swell out
@@ -275,12 +300,13 @@ What became of each piece by the moment the world shows:
 
 ## 7. The cloud renderer
 
-Shared functions in `GLSL_CLOUD` (`shaders/cloud.js`), used by trace, TSV, probe and mist.
+Shared functions in `WGSL_CLOUD` (`shaders/cloud.js`), used by trace, probe and mist; the TSV
+uses only the clipmap lookups (`WGSL_CLIP`).
 
 - `levelAt`: L0 below ~7–10 km (dithered handover), L1 below ~40–55 km, else L2; a level is used
   only inside its valid window. `LV_MARGIN` (80, 260, 750 m) = interpolation error per level.
 - **Billows** (`cloudSDF`): the large shapes `dm` from the volume, then octaves of an *fbm of
-  spheres*: a 128³ RGBA16F texture tiled over 5120 m holds signed distances to random spheres on
+  spheres*: a 128³ `rgba16float` texture tiled over 5120 m holds signed distances to random spheres on
   lattices of 4, 8, 16, 32 cells per tile (1280, 640, 320, 160 m; the two large channels packed
   close, radius 0.4–0.78 cell, the small ones a little looser), looked up through a slow
   never-repeating warp and squashed 1.35× vertically. `octave(d, n, shell, k)` clips the spheres to
@@ -343,8 +369,8 @@ Shared functions in `GLSL_CLOUD` (`shaders/cloud.js`), used by trace, TSV, probe
 - Clouds are traced at `R.scale` × full resolution (0.22–0.75, start 0.5; 0.36 on touch devices);
   full resolution itself is capped (2.3 Mpx; 1.15 Mpx on touch devices; lowered further if even the
   cheapest clouds are too slow).
-- With GPU timer queries (`EXT_disjoint_timer_query_webgl2`): keep the GPU under 12.5 ms per frame
-  by scaling the trace. Without them (Safari, Firefox): from frame times, recognising displays and
+- With GPU timestamps (the `timestamp-query` feature; Chrome rounds them to 0.1 ms): keep the GPU
+  under 12.5 ms per frame by scaling the trace. Without them: from frame times, recognising displays and
   browsers that cap the frame rate (50 Hz, 30 fps power saving) by checking whether much cheaper
   frames come any faster; the quality ceiling recovers after hitches.
 - World streaming: bake jobs within 4 ms per frame; but the CPU generation of a new grid cell runs
@@ -355,22 +381,24 @@ Shared functions in `GLSL_CLOUD` (`shaders/cloud.js`), used by trace, TSV, probe
 The tools rely on these; keep them.
 
 - `?test`: fixed time step (`dt`, default 1/60), canvas `w`×`h` (default 960×540), cloud `scale`
-  (0.5), stops after `frames` (`window.__done = true`), keeps the drawing buffer, no hint, no
-  dynamic resolution, all bake jobs every frame, the probe (light and cloud at the bird and camera)
-  read back at once and used the next frame, as on a GPU that keeps up: deterministic,
-  bit-identical renders on the same Chromium build. `&live`: input is read as normally (for input tests). `&log`: per-frame flight
+  (0.5), stops after `frames` (the last frame is copied out of the canvas texture as a PNG data
+  URL in `window.__png`, then `window.__done = true`), no hint, no dynamic resolution, all bake
+  jobs every frame, each frame waits for the probe (light and cloud at the bird and camera) of the
+  last, as on a GPU that keeps up: deterministic, bit-identical renders on the same Chromium
+  build. `&live`: input is read as normally (for input tests). `&log`: per-frame flight
   log in `window.__log` (t, x, alt, z, speed, bank, gamma, yaw, sea top, sdf at the bird, camera
   roll, fov). `&script=dive|climb|turn|weave`: scripted input. `&freeze`: no flight.
   `&preset=...` / `&pose=x,y,z,yaw,pitch,bank` / `&closeup=right,up,forward`: camera.
-- `?cpuprof`: a fence after every pass; per-pass milliseconds in `window.__gpu`.
+- `?cpuprof`: GPU timestamps of each group of passes summed over the run in `window.__gpu`
+  (milliseconds; needs timestamp queries; without it `__gpu` holds the running averages).
 - `?debug`: overlay (`#stats`) with fps, resolutions, GPU times, altitude, speed, world jobs.
 - `?dbg=1..7`: cloud debug views (1 normals of the billowy surface, 2 sun visibility, 3 shadow
   volume, 4 march cost, 5–7 lighting terms). `?view=1..5`: transmittance, raw cloud light, depth,
   sun rays, bloom. `?exp ?con ?haze ?bloom ?bloomw ?bclamp ?rays ?tm`: image controls.
 - `?seed=N` another world; `?towers=K` density of convective cells.
-- Globals: `window.__done`, `__error` (also shown in `#note`), `__frame`, `__gpu`, `__log`,
+- Globals: `window.__done`, `__error` (also shown in `#note`), `__frame`, `__png`, `__gpu`, `__log`,
   `__debug` = { bird, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, worldStats,
-  probe() }. Elements: `#view` (canvas, class `on` once shown), `#hint` (class `on`), `#touch`,
+  device, T, readTexture(texture, z, nz) (async: the texels as numbers), probe() (async) }. Elements: `#view` (canvas, class `on` once shown), `#hint` (class `on`), `#touch`,
   `#note`, `#stats`.
 - Presets (`readPreset`, only computed when `?preset` is given): `start sun away side skim high
   bank fastdive humps high2 upward` (around the start) and `tower giant anvil close approach inside
@@ -379,8 +407,16 @@ The tools rely on these; keep them.
 
 ## 12. Performance baselines
 
-Measured on this project's cloud machine with **software GL (SwiftShader)** — only ratios mean
-anything; no real GPU or phone has been measured in these sessions.
+Measured on this project's cloud machine with **software rendering (SwiftShader)**: GL until
+round 8, Vulkan under WebGPU since round 9. Only ratios mean anything; no real GPU or phone has
+been measured in these sessions.
+
+- WebGPU against WebGL on the same machine (Chromium 153, 640×360, `preset=start`, 12 frames,
+  ms summed; WebGPU from timestamps, WebGL from fences): world 11,973 / 12,385, sky 897 / 692,
+  trace 15,471 / 14,699, taau 1,434 / 1,412, bird 644 / 609, post 1,206 / 1,194. In normal use
+  both settle at ≈ 0.7 frames per second at 640×360 (WebGL's first frames come faster: its
+  commands queue up behind the first frame's world bake, WebGPU's frames wait for it).
+- The numbers below were measured with WebGL.
 
 - Startup (page main thread, 480×270, three frames, no preset): **≈ 4.7 s** after the two fixes of
   24 Oct (was ≈ 11.8 s: the coarsest level gathered bubbles from fully grown cells, and the test
@@ -398,15 +434,19 @@ anything; no real GPU or phone has been measured in these sessions.
 ## 13. Known issues and ideas
 
 - **Never measured on real hardware** in these sessions: frame rate, dynamic resolution behaviour,
-  memory on phones. The first thing to check on real devices.
+  memory on phones. The first thing to check on real devices, now with WebGPU: the port was checked
+  only on SwiftShader (software Vulkan) in headless Chromium.
+- **WebGPU only**: there is no WebGL fallback; a browser without WebGPU shows the note. The shaders
+  were compiled only by Chrome's WGSL compiler (Tint); Safari's and Firefox's compilers have not
+  seen them.
 - **CPU world generation runs on the main thread** and synchronously when a new grid cell is first
   needed (startup ≈ 4.7 s on software GL; in round 5 streaming spikes of ≈ 200–250 ms were measured
   when entering new areas). The generator is DOM-free and deterministic: moving it into a Web
   Worker (posting column blocks and bubble arrays back) would remove the stalls. It also allocates
   many small objects (domes, pieces): GC pressure (`makeDome`, `lift` dominate profiles).
-- Framebuffers created once at start (`FB.trans` … `FB.shadow`) have no out-of-memory fallback: if
-  one fails, the script stops before the hint or the error note (only the size-dependent targets in
-  `allocate` retry smaller). Unlikely (they are small), but a black page if it happens.
+- Textures created once at start (`T.trans` … `T.shadow`, the world volumes) have no out-of-memory
+  fallback: if one fails, the frames draw nothing (only the size-dependent targets in `allocate`
+  retry smaller). Unlikely (they are small), but a black page if it happens.
 - **Mushroom tops**: some towers have a wide spreading top over a narrower body (visible in
   `tools/world/preview.js` and `catalog.js`); the author dislikes thin stems under spreading tops.
   Causes to look at: spreading lobes vs column width, shear drift of tops, column pieces
@@ -468,6 +508,6 @@ Run what the change can affect; the commands are in `tools/README.md`.
    renders (`tools/out/regress/`), then re-record (`regress.mjs record`, `fingerprint.js --write`)
    and say so in the commit.
 4. `node tools/checks/modules.mjs` (the sources run as modules render what the build renders),
-   `node tools/checks/presets.mjs`, and the checks for what was touched (input, UI, memory,
-   dynamic resolution, streaming).
+   `node tools/checks/presets.mjs` (no WebGPU errors in any view), and the checks for what was
+   touched (`gpu-errors.mjs`, input, UI, memory, dynamic resolution, streaming).
 5. Keep the test hooks, element ids and URL parameters (section 11): the tools use them.

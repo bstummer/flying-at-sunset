@@ -9,7 +9,7 @@
 //
 // The modules are joined into one function, each after the modules it imports (as build.mjs joins
 // them for the page), with `location` faked for the URL parameters. The world must stay free of
-// the DOM and of WebGL. The names handed back are listed in NAMES.
+// the DOM and of the GPU. The names handed back are listed in NAMES.
 const fs = require('fs');
 const path = require('path');
 

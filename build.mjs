@@ -3,7 +3,9 @@
 // script, each after the modules it imports (the order the browser runs them in), all in one scope.
 // So import and export only connect modules here: every top-level name must be unique across all
 // modules, and only `import { a, b } from './x.js'`, `import './x.js'` and `export` in front of a
-// declaration are allowed (no renaming, no default or namespace imports).
+// declaration are allowed (no renaming, no default or namespace imports). The script is one async
+// function, so a module may wait at its top level (render/gpu.js waits for the GPU device): the
+// modules after it wait too (as modules, only those that import it do; nothing depends on that).
 //
 //   node build.mjs                 write index.html
 //   node build.mjs --check         exit 1 if index.html is not what src/ builds to
@@ -140,7 +142,7 @@ export function build(src = SRC) {
   html = html.replace(/^<script type="module" src="([^"]+)"><\/script>$/m, (_, f) => {
     const mods = modules(path.join(src, f));
     const body = mods.map(m => `// ======== ${path.relative(path.dirname(src), m.file).split(path.sep).join('/')}\n` + m.code.replace(/^\n+|\n+$/g, '') + '\n').join('\n');
-    return `<script>\n(() => {\n'use strict';\n\n${body}})();\n</script>`;
+    return `<script>\n(async () => {\n'use strict';\n\n${body}})();\n</script>`;
   });
   if (/<script type="module"|<link rel="stylesheet"/.test(html)) throw new Error('src/index.html: unexpected <script type="module"> or <link rel="stylesheet">');
   return html;

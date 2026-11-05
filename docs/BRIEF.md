@@ -1,6 +1,6 @@
 # The brief
 
-Everything the author asked for while the piece was built (October 2026), verbatim and in order,
+Everything the author asked for while the piece was built (October and November 2026), verbatim and in order,
 followed by notes on the inspiration photos and the themes that run through the feedback. This is
 the reference for what the piece should be; `docs/HISTORY.md` describes what was built for each
 request, and `docs/DEVELOPMENT.md` how it works.
@@ -227,6 +227,10 @@ The message as sent:
 > One single file is very annoying for development. Split it up in a structure that makes sense.
 > Commit it. Remove anything that is unnecessary and make sure the output game doesn't change
 > through the splitting.
+
+## 9 — WebGPU (5 Nov)
+
+> Port everything from WebGL to WebGPU. Make sure the game stays approximately the same.
 
 ## The inspiration photos
 

@@ -1,8 +1,8 @@
 // Render regression: a fixed set of small deterministic renders compared with recorded baselines.
-// Test renders are deterministic (fixed time step, all world bakes done each frame, the probe read
-// back at once), and software GL gives bit-identical images on the same Chromium build, so a
-// refactor that changes nothing shows zero difference. Other Chromium versions may differ
-// slightly: tolerances below.
+// Test renders are deterministic (fixed time step, all world bakes done each frame, each frame
+// waits for the probe of the last), and software rendering (SwiftShader) gives bit-identical
+// images on the same Chromium build, so a refactor that changes nothing shows zero difference.
+// Other Chromium versions may differ slightly: tolerances below.
 //
 //   node tools/regress.mjs                 compare all views with tools/baseline/ (exit 1 on failure)
 //   node tools/regress.mjs start tower     only these views

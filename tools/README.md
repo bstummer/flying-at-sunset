@@ -9,13 +9,16 @@ tests. None of this is needed to run the piece. See `docs/DEVELOPMENT.md` for ho
 
 - **Node 18+** (22 used).
 - **Playwright with Chromium** for everything that renders: `npm install` (the root `package.json`
-  pins Playwright 1.56.1, Chromium 141, which recorded the baselines) and
+  pins Playwright 1.63.0, Chromium 153, which recorded the baselines) and
   `npx playwright install chromium`, or set `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs`.
   `npm run build`, `npm run dev`, `npm run fingerprint`, `npm run regress`, `npm run check:modules`,
   `npm run check:presets` (see `package.json`). The build and the server need only Node.
-  Chromium runs headless with **software GL (SwiftShader)**: no GPU needed, renders are
-  deterministic, but slow (a 320×180 test render ≈ 30–60 s, mostly the first frame's world bake)
-  and only relative timings mean anything. `CHROMIUM_ARGS` replaces the flags (e.g. for a GPU).
+  Chromium runs headless with **WebGPU on SwiftShader** (software Vulkan: `--enable-unsafe-webgpu
+  --enable-features=Vulkan --use-vulkan=swiftshader`; without the Vulkan flags presenting the canvas
+  loses the device): no GPU needed, renders are deterministic, but slow (a 320×180 test render ≈
+  30–60 s, mostly the first frame's world bake) and only relative timings mean anything.
+  `CHROMIUM_ARGS` replaces the flags (e.g. for a GPU). Test renders copy their last frame out of the
+  canvas texture (`window.__png`): reading back a presented WebGPU canvas is not dependable headless.
 - **Python 3 with Pillow** only for `combine.py` / `crop.py` / `render.sh` (image grids).
 - Every browser tool renders `PAGE` (default: `index.html` at the repo root, the built page).
   **Build first** (`node build.mjs`) after changing `src/`; the tools warn when `index.html` is
@@ -39,7 +42,7 @@ tests. None of this is needed to run the piece. See `docs/DEVELOPMENT.md` for ho
 |---|---|
 | `node tools/world/fingerprint.js` | hash of everything the CPU world generator produces for fixed places (air, sea columns, column and bubble blocks of every level, towers, surface heights); compares with `world/fingerprint.json`, prints which part differs. `--write` records the current world. ~3 s |
 | `node tools/regress.mjs` | 14 small renders (start, sun, away, side, skim, high2, tower, giant, anvil, close, under, inside, another seed, cloud geometry) compared with `tools/baseline/*.png`; bit-identical on the same Chromium build. `record` re-records; `TOL_MEAN`, `TOL_OVER16` tolerances; new renders in `tools/out/regress/`. ~6 min |
-| `node tools/checks/presets.mjs` | every test preset renders without page or GL errors. ~6 min |
+| `node tools/checks/presets.mjs` | every test preset renders without page or WebGPU errors. ~6 min |
 
 ## Rendering and comparing
 
@@ -73,16 +76,18 @@ Useful query additions: `&dbg=1` (normals of the cloud surface: geometry without
 
 | command | what |
 |---|---|
-| `node tools/checks/gl-errors.mjs ["test&frames=3&w=160&h=90&preset=tower"]` | every WebGL error with the call, page errors, console |
+| `node tools/checks/gpu-errors.mjs ["test&frames=3&w=160&h=90&preset=tower"]` | every WebGPU error (validation, out of memory, internal) with its message, page errors, console |
 | `node tools/checks/input.mjs mouse\|keys\|touch` | steering through real input events (bank, climb, level out) |
 | `node tools/checks/pointer-keys.mjs` | pointer leaving the window, Cmd/Ctrl + arrows, Meta clearing keys |
 | `node tools/checks/flight.mjs weave 600` | scripted flight log (`dive climb turn weave`; `none 300 "preset=approach&dt=0.1"` flies into a tower) |
 | `node tools/checks/ui.mjs [prefix]` | as a visitor sees it: canvas fade-in, hint on/off timing, no errors, desktop / phone / `?debug` |
 | `node tools/checks/alloc-fail.mjs` | GPU memory running out at start and on resize: the page retries smaller and keeps running |
-| `node tools/checks/dynres.mjs [s]` | dynamic resolution over time in normal use (software GL takes the weak-GPU path) |
+| `node tools/checks/dynres.mjs [s]` | dynamic resolution over time in normal use (software rendering takes the weak-GPU path) |
 | `node tools/checks/volumes.mjs` | baked volumes: NaNs, cloud touching a volume's ceiling, column map ranges |
 | `node tools/checks/stream.mjs [dir]` | fly 8 km, then start fresh at the same pose: the images must match |
 
-Expected results (Oct 2026): all presets ok; 0 GL errors; input banks ±53–55° and levels out;
-alloc-fail recovers in both cases; stream difference small (billows drift with time); modules and
-built page identical; fingerprint `a3088118a50acbd470b41785`.
+Expected results (Nov 2026, WebGPU): all presets ok; 0 WebGPU errors; input banks ±53–55° and
+levels out; alloc-fail recovers in both cases; stream: flown and fresh differ by a mean of ≈ 4.2
+of 255 (the billows drift with time; the WebGL version gave the same); modules and built page
+identical; dynres falls to its floor (0.22, through GPU timestamps) and then trades pixels;
+fingerprint `a3088118a50acbd470b41785`.

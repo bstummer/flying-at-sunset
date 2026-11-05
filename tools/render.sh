@@ -1,5 +1,5 @@
 #!/bin/bash
-# Render several views of the page (two at a time; software GL is CPU bound) and put them side by
+# Render several views of the page (two at a time; software rendering is CPU bound) and put them side by
 # side in <outdir>/<tag>_all.png.
 #
 #   tools/render.sh <outdir> <tag> start side away high2 tower giant ...

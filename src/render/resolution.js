@@ -11,7 +11,7 @@ export const DR = { acc: [], cool: 0, ceiling: 0.75, gpuN: 0, gpuFresh: 0, gpuMi
   cap: 0, probe: null, calm: 0, calmNeed: 12, settled: false, fastWait: 0, win: 0, raisedWin: -99 };
 const GPU_BUDGET = 12.5; // ms: leaves headroom for the browser at 60 Hz
 export function adaptResolution(dtMs) {
-  if (TEST) { if (gpuTimer && !CPUPROF) { gpuTimer.poll(); window.__gpu = gpuTimer.ms; } return; }
+  if (TEST) { if (gpuTimer) { gpuTimer.poll(); window.__gpu = CPUPROF ? gpuTimer.sum : gpuTimer.ms; } return; }
   if (++DR.warm < 8) { if (gpuTimer) gpuTimer.poll(); return; }    // shader warm-up frames
   if (gpuTimer && DR.gpuMiss < 5) {
     DR.gpuFresh += Object.keys(gpuTimer.poll()).length;

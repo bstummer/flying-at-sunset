@@ -1,5 +1,5 @@
 // The world, generated on the CPU: endless and grown. (This folder never touches the page or
-// WebGL: tools/world runs it in Node.)
+// the GPU: tools/world runs it in Node.)
 // Nothing is placed by hand and nothing repeats: everything is drawn from a hash of where it is.
 // The clouds grow from a few causes, as in nature. Slow fields of the air decide how restless it
 // is, how much stronger the wind blows higher up, where the ceiling is and how moist the air is.

@@ -1,7 +1,8 @@
 # Reference images
 
-Renders of the version of October 2026 (software GL, 960×540, test presets), for comparing after
-changes. Regenerate with `tools/render.sh` (see `tools/README.md`).
+Renders of the version of October 2026 (WebGL on software GL, 960×540, test presets), for
+comparing after changes; the WebGPU port of November 2026 renders the same views to within a few
+levels of 255. Regenerate with `tools/render.sh` (see `tools/README.md`).
 
 | file | what |
 |---|---|

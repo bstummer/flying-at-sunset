@@ -1,96 +1,82 @@
-// Programs, static textures and their framebuffers, and the one-off generation of the static data
+// Pipelines, static textures, and the one-off generation of the static data
 
 import { DBG_MODE } from '../params.js';
 import { DETAIL_N, SHAPE_N } from '../constants.js';
-import {
-  emptyVAO, extCBF, FLOAT_RT, framebuffer, gl, HALF, makeProgram, pass, RGBA16F, setUniforms,
-  texture2D, texture3D,
-} from './gl.js';
+import { CANVAS_FORMAT, flush, mipLevel, pass, pipeline, slices, texture, RENDER } from './gpu.js';
 import { sunColorAt, sunColTable } from './sun.js';
-import { FS_AMBIENT, FS_MULTISCAT, FS_SKYVIEW, FS_TRANSMITTANCE } from '../shaders/sky.js';
-import { FS_CIRRUS, FS_LAYERS, FS_NOISE3D } from '../shaders/textures.js';
-import { FS_BAKE, FS_TSV } from '../shaders/volumes.js';
-import { FS_TRACE } from '../shaders/trace.js';
-import { FS_TAAU } from '../shaders/taau.js';
-import { FS_PROBE } from '../shaders/probe.js';
-import { FS_MIST, VS_MIST } from '../shaders/mist.js';
-import { FS_BIRD, FS_SHADOW, VS_BIRD } from '../shaders/bird.js';
-import { FS_DOWN, FS_FINAL, FS_RAYBLUR, FS_RAYMASK, FS_UP } from '../shaders/post.js';
+import { FS_AMBIENT, FS_MULTISCAT, FS_SKYVIEW, FS_TRANSMITTANCE, U_AMBIENT, U_SKYVIEW } from '../shaders/sky.js';
+import { FS_CIRRUS, FS_LAYERS, FS_MIP, FS_NOISE3D, U_NOISE3D, U_SIZE } from '../shaders/textures.js';
+import { FS_BAKE, FS_TSV, NOUT, U_BAKE, U_TSV } from '../shaders/volumes.js';
+import { FS_TRACE, U_TRACE } from '../shaders/trace.js';
+import { FS_TAAU, U_TAAU } from '../shaders/taau.js';
+import { FS_PROBE, U_PROBE } from '../shaders/probe.js';
+import { FS_MIST, U_MIST, VS_MIST } from '../shaders/mist.js';
+import { FS_BIRD, U_BIRD, VS_BIRD } from '../shaders/bird.js';
+import { FS_DOWN, FS_FINAL, FS_RAYBLUR, FS_RAYMASK, FS_UP, U_DOWN, U_FINAL, U_RAYBLUR, U_RAYMASK, U_UP } from '../shaders/post.js';
 
+const F16 = 'rgba16float';
+const ADD = { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor: 'one', dstFactor: 'one' } };
+const OVER = { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
+// the bird: position and attributes (flex weight, side, panel shade), one buffer each
+const BIRD_BUFFERS = [0, 1].map(k => ({ arrayStride: 12, attributes: [{ shaderLocation: k, offset: 0, format: 'float32x3' }] }));
 export const P = {
-  trans: makeProgram('transmittance', FS_TRANSMITTANCE),
-  ms: makeProgram('multiscatter', FS_MULTISCAT),
-  sky: makeProgram('skyview', FS_SKYVIEW),
-  amb: makeProgram('ambient', FS_AMBIENT),
-  noise: makeProgram('noise3d', FS_NOISE3D),
-  cirrus: makeProgram('cirrus', FS_CIRRUS),
-  layers: makeProgram('layers', FS_LAYERS),
-  tsv: makeProgram('tsv', FS_TSV),
-  bake: makeProgram('bake', FS_BAKE),
-  trace: makeProgram('trace', DBG_MODE ? FS_TRACE.replace('#version 300 es', '#version 300 es\n#define DBG') : FS_TRACE),
-  taau: makeProgram('taau', FS_TAAU),
-  probe: makeProgram('probe', FS_PROBE),
-  bird: makeProgram('bird', FS_BIRD, VS_BIRD),
-  shadow: makeProgram('shadow', FS_SHADOW, VS_BIRD),
-  down: makeProgram('down', FS_DOWN),
-  up: makeProgram('up', FS_UP),
-  raymask: makeProgram('raymask', FS_RAYMASK),
-  rayblur: makeProgram('rayblur', FS_RAYBLUR),
-  final: makeProgram('final', FS_FINAL),
-  mist: makeProgram('mist', FS_MIST, VS_MIST),
+  trans: pipeline('transmittance', { fs: FS_TRANSMITTANCE, targets: [F16] }),
+  ms: pipeline('multiscatter', { fs: FS_MULTISCAT, targets: [F16] }),
+  sky: pipeline('skyview', { fs: FS_SKYVIEW, uniforms: U_SKYVIEW, targets: [F16] }),
+  amb: pipeline('ambient', { fs: FS_AMBIENT, uniforms: U_AMBIENT, targets: [F16] }),
+  shape: pipeline('noise3d', { fs: FS_NOISE3D, uniforms: U_NOISE3D, targets: [F16] }),
+  detail: pipeline('noise3d', { fs: FS_NOISE3D, uniforms: U_NOISE3D, targets: ['rgba8unorm'] }),
+  cirrus: pipeline('cirrus', { fs: FS_CIRRUS, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
+  layers: pipeline('layers', { fs: FS_LAYERS, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
+  mip: pipeline('mip', { fs: FS_MIP, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
+  tsv: pipeline('tsv', { fs: FS_TSV, uniforms: U_TSV, targets: Array(NOUT).fill('r16float') }),
+  bake: pipeline('bake', { fs: FS_BAKE, uniforms: U_BAKE, targets: Array(NOUT).fill('r16float') }),
+  trace: pipeline('trace', { fs: DBG_MODE ? FS_TRACE.replace('const DBG = false;', 'const DBG = true;') : FS_TRACE, uniforms: U_TRACE, targets: [F16, 'r16float'] }),
+  taau: pipeline('taau', { fs: FS_TAAU, uniforms: U_TAAU, targets: [F16, F16] }),
+  probe: pipeline('probe', { fs: FS_PROBE, uniforms: U_PROBE, targets: ['rgba32float'] }),
+  bird: pipeline('bird', {
+    vs: VS_BIRD, fs: FS_BIRD, uniforms: U_BIRD, targets: [F16], buffers: BIRD_BUFFERS, samples: 4,
+    depth: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less-equal' },
+  }),
+  shadow: pipeline('shadow', {
+    vs: VS_BIRD, uniforms: U_BIRD, buffers: BIRD_BUFFERS,
+    depth: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less-equal', depthBias: 2, depthBiasSlopeScale: 1.5 },
+  }),
+  down: pipeline('down', { fs: FS_DOWN, uniforms: U_DOWN, targets: [F16] }),
+  up: pipeline('up', { fs: FS_UP, uniforms: U_UP, targets: [F16], blend: ADD }),
+  raymask: pipeline('raymask', { fs: FS_RAYMASK, uniforms: U_RAYMASK, targets: [F16] }),
+  rayblur: pipeline('rayblur', { fs: FS_RAYBLUR, uniforms: U_RAYBLUR, targets: [F16] }),
+  final: pipeline('final', { fs: FS_FINAL, uniforms: U_FINAL, targets: [CANVAS_FORMAT] }),
+  mist: pipeline('mist', { vs: VS_MIST, fs: FS_MIST, uniforms: U_MIST, targets: [F16], blend: OVER, topology: 'triangle-strip' }),
 };
 
 // --- static textures
 export const T = {};
-T.trans = texture2D(256, 64, RGBA16F, gl.RGBA, HALF);
-T.ms = texture2D(32, 32, RGBA16F, gl.RGBA, HALF);
-T.sky = texture2D(192, 108, RGBA16F, gl.RGBA, HALF);
-T.amb = texture2D(4, 1, RGBA16F, gl.RGBA, HALF, { filter: gl.NEAREST });
-T.shape = texture3D(SHAPE_N, SHAPE_N, SHAPE_N, gl.RGBA16F, gl.RGBA, HALF);
-T.detail = texture3D(DETAIL_N, DETAIL_N, DETAIL_N, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
-T.cirrus = texture2D(512, 512, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, { wrap: gl.REPEAT });
-T.layers = texture2D(1024, 1024, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, { wrap: gl.REPEAT });
-T.probe = texture2D(8, 1, FLOAT_RT, gl.RGBA, extCBF ? gl.FLOAT : HALF, { filter: gl.NEAREST });
+T.trans = texture(256, 64, F16);
+T.ms = texture(32, 32, F16);
+T.sky = texture(192, 108, F16);
+T.amb = texture(4, 1, F16, { usage: RENDER | GPUTextureUsage.COPY_SRC });
+T.shape = texture(SHAPE_N, SHAPE_N, F16, { depth: SHAPE_N, dim: '3d' });
+T.detail = texture(DETAIL_N, DETAIL_N, 'rgba8unorm', { depth: DETAIL_N, dim: '3d' });
+T.cirrus = texture(512, 512, 'rgba8unorm');
+T.layers = texture(1024, 1024, 'rgba8unorm', { mips: 11 });   // seen at grazing angles far away: mipmaps
+T.probe = texture(8, 1, 'rgba32float', { usage: RENDER | GPUTextureUsage.COPY_SRC });
 
-export const FB = {};
-FB.trans = framebuffer([T.trans]);
-FB.ms = framebuffer([T.ms]);
-FB.sky = framebuffer([T.sky]);
-FB.amb = framebuffer([T.amb]);
-FB.cirrus = framebuffer([T.cirrus]);
-FB.layers = framebuffer([T.layers]);
-FB.probe = framebuffer([T.probe]);
-const fbLayer = gl.createFramebuffer();
+export const sunColUniform = sunColTable;
+export const layerColUniform = new Float32Array([...sunColorAt(6300), ...sunColorAt(7700)]);
 
-function renderVolume(tex, depth, uniformsFor) {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fbLayer);
-  gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
-  for (let z = 0; z < depth; z++) {
-    gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, tex.tex, 0, z);
-    const u = uniformsFor(z);
-    gl.viewport(0, 0, tex.w, tex.h);
-    gl.useProgram(u.prog.p);
-    setUniforms(u.prog, u.uniforms);
-    gl.bindVertexArray(emptyVAO);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-  }
-}
-
-export const sunColUniform = { v3: sunColTable };
-export const layerColUniform = { v3: new Float32Array([...sunColorAt(6300), ...sunColorAt(7700)]) };
-
-// one-off generation of all static GPU data (runs once the shaders are compiled)
+// one-off generation of all static GPU data (once the pipelines are compiled)
 export function generateStatic() {
-// noise volumes
-renderVolume(T.shape, SHAPE_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / SHAPE_N, uSize: SHAPE_N, uCells: [4, 8, 16, 32], uMode: { i: 0 } } }));
-renderVolume(T.detail, DETAIL_N, z => ({ prog: P.noise, uniforms: { uZ: (z + 0.5) / DETAIL_N, uSize: DETAIL_N, uCells: [4, 8, 16, 24], uMode: { i: 1 } } }));
-pass(P.cirrus, FB.cirrus, 512, 512, { uSize: 512 });
-pass(P.layers, FB.layers, 1024, 1024, { uSize: 1024 });
-gl.bindTexture(gl.TEXTURE_2D, T.layers.tex);           // seen at grazing angles far away: mipmaps
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-gl.generateMipmap(gl.TEXTURE_2D);
-
-// atmosphere LUTs
-pass(P.trans, FB.trans, 256, 64, {});
-pass(P.ms, FB.ms, 32, 32, { uTrans: T.trans });
+  // noise volumes
+  for (let z = 0; z < SHAPE_N; z++) pass(P.shape, slices(T.shape, z), { z: (z + 0.5) / SHAPE_N, size: SHAPE_N, cells: [4, 8, 16, 32], mode: 0 });
+  for (let z = 0; z < DETAIL_N; z++) pass(P.detail, slices(T.detail, z), { z: (z + 0.5) / DETAIL_N, size: DETAIL_N, cells: [4, 8, 16, 24], mode: 1 });
+  pass(P.cirrus, [T.cirrus], { size: 512 });
+  // the high layers and their mip levels
+  const lv = Array.from({ length: 11 }, (_, k) => mipLevel(T.layers, k));
+  pass(P.layers, [lv[0]], { size: 1024 });
+  for (let k = 1; k < lv.length; k++) pass(P.mip, [lv[k]], { tSrc: lv[k - 1], size: lv[k].w });
+  // atmosphere LUTs
+  pass(P.trans, [T.trans], {});
+  pass(P.ms, [T.ms], { tTrans: T.trans });
+  flush();
 }

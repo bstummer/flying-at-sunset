@@ -1,61 +1,68 @@
-// GPU timing (EXT_disjoint_timer_query_webgl2), which drives dynamic resolution when available;
-// ?cpuprof times the passes on software GL
+// GPU timing (timestamp queries), which drives dynamic resolution when available. Each group of
+// passes (tBegin .. tEnd) writes two timestamps: at the start of its first pass and at the end
+// of each pass (the last one stays); a group without passes this frame (the world, mostly) took
+// no GPU time. ?cpuprof sums the times over a test run (tools/checks/profile.mjs).
 
 import { Q } from '../params.js';
-import { extTimer, gl } from './gl.js';
-import { FB } from './setup.js';
+import { device, enc, hooks, TIMESTAMPS } from './gpu.js';
 
-export const gpuTimer = (() => {
-  if (!extTimer) return null;
-  const pool = [], pending = [], ms = {};
-  let cur = null;
-  return {
-    ms,
-    begin(label) {
-      if (cur || pending.length > 64) return;
-      const q = pool.pop() || gl.createQuery();
-      gl.beginQuery(extTimer.TIME_ELAPSED_EXT, q);
-      cur = { label, q };
-    },
-    end() {
-      if (!cur) return;
-      gl.endQuery(extTimer.TIME_ELAPSED_EXT);
-      pending.push(cur); cur = null;
-    },
-    poll() {
-      const disjoint = gl.getParameter(extTimer.GPU_DISJOINT_EXT);
-      const frameMs = {};
-      while (pending.length) {
-        const p = pending[0];
-        if (!gl.getQueryParameter(p.q, gl.QUERY_RESULT_AVAILABLE)) break;
-        pending.shift();
-        if (!disjoint) {
-          const v = gl.getQueryParameter(p.q, gl.QUERY_RESULT) / 1e6;
-          ms[p.label] = ms[p.label] === undefined ? v : ms[p.label] * 0.85 + v * 0.15;
-          frameMs[p.label] = v;
-        }
-        pool.push(p.q);
-      }
-      return frameMs;
-    },
-    total() { let t = 0; for (const k in ms) t += ms[k]; return t; },
-  };
-})();
-// ?cpuprof (testing on software GL): fence each pass group and measure wall time
 export const CPUPROF = Q.has('cpuprof');
-const cpuProf = {}; let cpuLabel = null, cpuT0 = 0;
-const syncPx = new Float32Array(4);
-function hardSync() { // readPixels blocks until all submitted GPU work is done
-  const prev = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, FB.probe);
-  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, syncPx);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, prev);
-}
-export const tBegin = l => {
-  if (CPUPROF) { hardSync(); cpuLabel = l; cpuT0 = performance.now(); return; }
-  if (gpuTimer) gpuTimer.begin(l);
-};
-export const tEnd = () => {
-  if (CPUPROF) { hardSync(); const v = performance.now() - cpuT0; cpuProf[cpuLabel] = (cpuProf[cpuLabel] || 0) + v; window.__gpu = cpuProf; return; }
-  if (gpuTimer) gpuTimer.end();
-};
+export const gpuTimer = TIMESTAMPS ? (() => {
+  const N = 32;
+  const querySet = device.createQuerySet({ type: 'timestamp', count: N });
+  const resolveBuf = device.createBuffer({ size: N * 8, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
+  const free = [];
+  let made = 0, pairs = 0, groups = [], cur = null, toMap = null, fresh = {};
+  const ms = {}, sum = {}, maps = new Set();
+  const record = (label, v) => {
+    ms[label] = ms[label] === undefined ? v : ms[label] * 0.85 + v * 0.15;
+    sum[label] = (sum[label] || 0) + v;
+    fresh[label] = v;
+  };
+  hooks.timestamps = () => {
+    if (!cur) return undefined;
+    if (cur.q >= 0) return { querySet, endOfPassWriteIndex: cur.q + 1 };
+    if (pairs * 2 + 2 > N) { cur = null; return undefined; }
+    cur.q = 2 * pairs++;
+    return { querySet, beginningOfPassWriteIndex: cur.q, endOfPassWriteIndex: cur.q + 1 };
+  };
+  return {
+    ms, sum,
+    begin(label) { cur = { label, q: -1 }; },
+    end() { if (cur) groups.push(cur); cur = null; },
+    // after the last pass of a frame: resolve its timestamps into a buffer to read
+    resolve() {
+      if (!groups.length) return;
+      const buf = pairs ? free.pop() || (made < 4 ? (made++, device.createBuffer({ size: N * 8, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })) : null) : null;
+      if (buf) {
+        const e = enc();
+        e.resolveQuerySet(querySet, 0, pairs * 2, resolveBuf, 0);
+        e.copyBufferToBuffer(resolveBuf, 0, buf, 0, pairs * 16);
+      }
+      if (buf || !pairs) toMap = { buf, groups };
+      groups = []; pairs = 0;
+    },
+    // after the frame is submitted: read them when the GPU is done
+    map() {
+      if (!toMap) return;
+      const { buf, groups: gs } = toMap;
+      toMap = null;
+      if (!buf) { for (const g of gs) record(g.label, 0); return; }
+      const m = buf.mapAsync(GPUMapMode.READ).then(() => {
+        const t = new BigUint64Array(buf.getMappedRange());
+        for (const g of gs) {
+          const v = g.q < 0 ? 0 : Number(t[g.q + 1] - t[g.q]) / 1e6;
+          if (v >= 0 && v < 1e5) record(g.label, v);       // (else not a valid pair)
+        }
+        buf.unmap();
+        free.push(buf);
+      }, () => {}).finally(() => maps.delete(m));
+      maps.add(m);
+    },
+    poll() { const f = fresh; fresh = {}; return f; },     // the results read since the last poll
+    total() { let t = 0; for (const k in ms) t += ms[k]; return t; },
+    settled() { return Promise.all([...maps]); },
+  };
+})() : null;
+export const tBegin = l => { if (gpuTimer) gpuTimer.begin(l); };
+export const tEnd = () => { if (gpuTimer) gpuTimer.end(); };

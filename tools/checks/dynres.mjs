@@ -1,7 +1,8 @@
-// Dynamic resolution in normal use: frame count and cloud resolution scale every second. Software GL
-// is far over budget, so this exercises the "weak GPU" path (the scale should fall quickly to its
-// floor, the page keep running). On a real GPU, run with CHROMIUM_ARGS="--use-angle=default" and
-// a headed browser to see the scale settle where the frame rate holds.
+// Dynamic resolution in normal use: frame count and cloud resolution scale every second. Software
+// rendering is far over budget, so this exercises the "weak GPU" path (the scale should fall
+// quickly to its floor, the page keep running). On a real GPU, run with
+// CHROMIUM_ARGS="--enable-unsafe-webgpu" and a headed browser to see the scale settle where the
+// frame rate holds.
 //
 //   node tools/checks/dynres.mjs [seconds]
 import { launch, openPage, pageURL } from '../lib/browser.mjs';

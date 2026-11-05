@@ -7,18 +7,18 @@
 import { DEBUG, Q, TEST } from './params.js';
 import { canvas, COARSE, fail, hintEl } from './page.js';
 import { DEG } from './math.js';
-import { checkPrograms, extParallel, gl, programs } from './render/gl.js';
+import { device, enc, gpuState, pipelinesReady, readTexture } from './render/gpu.js';
 import { cloudTopAt, seaTopAt, towersNear } from './world/queries.js';
-import { FB, generateStatic } from './render/setup.js';
+import { generateStatic, T } from './render/setup.js';
 import { bakeQueue, LEVELS, TSVL, worldStats } from './render/stream.js';
 import { R, resize } from './render/targets.js';
-import { probeData, updateInCloud } from './render/probe.js';
+import { probeBusy, probeData, updateInCloud } from './render/probe.js';
 import { bird_, updateFlight } from './flight.js';
 import { input, updateInput } from './input.js';
 import { cam, updateCamera } from './camera.js';
 import './presets.js';
 import { gpuTimer } from './render/timing.js';
-import { frame, render } from './render/frame.js';
+import { captureNext, frame, render } from './render/frame.js';
 import { adaptResolution, DR } from './render/resolution.js';
 
 // ---- hint & main loop
@@ -33,18 +33,20 @@ const FIXED_DT = TEST ? parseFloat(Q.get('dt') || '0.0166') : 0;
 const TEST_FRAMES = parseInt(Q.get('frames') || '24', 10);
 const FREEZE = Q.has('freeze');
 
-let startWall = -1;
+let startWall = -1, stopped = false;
 function loop(now) {
-  if (window.__done) return;
+  if (stopped || window.__done) return;
   try { frameStep(now); }
   catch (e) {
-    window.__done = true;
-    if (!gl.isContextLost()) fail('Something went wrong while rendering — ' + (e && e.message || e));
+    stopped = window.__done = true;
+    if (!gpuState.lost) fail('Something went wrong while rendering — ' + (e && e.message || e));
   }
 }
 function frameStep(now) {
   if (startWall < 0) startWall = now;
   requestAnimationFrame(loop);
+  // (tests: each frame waits for the probe of the last one, as if the GPU were always that quick)
+  if (TEST && probeBusy()) return;
   const t = now * 0.001;
   let dt = last < 0 ? 1 / 60 : Math.min(t - last, 0.1);
   const dtMs = (t - last) * 1000;
@@ -57,6 +59,7 @@ function frameStep(now) {
   else updateFlight(0, clock);
   updateCamera(dt, frame === 0, clock);
   updateInCloud(dt);
+  if (TEST && frame >= TEST_FRAMES - 1) captureNext(captureImage);
   render(clock);
   if (frame === 2) canvas.classList.add('on');
   // hint (wall-clock timing so it behaves the same at any frame rate)
@@ -80,12 +83,40 @@ function frameStep(now) {
       +bird_.speed.toFixed(2), +(bird_.bank / DEG).toFixed(1), +(bird_.gamma / DEG).toFixed(2), +(bird_.yaw / DEG).toFixed(1),
       +seaTopAt(bird_.pos[0], bird_.pos[2]).toFixed(0), probeData ? +probeData[2].toFixed(0) : null, +(cam.roll / DEG).toFixed(1), +(cam.fov / DEG).toFixed(1)]);
   }
-  if (TEST && frame >= TEST_FRAMES) { gl.finish(); window.__done = true; }
+  if (TEST && frame >= TEST_FRAMES) stopped = true;
+}
+// tests: the last frame's image as PNG (window.__png), then window.__done once the GPU is done.
+// (Encoded after the frame's last pass; the returned function runs once the frame is submitted.)
+function captureImage(tex) {
+  captureNext(null);
+  const w = tex.width, h = tex.height, row = Math.ceil(w * 4 / 256) * 256;
+  const buf = device.createBuffer({ size: row * h, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  enc().copyTextureToBuffer({ texture: tex }, { buffer: buf, bytesPerRow: row }, [w, h]);
+  return () => buf.mapAsync(GPUMapMode.READ).then(async () => {
+    const src = new Uint8Array(buf.getMappedRange()), px = new Uint8ClampedArray(w * h * 4);
+    const bgra = tex.format.startsWith('bgra');
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * row + x * 4, o = (y * w + x) * 4;
+      px[o] = src[i + (bgra ? 2 : 0)]; px[o + 1] = src[i + 1]; px[o + 2] = src[i + (bgra ? 0 : 2)]; px[o + 3] = 255;
+    }
+    buf.unmap();
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').putImageData(new ImageData(px, w, h), 0, 0);
+    window.__png = c.toDataURL('image/png');
+    if (gpuTimer) await gpuTimer.settled();
+    await device.queue.onSubmittedWorkDone();
+    window.__done = true;
+  }, e => { window.__error = 'capture failed: ' + e.message; });
 }
 
-// GPU reset (driver update, sleep, too many contexts): rebuild everything by reloading
-canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); window.__done = true; });
-canvas.addEventListener('webglcontextrestored', () => location.reload());
+// GPU reset (driver update, sleep): rebuild everything by reloading, once a GPU is there again
+device.lost.then(async info => {
+  stopped = window.__done = true;
+  if (info.reason === 'destroyed') return;
+  const a = navigator.gpu && performance.now() > 10000 ? await navigator.gpu.requestAdapter().catch(() => null) : null;
+  if (a) location.reload(); else fail('The graphics device stopped working. Please reload the page.');
+});
 // quiet extras: double-click or F toggles fullscreen
 function toggleFullscreen() {
   const d = document;
@@ -95,30 +126,15 @@ function toggleFullscreen() {
 canvas.addEventListener('dblclick', toggleFullscreen);
 window.addEventListener('keydown', e => { if (e.code === 'KeyF' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) toggleFullscreen(); });
 document.addEventListener('visibilitychange', () => { last = -1; });
-// Boot: let the driver compile all shaders in parallel without blocking the page, then
-// generate the static data and start flying.
-function programsReady() {
-  if (!extParallel) return true;
-  for (const p of programs) if (!gl.getProgramParameter(p.p, extParallel.COMPLETION_STATUS_KHR)) return false;
-  return true;
-}
-function boot() {
-  if (gl.isContextLost()) return;   // reloads on restore
-  if (!programsReady()) { requestAnimationFrame(boot); return; }
-  try { checkPrograms(); } catch (e) { fail('Shader error — ' + e.message); return; }
-  generateStatic();
-  requestAnimationFrame(loop);
-}
-boot();
+// Boot: the shaders compile in parallel without blocking the page; then generate the static
+// data and start flying.
 window.__debug = {
-  bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, worldStats,
-  probe: () => {
-    const b = new Float32Array(32);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.probe);
-    gl.readPixels(0, 0, 8, 1, gl.RGBA, gl.FLOAT, b);
-    const amb = new Float32Array(16);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.amb);
-    gl.readPixels(0, 0, 4, 1, gl.RGBA, gl.FLOAT, amb);
+  bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, worldStats, device, T, readTexture,
+  probe: async () => {
+    const b = await readTexture(T.probe), amb = await readTexture(T.amb);
     return { sun: Array.from(b.slice(0, 4)), ambUp: Array.from(b.slice(4, 7)), ambDn: Array.from(b.slice(8, 11)), misc: Array.from(b.slice(12, 16)), mist: Array.from(b.slice(16, 19)), ambTex: Array.from(amb) };
   },
 };
+try { await pipelinesReady(); } catch (e) { fail('Shader error — ' + e.message); throw e; }
+generateStatic();
+requestAnimationFrame(loop);
