@@ -1,0 +1,160 @@
+# On every push, to any branch, verify the piece (tests, build, check, screenshots, checks). And:
+#   - on main, once verify passes, update the rolling "latest" release, whose asset is
+#     always main's newest verified build,
+#     https://github.com/bstummer/flying-at-sunset/releases/latest/download/flying-at-sunset.html,
+#     then deploy the site to GitHub Pages with it at the root;
+#   - on any other branch (a session's, say), deploy the site at once, without waiting
+#     for verify, with the branch's build in its folder:
+#     https://bstummer.github.io/flying-at-sunset/claude/some-task/
+# Every deploy builds the whole site, every branch there is now: pages.yml.
+# "Run workflow" on a branch does the same as a push to it.
+#
+# One-time setup: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions"
+# (the site's publish job checks it first), and Settings -> Environments -> github-pages
+# -> Deployment branches: "No restriction", or only main's runs can deploy.
+#
+# Don't hand-edit the "latest" tag or release, and don't create other releases:
+# a newer latest release would take over the download link above.
+#
+# The jobs that install npm packages (verify, the site's builds) get a read-only
+# token. The jobs that publish (the release, the site's publish) run no third-party
+# code from node_modules: keep it that way.
+# A push that changes only Markdown (README, PLAN, CLAUDE) runs nothing: no .md
+# file goes into the build or the checks.
+name: Build and deploy
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+
+# One run per branch at a time. On main a newer push waits rather than cancelling
+# a release halfway through; elsewhere it replaces the run that is no longer needed,
+# whose site the newer run deploys again.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    # Pinned, not ubuntu-latest: Playwright installs system packages by Ubuntu release, so a new
+    # runner image could break verify, and with it publishing, unannounced. Move up on purpose.
+    # (The browser doesn't depend on it: every release gets the same Chromium build.)
+    runs-on: ubuntu-24.04
+    # SwiftShader draws every pixel on the CPU, and each view's first frame bakes the world.
+    # (After the first green runs: about twice what verify takes.)
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # postinstall downloads Playwright's headless Chromium; install-deps adds the system libraries it needs.
+      - run: npm ci
+      - run: npx playwright install-deps chromium
+
+      # npm run verify with small stills and without the views' measurements (package.json):
+      # they only warn, so they can't stop a publish, and they would take most of the run. CI
+      # runners have no GPU, so it renders with SwiftShader, which draws every pixel on the CPU.
+      # Every check that can fail still runs. The step's own limit, under the job's, keeps the
+      # uploads below running when it is too slow: a timed-out step is a failed one.
+      - run: npm run verify:ci
+        timeout-minutes: 50
+
+      # Screenshots for review: a run that failed or timed out keeps them all for two weeks,
+      # to see why; one that passed keeps the views, the contact sheet, info.json and what the
+      # checks wrote (benchmark.txt, the streaming images) for a week. A capture of the commit
+      # on SwiftShader is CI's byte for byte (CLAUDE.md §4).
+      - name: Upload screenshots of a failed run
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload screenshots for review
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: |
+            screenshots/*/*.png
+            screenshots/*/info.json
+            screenshots/*/checks/
+          retention-days: 7
+
+      - name: Upload the page for the release job
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: page
+          path: dist/index.html
+          retention-days: 1
+
+  release:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: page
+
+      - name: Update the rolling "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mv index.html flying-at-sunset.html
+          pages_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
+          notes="Latest build of main at ${GITHUB_SHA::7}, built $(date -u '+%Y-%m-%d %H:%M UTC').
+
+          Download **flying-at-sunset.html** below and open it in a browser with WebGPU. It's a single file that works offline.
+          Online: ${pages_url}"
+
+          # Point the "latest" tag at this commit (created on the first run).
+          gh api -X PATCH "repos/$GH_REPO/git/refs/tags/latest" -f sha="$GITHUB_SHA" -F force=true > /dev/null \
+            || gh api -X POST "repos/$GH_REPO/git/refs" -f ref=refs/tags/latest -f sha="$GITHUB_SHA" > /dev/null
+
+          if gh release view latest > /dev/null 2>&1; then
+            gh release upload latest flying-at-sunset.html --clobber
+            gh release edit latest --title "Latest build" --notes "$notes" --latest
+          else
+            gh release create latest flying-at-sunset.html --title "Latest build" --notes "$notes" --latest
+          fi
+
+  # The site, for a push to any branch but main: at once, alongside verify, not after it.
+  site:
+    if: github.ref != 'refs/heads/main'
+    uses: ./.github/workflows/pages.yml
+    # One deploy of the site at a time, whichever branch it is for. A newer one waiting
+    # in line replaces an older one waiting: it builds every branch afresh anyway.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+  # The site, for a push to main: once its build is the release's, which is the root.
+  site-main:
+    needs: release
+    uses: ./.github/workflows/pages.yml
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

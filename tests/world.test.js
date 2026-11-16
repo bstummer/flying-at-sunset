@@ -1,0 +1,134 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
+import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads';
+import { differences, fingerprint, RECORDED } from '../tools/world/fingerprint.js';
+import { loadWorld, WORLD_DIR } from '../tools/world/load.js';
+
+// The world generator (src/world/), run as the page runs it. A module graph holds one world (it
+// reads ?seed as it loads), so each seed is measured in a worker thread of its own: this file is
+// also the worker (the end of the file).
+
+const SEEDS = Array.from({ length: 20 }, (_, i) => i + 1);
+const LEVELS = [
+  { cell: 128, lod: 0, chunk: 32 },
+  { cell: 512, lod: 1, chunk: 32 },
+  { cell: 2048, lod: 2, chunk: 16 },
+];
+
+// What a worker measures of its seed's world.
+const JOBS = {
+  // the column data the GPU gets, of a few blocks of every clipmap level: R the sea surface with
+  // its heaps, G the billow strength, B the fine billows, A the sea level without heaps
+  columns(W) {
+    const lo = [Infinity, Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity, -Infinity];
+    let notFinite = 0, sunk = 0;
+    for (const L of LEVELS) for (const [gi, gj] of [[-32, -32], [0, -64], [64, 32], [-128, 96]]) {
+      const out = new Float32Array(L.chunk * L.chunk * 4);
+      W.fillColumns(L.cell, L.lod, gi, gj, L.chunk, L.chunk, out);
+      for (let p = 0; p < L.chunk * L.chunk; p++) {
+        for (let c = 0; c < 4; c++) {
+          const v = out[p * 4 + c];
+          if (!Number.isFinite(v)) notFinite++;
+          lo[c] = Math.min(lo[c], v);
+          hi[c] = Math.max(hi[c], v);
+        }
+        if (out[p * 4] < out[p * 4 + 3] - 0.01) sunk++;
+      }
+    }
+    return { lo, hi, notFinite, sunk };
+  },
+  // the towers within 120 km, and those in the start view (bearing 0 is toward the sun; the start
+  // yaw of 0.45 on a 16:9 screen sees -0.24 .. 1.14) within 50 km
+  towers(W) {
+    const all = W.towersNear(0, 0, 120000);
+    const inView = W.towersNear(0, 0, 50000).filter((t) => {
+      const bearing = Math.atan2(t.x, -t.z);
+      return bearing > -0.24 && bearing < 1.14;
+    });
+    return {
+      count: all.length,
+      highest: Math.max(...all.map((t) => t.top)),
+      cloudTop: W.CLOUD_TOP,
+      tallInView: inView.filter((t) => t.top > 8000).length,
+    };
+  },
+  fingerprint: (W) => fingerprint(W),
+  // the same, after asking for other places first: far before near, coarse before fine
+  fingerprintAfterOthers(W) {
+    W.towersNear(150000, -90000, 60000);
+    const out = new Float32Array(16 * 16 * 4), bub = new Float32Array(1024 * 4 * 3 * 4);
+    for (const [gi, gj] of [[40, -60], [-16, -16], [0, 0]]) {
+      W.fillColumns(2048, 2, gi, gj, 16, 16, out);
+      W.gatherBubbles(gi * 2048, gj * 2048, (gi + 16) * 2048, (gj + 16) * 2048, 12300, 900, gi * 2048, gj * 2048, bub, 4096, true);
+    }
+    W.seaSurfaceAt(-40000, 25000);
+    W.towerDistAt(30000, 5000, -20000);
+    return fingerprint(W);
+  },
+};
+
+// Runs groups of jobs on seeds, each group of a seed in a worker of its own (one world: the jobs
+// of a group see what the ones before them asked), a few at a time: [{ seed, job, result }].
+async function measure(seeds, groups) {
+  const tasks = seeds.flatMap((seed) => groups.map((jobs) => ({ seed, jobs })));
+  const results = [];
+  const next = async () => {
+    for (let task; (task = tasks.shift()); ) {
+      const out = await new Promise((resolve, reject) => {
+        const worker = new Worker(new URL(import.meta.url), { workerData: task });
+        worker.once('message', resolve);
+        worker.once('error', reject);
+      });
+      for (const job of task.jobs) results.push({ seed: task.seed, job, result: out[job] });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(8, availableParallelism() - 1)) }, next));
+  return results;
+}
+
+if (isMainThread) {
+  test('the world of src/ is the one recorded (node tools/world/fingerprint.js --write after a deliberate change)', async () => {
+    const W = await loadWorld({ query: '', dir: WORLD_DIR });
+    const recorded = JSON.parse(readFileSync(RECORDED, 'utf8'));
+    assert.equal(W.WORLD_SEED, recorded.seed);
+    assert.deepEqual(differences(recorded, fingerprint(W)), []);
+  });
+
+  test('the world is a function of position and seed, not of the order it is asked for', async () => {
+    const results = await measure([1, 7, 13], [['fingerprint'], ['fingerprintAfterOthers']]);
+    for (const seed of [1, 7, 13]) {
+      const [fresh, after] = ['fingerprint', 'fingerprintAfterOthers'].map((job) => results.find((r) => r.seed === seed && r.job === job).result);
+      assert.deepEqual(after, fresh, `seed ${seed}`);
+    }
+  });
+
+  test('every seed, 1 to 20, gives the GPU sound column data and towers the trace can reach', async () => {
+    const results = await measure(SEEDS, [['columns', 'towers']]);
+    // (the columns are float32, as the GPU gets them)
+    const within = (lo, hi, min, max) => lo >= Math.fround(min) && hi <= Math.fround(max);
+    for (const seed of SEEDS) {
+      const c = results.find((r) => r.seed === seed && r.job === 'columns').result;
+      assert.equal(c.notFinite, 0, `seed ${seed}: column values that are not finite`);
+      assert.equal(c.sunk, 0, `seed ${seed}: heaps lower the sea instead of raising it`);
+      assert.ok(within(c.lo[1], c.hi[1], 0.65, 1.45), `seed ${seed}: billow strength ${c.lo[1]} .. ${c.hi[1]}, outside 0.65 .. 1.45`);
+      assert.ok(within(c.lo[2], c.hi[2], 0.4, 1.3), `seed ${seed}: fine billows ${c.lo[2]} .. ${c.hi[2]}, outside 0.4 .. 1.3`);
+      const t = results.find((r) => r.seed === seed && r.job === 'towers').result;
+      assert.ok(t.count > 0, `seed ${seed}: no towers within 120 km`);
+      assert.ok(t.highest < t.cloudTop, `seed ${seed}: a tower tops out at ${t.highest} m, above where the trace stops (${t.cloudTop} m)`);
+    }
+  });
+
+  // The author asked for at least one huge tower in view from the start. The spawn draw (after
+  // subsidenceAt in world/cells.js) looks for one but doesn't promise it for every seed (seed 5 has none): this
+  // holds the piece's own seed to it.
+  test("the piece's seed starts with a tower above 8 km in view", async () => {
+    const W = await loadWorld({ query: '', dir: WORLD_DIR });
+    const [{ result }] = await measure([W.WORLD_SEED], [['towers']]);
+    assert.ok(result.tallInView >= 1, `towers above 8 km in the start view: ${result.tallInView}`);
+  });
+} else {
+  const W = await loadWorld({ query: `seed=${workerData.seed}`, dir: WORLD_DIR });
+  parentPort.postMessage(Object.fromEntries(workerData.jobs.map((job) => [job, JOBS[job](W)])));
+}
