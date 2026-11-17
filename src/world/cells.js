@@ -36,7 +36,7 @@
 //   downwind. Failing that, the best draw (seed 5 starts with no tower in view). ~30 ms. If the
 //   sun's azimuth, the start yaw or the wind change, revisit these bearings.
 
-import { Q } from '../params.js';
+import { params } from '../core/params.js';
 import { clamp, lerp, mulberry32, PI, sat } from '../math.js';
 import { cellRng, gauss, hashU, poisson } from './noise.js';
 import { airAt, REST_O, restAt, seaLevelAt, setRestOffset } from './air.js';
@@ -51,7 +51,7 @@ import { H_FLAT, headUp, lift, nearStart, placeDome, R_TH, settle, START_Y } fro
 // drift. Cells are kept by size in grids of three sizes (only for quick lookups; for the coarsest
 // clipmap level the small ones are grown without the bubbles their bubbles shed).
 const P_MIN = 600, ALPHA = 2.0, P_CUT = 2800;
-const TOWER_RATE = Q.has('towers') ? parseFloat(Q.get('towers')) : 1;
+const TOWER_RATE = params.towers ?? 1;
 const cellDensity = I => 0.36e-6 * (0.12 + 0.88 * I);       // cells per m^2 with P > P_MIN
 const TIERS = [
   { S: 8000, pa: P_MIN, pb: 1000, salt: 0x4ea9, small: true, cache: new Map(), coarse: new Map(), sites: new Map() },

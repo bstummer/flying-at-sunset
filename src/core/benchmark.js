@@ -10,14 +10,14 @@
 // hitches (frames over 50 ms: mostly the world generated on the main thread as the bird flies
 // on). Afterwards the viewer steers again. window.__BENCH__ holds the result for tools/checks.js.
 
-import { BENCH, Q } from './params.js';
-import { GPU_NAME } from './render/gpu.js';
-import { R } from './render/targets.js';
-import { gpuTimer } from './render/timing.js';
+import { BENCH, params } from './params.js';
+import { GPU_NAME } from '../render/gpu.js';
+import { R } from '../render/targets.js';
+import { gpuTimer } from '../render/timing.js';
 import { input } from './input.js';
 
-const SECONDS = parseFloat(Q.get('benchSeconds') || '8');
-const WARMUP = parseFloat(Q.get('benchWarmup') || '2');
+const SECONDS = params.benchSeconds ?? 8;
+const WARMUP = params.benchWarmup ?? 2;
 const WARMUP_FRAMES = 10;   // so one long frame (the first bakes the whole world) can't end a warmup
 const HITCH_MS = 50;
 // the route, from the start; steer(t) gives [right, up] in -1..1 at t seconds into the leg

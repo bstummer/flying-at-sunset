@@ -27,7 +27,7 @@ export const FLIGHTS = {
   // from just over the cloud tops, diving and held there: into the heaps, kept from sinking deep
   skim: { preset: 'skim', script: 'holddive' },
 };
-// the columns of a log row (src/main.js)
+// the columns of a log row (src/core/capture.js)
 export const LOG = { t: 0, x: 1, alt: 2, z: 3, speed: 4, bank: 5, gamma: 6, yaw: 7, sea: 8, cloud: 9, roll: 10, fov: 11 };
 const AT_ONCE = 2;
 

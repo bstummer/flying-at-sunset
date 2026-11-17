@@ -6,10 +6,10 @@
 // (mulberry32) are seeded per cell and per bubble, so each thing draws from its own stream and
 // changing one never shifts another.
 
-import { Q } from '../params.js';
+import { params } from '../core/params.js';
 import { mulberry32, PI } from '../math.js';
 
-export const WORLD_SEED = Q.has('seed') ? parseInt(Q.get('seed'), 10) | 0 : 7;
+export const WORLD_SEED = params.seed ?? 7;
 const SEEDH = Math.imul(WORLD_SEED ^ 0x5bd1e995, 0x9E3779B1) | 0;
 export function hashU(i, j, s) {
   let h = (Math.imul(i, 0x9E3779B1) + Math.imul(j, 0x85EBCA77) + Math.imul(s, 0xC2B2AE3D) + SEEDH) | 0;

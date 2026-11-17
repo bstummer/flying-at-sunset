@@ -118,4 +118,4 @@ container with Docker, `node tools/linux.js npm run verify:ci`; its screenshots 
 The build is `dist/index.html`. GitHub Actions verifies every push. `main`'s, once verified, is deployed
 to Pages and published as the download above; every other branch's goes up at once, unverified, at
 `https://bstummer.github.io/flying-at-sunset/<branch>/`. [CLAUDE.md](CLAUDE.md) holds the project's
-rules, architecture and workflow; [PLAN.md](PLAN.md) every request of the author and what each round built.
+rules, architecture and workflow; [PLAN.md](PLAN.md) what was tried and failed, and what is still open.

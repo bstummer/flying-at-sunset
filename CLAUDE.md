@@ -1,15 +1,20 @@
 # Flying at Sunset
 
 Standing instructions for every session in this repo. Read this file fully before changing anything,
-then [PLAN.md](PLAN.md): every request of the author, what each round built and dropped, and what is open.
+then [PLAN.md](PLAN.md): what was tried and failed, and why, and what is still open. §11 says how to
+work a request.
 
 ## 1. Vision
 
 An interactive art piece in the browser, one HTML file: a small folded paper bird gliding over a vast
-sea of clouds at golden hour, steered by the viewer. Not a game: no goals, no score, no menus. A calm,
-beautiful experience, as realistic as possible. **Every frame should look like a photograph taken from
-an airplane window just before sunset.** It should feel peaceful, vast and quietly magical, and it must
-stay smooth, because stuttering breaks the spell.
+sea of clouds at golden hour, steered by the viewer. Not a game: no goals, no score, no menus. A calm
+experience, as realistic as possible.
+
+**Above all, the piece should be as beautiful as possible.** Beauty ranks above features, cleverness
+and coverage: when two approaches compete, take the one that looks better, then make it fit the frame
+budget (§9). **Every frame should look like a photograph taken from an airplane window just before
+sunset.** It should feel peaceful, vast and quietly magical, and it must stay smooth, because
+stuttering breaks the spell.
 
 - **The clouds are the heart of the piece.** An endless sea of soft, billowing cloud stretching to the
   horizon, broken by enormous towers rising far above the bird: full and three-dimensional, with
@@ -29,7 +34,7 @@ stay smooth, because stuttering breaks the spell.
 - **A clean screen**: only a short hint on how to steer (in at ~1.8 s, out at ~10 s or after 3 s of
   steering), and a note only when WebGPU is missing or something fails.
 
-What the author keeps coming back to (every request is in PLAN.md):
+What the author keeps coming back to:
 
 - **Random and irregular, as in nature.** No two clouds alike; no shape, feature or spacing that
   repeats in a way the eye notices; flying around should keep surprising. Disliked: anything that
@@ -47,9 +52,8 @@ What the author keeps coming back to (every request is in PLAN.md):
   blanket, not smooth "sand dunes". Large relief: swells, deep valleys, heaps.
 - Not too much open space around the start. No compact round puffs floating high in the sky, nothing
   that looks broken off.
-- "Don't take this prompt literally, just build what is best for the result!"
 
-The inspiration photos (five, sent with requests 3 and 6; not in this repository, see §2):
+The inspiration photos (five, sent with the author's requests; not in this repository):
 
 1. **Portrait, from an airliner at sunset.** An orange-gold sky with layered stratiform bands above;
    below, a deep sea of lumpy cumulus heaps in mauve and violet shade; near the horizon several towers
@@ -87,10 +91,6 @@ The inspiration photos (five, sent with requests 3 and 6; not in this repository
 - **The world is a function of position and the seed** (`?seed`), endless and never repeating. No
   `Math.random` or `Date` anywhere in `src/`, and no clock in `src/world/` (`npm run check` lints for
   them); the world never depends on the order it is asked for (`npm test`).
-- **Keep the lighting, the colours and the sky as they are** unless the author asks: they asked for it
-  again and again.
-- **The repository is public: never commit the author's inspiration photos** (their rights are
-  unknown; §1 describes them).
 - **WebGPU, core only**: no optional feature is required (`timestamp-query` is used where it exists).
   There is no WebGL fallback: without WebGPU the page says so.
 
@@ -100,7 +100,7 @@ The inspiration photos (five, sent with requests 3 and 6; not in this repository
 |---|---|
 | `npm install` | Installs the dev dependencies (Vite, Playwright) and Playwright's headless Chromium, the only browser the tools use. |
 | `npm run dev` | Vite's dev server: the sources as ES modules, reloading on every edit. |
-| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the shaders' includes, the screenshot tool's arguments and compares, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
+| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the shaders' includes, the screenshot tool's arguments and compares, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
 | `npm run build` | `dist/index.html`. Fails on any other output, or a module from outside `src/`. |
 | `npm run check` | `tools/check-build.js`: one self-contained file within the size budget, and the `src/` lint. |
 | `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
@@ -123,7 +123,7 @@ SwiftShader, which WebGPU has on Linux only), `--profile` (per-pass GPU times in
 compare), `--checks`, `--no-measurements` (stills only: CI's, as the measurements only warn and would
 take most of a run on SwiftShader).
 
-**The benchmark** (`?bench`, `src/benchmark.js`): the piece flies a fixed route from the start (level,
+**The benchmark** (`?bench`, `src/core/benchmark.js`): the piece flies a fixed route from the start (level,
 a long turn, a dive and climb, a weave) as in normal use, measuring each leg, then shows a summary
 (frame times, GPU time, the clouds' resolution, hitches, the GPU, browser and screen) with a button to
 copy it. It is how numbers from real computers and phones reach a session: ask the user to run it on
@@ -146,20 +146,21 @@ images reach the author through CI's `screenshots` artifact, or copied out of th
 
 For every change that can affect pixels:
 
-1. `npm run shot -- --label r11-before` on the current state, before editing (labels of the round: a
-   reused label replaces its capture).
+1. `npm run shot -- --label before` on the current state, before editing (a reused label replaces its
+   capture).
 2. Make the change.
-3. `npm run shot -- --label r11-after`
-4. `node tools/screenshot.js --compare r11-before r11-after`, then **open and look at** the images of the
-   views that changed (`screenshots/compare/r11-before_vs_r11-after/<view>.png`: full size, crops
+3. `npm run shot -- --label after`
+4. `node tools/screenshot.js --compare before after`, then **open and look at** the images of the
+   views that changed (`screenshots/compare/before_vs_after/<view>.png`: full size, crops
    zoomed; the whole sheet is too small to judge a subtle change by), and at the measurements of the
-   views the change touches (`screenshots/r11-after/<view>/`: banding, crops, shimmer, the motion strip).
+   views the change touches (`screenshots/after/<view>/`: banding, crops, shimmer, the motion strip).
 5. **Never claim a visual improvement without looking at the images.** Say what you saw, including what
    got worse. A still can't show motion, the feel of the flight or speed on real hardware: name what you
    couldn't check and leave it to the user.
 
 - Captures are deterministic (the test mode, §7): the same args on the same backend give byte-identical
-  PNGs, so any difference is real, and a refactor must show "identical" on every view.
+  PNGs, so any difference is real, and a refactor must show "identical" on every view. An older
+  commit's look comes back the same way: build it in a git worktree and capture it with the same args.
 - Compare only captures from the **same backend** (WebGPU adapter and Chromium build): a GPU and
   SwiftShader differ everywhere. CI's are SwiftShader's (`npm run verify:ci`: 320×180, 8 frames). On
   Windows and macOS those come from `node tools/linux.js node tools/screenshot.js --gl swiftshader --size
@@ -168,11 +169,11 @@ For every change that can affect pixels:
 - For a lighting or post tunable with a URL parameter (§7), try values before editing: `--query
   "rays=0.24"`, and isolate its pass with `view=` (`--query "view=4&rays=0.24"`).
 - A change that can touch the flight (flight, input, camera, the probe, the world near the bird):
-  `node tools/flights.js --label r11-before` before, `--label r11-after` after, then `--compare`.
+  `node tools/flights.js --label before` before, `--label after` after, then `--compare`.
 - Something new worth watching gets a view in `tools/views.js`, with a `brief`: one line on what the
   shot is for, and `crops` where its detail is. Keep existing views stable so captures stay comparable.
 - The limits (`tools/measure.js`: banded and shimmering share of the frame) only warn; a warning is a
-  question to look at the image, and a change that raises one says why in its round's notes. They are
+  question to look at the image, and a change that raises one says why when it is handed over. They are
   set for the default 960×540: at smaller sizes sunlit rims make `high2` and `anvil` warn (PLAN.md,
   known issues). The measurements move with exposure, glow and the tone curve too: a change in them is
   a question for `shimmer.png` and `banding.png`, not a result.
@@ -190,7 +191,7 @@ For every change that can affect pixels:
   under the trace's ceiling); checks tied to the start run on the piece's seed (7).
 - Invariants are properties, not specific numbers, and each seed's world runs in a worker thread of its
   own (a module graph holds one world).
-- The flight model runs in Node too (`src/flight.js` needs only the world): `tests/flight.test.js` holds
+- The flight model runs in Node too (`src/flight/flight.js` needs only the world): `tests/flight.test.js` holds
   it to its promises (top speed, the floor under the sea, the ceiling, climbs trading speed for height,
   stability at a coarse time step). The flights in the page are `tools/flights.js`'s and the flight
   check's.
@@ -209,15 +210,15 @@ For every change that can affect pixels:
 ```
 index.html            source template: canvas, hint, touch ring, note, the benchmark's panel
 vite.config.js        single-file build to dist/ (the shaders' includes: tools/wgsl.js; __BUILD__, the build id)
-PLAN.md               the author's requests, the rounds, what is open
+PLAN.md               what was tried and failed, and why; what is still open
 src/
-  main.js             the hint, the main loop (frameStep), the test image, device loss, fullscreen, window.__debug, the start
-  params.js           URL parameters (§7)
-  page.js             the page's elements, fail() (the note), COARSE (a touch device)
+  main.js             the start, the main loop (frameStep), the steering hint, a lost device, window.__debug
   math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the render origin, the ceiling
-  presets.js          the test views (?preset, ?pose)
-  benchmark.js        the benchmark (?bench): a route flown while measuring, and its summary
-  flight.js input.js camera.js   the glider (needs only the world), steering, the chase camera
+  core/               the page around the piece: every URL parameter (params.js, §7), its elements, the note,
+                      refused requests and fullscreen (page.js), steering (input.js), the test mode (capture.js),
+                      the readout (readout.js, ?debug), the benchmark (benchmark.js, ?bench)
+  flight/             the glider (flight.js, needs only the world), the chase camera (camera.js), where the bird
+                      starts (presets.js: the test views, ?preset, ?pose)
   world/              the CPU world generator: the air, thermals, cells, shapes, what the GPU and the flight get. No DOM, no GPU
   render/             WebGPU: the device and pipelines (gpu.js), static resources (setup.js), streamed volumes (stream.js),
                       size-dependent targets, the probe, timing, the sun's colours (sun.js), the bird, one frame
@@ -234,7 +235,8 @@ Each module's header says what it does and how; `src/world/air.js` gives the ove
 (`render/gpu.js` awaits the device at its top level), the world (its spawn draw runs as `world/cells.js`
 loads), the shaders and static resources (`render/setup.js` creates every pipeline; they compile in
 parallel and `main.js` waits for them before the first frame), the streamed volumes, the render
-targets, the flight, the test views, the frame. (`npm run dev` runs the modules natively, where those
+targets, the flight, the test views, the frame, then what reads them all: the benchmark, the test
+mode, the readout. (`npm run dev` runs the modules natively, where those
 that don't import `render/gpu.js` can run while it awaits the device; the build waits for it
 everywhere. Verify judges the build.)
 
@@ -246,11 +248,13 @@ The tools rely on these; keep them, or change the tools with them.
   `scale` (0.5), stops after `frames` (24): the last frame is copied out of the canvas texture as a PNG
   data URL in `window.__png`, then `window.__done = true`. No hint, no dynamic resolution, every bake
   job every frame, and each frame waits for the probe of the last, as on a GPU that keeps up: renders
-  are deterministic. An unknown preset, a tower view the world has no place for, or a lost device
-  sets `__error` (the page never reloads). `&live`: input is read as normally (the steering checks).
+  are deterministic (`src/core/capture.js`). A request the page can't serve sets `__error`, which
+  fails the capture: a URL parameter it doesn't know or a value not of its kind (`src/core/params.js`),
+  an unknown preset or route, a tower view the world has no place for; so does a lost device (the page
+  never reloads). `&live`: input is read as normally (the steering checks).
   `&log`: a per-frame flight log in `window.__log` (t, x, alt, z, speed, bank, flight-path angle γ, yaw
   (angles in degrees), sea top, the probe's distance to the cloud at the bird, camera roll, fov).
-  `&script=dive|climb|turn|weave|divedeep|holddive`: scripted input (`src/input.js`). `&freeze`: no
+  `&script=dive|climb|turn|weave|divedeep|holddive`: scripted input (`src/core/capture.js`). `&freeze`: no
   flight. `&preset=...` (the table below), `&pose=x,y,z,yaw,pitch,bank`: where the bird is (metres, the
   height absolute; radians, yaw 0 toward the sun (−Z), pitch the flight-path angle); the chase camera
   sits a few metres behind it, and the flight goes on from there (`tools/world/pose.js` finds a pose
@@ -267,7 +271,8 @@ The tools rely on these; keep them, or change the tools with them.
   once shown), `#hint` (class `on`), `#touch`, `#note`, `#stats`, `#bench`.
 - Only `render/targets.js` opens out-of-memory error scopes (the out-of-memory check counts on it).
 
-URL parameters, for working on the piece:
+URL parameters, for working on the piece (all of them, with their defaults, in `src/core/params.js`'s
+header; outside the test mode one the page can't read is a console warning, and the piece runs on):
 
 | parameter | effect |
 |---|---|
@@ -305,6 +310,10 @@ URL parameters, for working on the piece:
 - Tunables live as named constants next to what they tune, or as numbers in formulas a module header
   states (the world's, in `src/world/`). A number a header quotes is part of the header: change both
   together, and state the formula as the code has it.
+- **URL parameters** are read in `src/core/params.js` alone (`PARAMS`: each with its kind), and a module
+  reads one as `params.x`, null when it is missing, keeping the default next to what it tunes
+  (`params.exp ?? 14.0`). `tests/params.test.js` holds `src/` to reading exactly the names `PARAMS` has.
+  A request the page can't serve goes through `refuse()` (`core/page.js`), never past it in silence.
 - A tool's main runs under a top-level await, so a tool must never reach itself again through its
   imports: it would wait for itself and hang without a word. What two tools share goes in a module
   of its own (`tools/browser.js`, `labels.js`); `tests/layout.test.js` checks.
@@ -314,7 +323,7 @@ URL parameters, for working on the piece:
 Smooth before sharp: dynamic resolution keeps the GPU under 12.5 ms a frame where the browser has
 timestamp queries, else it aims at the display's frame rate by frame times (`render/resolution.js`),
 and detail gives way first. Phones get a lower resolution cap and cloud scale. Real computers and
-phones report through the benchmark (`?bench`, §3); the numbers in hand are in PLAN.md. CI's
+phones report through the benchmark (`?bench`, §3); the numbers in hand are in PLAN.md (known issues). CI's
 SwiftShader timings are only relative. Watch the CPU too: the world generator runs on the main thread
 (PLAN.md, known issues), which the benchmark shows as hitches.
 
@@ -329,5 +338,31 @@ SwiftShader timings are only relative. Watch the CPU too: the world generator ru
 - The before/after `--compare` sheet has been opened and reviewed, and you can say what changed.
 - Something new worth watching has a view in `tools/views.js`.
 - This file is updated if the structure, commands, conventions or contract changed.
-- PLAN.md is updated: the round's request, its notes, and what is still open. Commit and push only when
-  the user asks; pushing to `main` publishes the piece.
+- PLAN.md is updated: an approach that failed goes in its decisions, with why; what is still open in
+  its known issues; what got fixed comes out. Commit and push only when the user asks; pushing to
+  `main` publishes the piece.
+
+## 11. How to work a request
+
+The author directs the work, one request at a time, and reviews the result. You build, measure and
+report, and say plainly what you couldn't judge: you see still images only, so motion, the feel of the
+flight and speed on real hardware are for the author to check.
+
+1. Read this file, then PLAN.md: what failed before, and what is open.
+2. Take a `before` capture (§4) and look at it. Write down what falls short of the request and of the
+   vision (§1).
+3. Build. Change natural causes, not special-case features (§2). One convincing result beats broad,
+   mediocre coverage. For the world, iterate with `tools/world/` (stats, map, preview, catalog: seconds
+   each) before GPU captures.
+4. Finish to §10. If the change can cost GPU time, capture with `--profile` before and after and note
+   the per-pass change.
+5. Review the result harshly before the author does: every view against its brief and against what the
+   author keeps coming back to (§1). List everything that still falls short, including what got worse.
+   A subagent that hasn't seen the code makes a good second pair of eyes.
+6. Hand over: the capture label, the compare images, the known flaws and the frame cost, and what needs
+   the author's eyes (motion, feel, real hardware). Make sure they can open the images (from a cloud
+   session: CI's `screenshots` artifact, or copied out). Once pushed with their OK, a branch's preview
+   is at `https://bstummer.github.io/flying-at-sunset/<branch>/`, `?bench` there to measure it.
+
+Stop and ask when a new dependency looks necessary, when the frame rate can't be held, or when a
+choice is about taste or scope rather than engineering.

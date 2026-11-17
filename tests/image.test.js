@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import { bandedShare, bandingView, createImage, crop, diffImage, flicker, heatImage, shrink, tile, zoom } from '../tools/image.js';
 import { mulberry32 } from '../src/math.js';
 
-// After tropical-island's tests of the same functions.
-
 // A seeded stream of numbers in [0, 1), by name.
 function stream(name) {
   let h = 0;

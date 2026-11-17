@@ -1,11 +1,11 @@
 // Size-dependent render targets: allocated for the canvas size, retried smaller when GPU memory runs out
 
-import { Q, TEST } from '../params.js';
-import { canvas, COARSE } from '../page.js';
+import { params, TEST } from '../core/params.js';
+import { canvas, COARSE } from '../core/page.js';
 import { device, forgetBindGroups, texture } from './gpu.js';
 import { T } from './setup.js';
 
-export const R = { w: 0, h: 0, lowW: 0, lowH: 0, lowMaxW: 0, lowMaxH: 0, scale: TEST ? parseFloat(Q.get('scale') || '0.5') : 0.5, histValid: 0 };
+export const R = { w: 0, h: 0, lowW: 0, lowH: 0, lowMaxW: 0, lowMaxH: 0, scale: TEST ? (params.scale ?? 0.5) : 0.5, histValid: 0 };
 const HALF4 = 'rgba16float';
 export const bloomLevels = [];
 const SIZED = ['cloudCol', 'cloudDepth', 'histA', 'histB', 'scene', 'birdTex', 'birdMS', 'birdDepth', 'rayA', 'rayB'];
@@ -57,7 +57,7 @@ let allocFails = 0;
 export function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
-  if (TEST) { w = parseInt(Q.get('w') || '960'); h = parseInt(Q.get('h') || '540'); }
+  if (TEST) { w = params.w ?? 960; h = params.h ?? 540; }
   if (R.oom) {
     // out of GPU memory (typically on phones): try again smaller
     R.oom = false;

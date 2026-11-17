@@ -1,6 +1,6 @@
 // Pure image analysis for the measurements of tools/measure.js. Images are { width, height, data }
 // with data as RGBA bytes, rows from the top, as tools/png.js decodes them. Tested in
-// tests/image.test.js. (After tropical-island's tools/image.js.)
+// tests/image.test.js.
 
 export function createImage(width, height, [r, g, b] = [0, 0, 0]) {
   const data = new Uint8Array(width * height * 4);

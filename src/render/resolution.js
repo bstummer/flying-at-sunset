@@ -7,7 +7,7 @@
 // 0.1 ms) keep the GPU under 12.5 ms a frame. Without them, a capped rate shows as much cheaper
 // frames coming no faster; the quality ceiling recovers after hitches.
 
-import { TEST } from '../params.js';
+import { TEST } from '../core/params.js';
 import { clamp } from '../math.js';
 import { R } from './targets.js';
 import { CPUPROF, gpuTimer } from './timing.js';

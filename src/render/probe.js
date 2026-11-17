@@ -1,6 +1,6 @@
 // The probe: light and cloud at the bird and around the camera, read back from the GPU
 
-import { TEST } from '../params.js';
+import { TEST } from '../core/params.js';
 import { damp, sat } from '../math.js';
 import { device, enc } from './gpu.js';
 import { T } from './setup.js';

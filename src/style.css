@@ -31,7 +31,7 @@ canvas.on { opacity: 1; }
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center; text-align: center;
   color: #f4ece0; font: 300 16px/1.7 "Avenir Next", "Helvetica Neue", system-ui, sans-serif; letter-spacing: .06em; padding: 0 12vw;
 }
-/* the benchmark's panel (benchmark.js) */
+/* the benchmark's panel (core/benchmark.js) */
 #bench {
   position: fixed; left: 12px; top: 12px; max-width: calc(100vw - 48px); max-height: calc(100vh - 48px); overflow: auto;
   margin: 0; padding: 8px 10px; border-radius: 6px; background: rgba(10, 12, 14, 0.72); color: #fff;

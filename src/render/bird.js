@@ -10,8 +10,8 @@ import { SUN_DIR } from '../constants.js';
 import { bindGroup, device, enc, hooks, texture, uniforms } from './gpu.js';
 import { P, T } from './setup.js';
 import { R } from './targets.js';
-import { bird_, FLIGHT } from '../flight.js';
-import { cam } from '../camera.js';
+import { bird_, FLIGHT } from '../flight/flight.js';
+import { cam } from '../flight/camera.js';
 
 const bird = (() => {
   // An origami crane in flight. Local frame: +X right, +Y up, -Z forward (head). ~1 m wingspan.

@@ -1,4 +1,4 @@
-// The views tools/screenshot.js captures: where the bird starts (the page's ?preset, src/presets.js,
+// The views tools/screenshot.js captures: where the bird starts (the page's ?preset, src/flight/presets.js,
 // or an exact ?pose), and a brief: what the shot is for, which reviews judge it against.
 // `crops`: regions of the still to zoom into (tools/measure.js), { name: [x, y, w, h] } as
 // fractions of the frame from its top left; without them, the middle. `limits`: a view's own

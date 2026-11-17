@@ -16,8 +16,8 @@
 // the old ones wait unsubmitted (queue writes take effect at once). The device is awaited at the
 // top level: without WebGPU the page shows its note and this module throws, which stops the page.
 
-import { TEST } from '../params.js';
-import { canvas, fail } from '../page.js';
+import { TEST } from '../core/params.js';
+import { canvas, fail } from '../core/page.js';
 import { CLOUD_TOP, DETAIL_TILE, SHAPE_TILE } from '../constants.js';
 
 // (without WebGPU the piece cannot run: say why, and stop)

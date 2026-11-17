@@ -6,15 +6,15 @@
 // updateCamera(dt, snap, time, aspect, inCloud) follows bird_ (aspect: the canvas's width over
 // height; inCloud: 0..1, how deep the camera is in cloud, render/probe.js).
 
-import { Q } from './params.js';
-import { add, clamp, cross, damp, DEG, mix3, norm, sat, scl, spring, sub } from './math.js';
+import { params } from '../core/params.js';
+import { add, clamp, cross, damp, DEG, mix3, norm, sat, scl, spring, sub } from '../math.js';
 import { bird_, FLIGHT } from './flight.js';
 
 export const cam = {
   pos: [0, 0, 0], prevPos: [0, 0, 0], offset: null, fwdSmooth: null, roll: 0, fov: 50 * DEG,
   right: [1, 0, 0], up: [0, 1, 0], fwd: [0, 0, -1],
 };
-const CLOSEUP = Q.has('closeup') ? Q.get('closeup').split(',').map(Number) : null;   // (?closeup: a test camera)
+const CLOSEUP = params.closeup;   // (?closeup: a test camera)
 
 export function updateCamera(dt, snap, time, aspect, inCloud) {
   const b = bird_;

@@ -43,8 +43,8 @@ jobs:
     # (The browser doesn't depend on it: every release gets the same Chromium build.)
     runs-on: ubuntu-24.04
     # SwiftShader draws every pixel on the CPU, and each view's first frame bakes the world.
-    # (After the first green runs: about twice what verify takes.)
-    timeout-minutes: 60
+    # About twice what verify takes (14 minutes in November 2026), and room for the uploads.
+    timeout-minutes: 40
     permissions:
       contents: read
     steps:
@@ -65,7 +65,7 @@ jobs:
       # Every check that can fail still runs. The step's own limit, under the job's, keeps the
       # uploads below running when it is too slow: a timed-out step is a failed one.
       - run: npm run verify:ci
-        timeout-minutes: 50
+        timeout-minutes: 30
 
       # Screenshots for review: a run that failed or timed out keeps them all for two weeks,
       # to see why; one that passed keeps the views, the contact sheet, info.json and what the

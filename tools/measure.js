@@ -9,8 +9,8 @@
 //   motion.png        the flight on from the still, a quarter of a second a frame, left to right,
 //                     top to bottom: what a still can't show
 //
-// The numbers go to info.json, with a warning above LIMITS (they warn, they don't fail). After
-// tropical-island's tools/measure.js; the analysis is in tools/image.js.
+// The numbers go to info.json, with a warning above LIMITS (they warn, they don't fail). The
+// analysis is in tools/image.js.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { bandedShare, bandingView, crop, flicker, heatImage, shrink, tile, zoom } from './image.js';

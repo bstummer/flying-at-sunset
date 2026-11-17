@@ -4,7 +4,7 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 import { checkModules, checkOutputFiles } from './tools/check-build.js';
 import { wgslPlugin } from './tools/wgsl.js';
 
-// The commit the piece is built from, shown in the benchmark's summary (src/benchmark.js), so
+// The commit the piece is built from, shown in the benchmark's summary (src/core/benchmark.js), so
 // numbers from other machines name their build.
 function buildId() {
   const git = (...args) => execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();

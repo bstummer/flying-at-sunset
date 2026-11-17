@@ -16,7 +16,7 @@
 //   final pass (exposure, tone curve, split tone, vignette, grain; the image turned the right way up);
 // then the frame's commands are submitted (flush), and the probe and the timestamps mapped.
 
-import { CONTRAST, DBG_MODE, HAZE_K, Q, TEST, TONEMAP, VIEW } from '../params.js';
+import { params, TEST } from '../core/params.js';
 import { dot, fmod, halton, mat4Mul, perspective, PI, scl, smoothstep, sub, viewFromBasis } from '../math.js';
 import { DETAIL_TILE, SHAPE_TILE, SUN_DIR, WIND } from '../constants.js';
 import { clearPass, context, flush, pass } from './gpu.js';
@@ -25,8 +25,8 @@ import { layerColUniform, P, sunColUniform, T } from './setup.js';
 import { originOf, streamWorld, worldUniforms } from './stream.js';
 import { bloomLevels, R } from './targets.js';
 import { inCloud, mapProbe, readProbeAsync } from './probe.js';
-import { bird_ } from '../flight.js';
-import { cam } from '../camera.js';
+import { bird_ } from '../flight/flight.js';
+import { cam } from '../flight/camera.js';
 import { gpuTimer, tBegin, tEnd } from './timing.js';
 import { renderBird } from './bird.js';
 
@@ -149,7 +149,7 @@ export function render(time) {
   const out = { view: context.getCurrentTexture().createView(), w, h };
   pass(P.final, [out], {
     tScene: T.scene, tBird: T.birdTex, tBloom: bloomLevels[0], tRays: T.rayA, birdBox,
-    exposure: exposure * (1.0 + 0.45 * inCloud), bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
+    exposure: EXPOSURE * (1.0 + 0.45 * inCloud), bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
   });
   tEnd();
   if (gpuTimer) gpuTimer.resolve();
@@ -164,9 +164,13 @@ export function render(time) {
 let capture = null;
 export function captureNext(fn) { capture = fn; }
 
-let exposure = Q.has('exp') ? parseFloat(Q.get('exp')) : 14.0;
-const RAYS_K = Q.has('rays') ? parseFloat(Q.get('rays')) : 0.18;
-const BLOOM_UP_W = Q.has('bloomw') ? parseFloat(Q.get('bloomw')) : 0.6;                                         // weight of each coarser bloom level
+// The look, each tunable with its URL parameter for trying values (core/params.js)
+const EXPOSURE = params.exp ?? 14.0;
+const TONEMAP = params.tm ?? 1, CONTRAST = params.con ?? 1.0;
+const VIEW = params.view ?? 0, DBG_MODE = params.dbg ?? 0;   // what goes into the final image (1..5), the cloud debug views (1..7)
+const HAZE_K = params.haze ?? 2.8e-5;
+const RAYS_K = params.rays ?? 0.18;
+const BLOOM_UP_W = params.bloomw ?? 0.6;                              // weight of each coarser bloom level
 const BLOOM_NORM = (1 - Math.pow(BLOOM_UP_W, 7)) / (1 - BLOOM_UP_W); // total weight of the 7-level chain
-const BLOOM_MIX = Q.has('bloom') ? parseFloat(Q.get('bloom')) : 0.09;
-const BLOOM_CLAMP = Q.has('bclamp') ? parseFloat(Q.get('bclamp')) : 3000;
+const BLOOM_MIX = params.bloom ?? 0.09;
+const BLOOM_CLAMP = params.bclamp ?? 3000;

@@ -1,43 +1,38 @@
 // =====================================================================================
-//  Paper Bird — a folded paper bird gliding over a sea of clouds at golden hour.
+//  Flying at Sunset — a folded paper bird gliding over a sea of clouds at golden hour.
 //  Everything is procedural: physically based sky, raymarched volumetric clouds with
 //  temporal upsampling, an origami bird with translucent paper, and a gentle glider.
 // =====================================================================================
+// The start, the main loop (frameStep), the steering hint, a lost device, window.__debug. The
+// imports run in the order things are set up (CLAUDE.md §6).
 
-import { BENCH, DEBUG, Q, TEST } from './params.js';
-import { canvas, COARSE, fail, hintEl } from './page.js';
-import { DEG } from './math.js';
-import { device, enc, gpuState, pipelinesReady, readTexture } from './render/gpu.js';
+import { BENCH, params, TEST } from './core/params.js';
+import { canvas, COARSE, fail, hintEl, refuse } from './core/page.js';
+import { device, gpuState, pipelinesReady, readTexture } from './render/gpu.js';
 import { cloudTopAt, seaTopAt, towersNear } from './world/queries.js';
 import { generateStatic, T } from './render/setup.js';
-import { bakeQueue, LEVELS, TSVL, worldStats } from './render/stream.js';
+import { LEVELS, TSVL, worldStats } from './render/stream.js';
 import { R, resize } from './render/targets.js';
 import { inCloud, probeBusy, probeData, updateInCloud } from './render/probe.js';
-import { bird_, updateFlight } from './flight.js';
-import { input, updateInput } from './input.js';
-import { cam, updateCamera } from './camera.js';
-import './presets.js';
-import { gpuTimer } from './render/timing.js';
-import { captureNext, frame, render } from './render/frame.js';
+import { bird_, updateFlight } from './flight/flight.js';
+import { input, updateInput } from './core/input.js';
+import { cam, updateCamera } from './flight/camera.js';
+import './flight/presets.js';
+import { frame, render } from './render/frame.js';
 import { adaptResolution, DR } from './render/resolution.js';
-import { updateBenchmark } from './benchmark.js';
+import { updateBenchmark } from './core/benchmark.js';
+import { afterFrame, beforeFrame } from './core/capture.js';
+import { updateReadout } from './core/readout.js';
+
+for (const why of params.errors) refuse(why);
 
 // ---- hint & main loop
 hintEl.innerHTML = COARSE ? 'Touch and drag to steer<small>dive to gather speed · climb to soar</small>'
   : 'Move the mouse to steer<small>dive to gather speed · climb to soar · arrow keys work too</small>';
-let hintShown = false, hintHidden = false;
+let hintAt = -1, hintHidden = false;   // hintAt: when the hint came in
 
-let last = -1, clock = 0, fps = 0, fpsAcc = 0, fpsN = 0;
-const statsEl = DEBUG && !TEST ? document.createElement('div') : null;
-if (statsEl) { statsEl.id = 'stats'; document.body.appendChild(statsEl); }
-const FIXED_DT = TEST ? parseFloat(Q.get('dt') || '0.0166') : 0;
-const TEST_FRAMES = parseInt(Q.get('frames') || '24', 10);
-const FREEZE = Q.has('freeze');
-// tests hand over ?keep frames (default 1), ?every frames apart (default 1), from the `frames`th on
-const KEEP = TEST ? Math.max(1, parseInt(Q.get('keep') || '1', 10)) : 1;
-const EVERY = TEST ? Math.max(1, parseInt(Q.get('every') || '1', 10)) : 1;
-const LAST = TEST_FRAMES - 1 + (KEEP - 1) * EVERY;   // the index of the last frame rendered
-
+let last = -1, clock = 0;
+const FIXED_DT = params.dt ?? 0.0166;   // (the test mode's time step)
 let startWall = -1, stopped = false;   // startWall: when the canvas faded in (the hint's clock)
 function loop(now) {
   if (stopped || window.__done) return;
@@ -59,67 +54,25 @@ function frameStep(now) {
   clock += dt;
   if (!resize()) return;   // GPU memory ran out: retrying smaller next frame
   updateInput(dt, clock);
-  updateFlight(bird_, FREEZE ? 0 : dt, clock, input, probeData);
+  updateFlight(bird_, params.freeze ? 0 : dt, clock, input, probeData);
   updateCamera(dt, frame === 0, clock, R.w / R.h, inCloud);
   updateInCloud(dt);
-  const kept = frame - (TEST_FRAMES - 1);
-  if (TEST && kept >= 0 && kept % EVERY === 0 && kept / EVERY < KEEP) captureNext(captureImage);
+  if (TEST) beforeFrame();
   render(clock);
   if (frame === 2 && startWall < 0) { canvas.classList.add('on'); startWall = now; }
-  // hint (wall-clock timing so it behaves the same at any frame rate, from when the bird shows:
-  // the first frame bakes the world, which on a slow device takes longer than the hint lasts)
+  // hint, by the wall clock so it behaves the same at any frame rate: in 1.8 s after the bird
+  // shows, out 8.2 s after it came in, or once the visitor has steered a while. Each clock starts
+  // at what the visitor saw: the first frames bake the world, and on a slow device one of them
+  // can take longer than the hint lasts.
   if (!TEST && !BENCH && startWall >= 0) {
-    const wall = (now - startWall) * 0.001;
-    if (!hintShown && wall > 1.8) { hintEl.classList.add('on'); hintShown = true; }
-    if (hintShown && !hintHidden && (wall > 10 || input.activeTime > 3.2)) { hintEl.classList.remove('on'); hintHidden = true; }
+    if (hintAt < 0 && now - startWall > 1800) { hintEl.classList.add('on'); hintAt = now; }
+    if (hintAt >= 0 && !hintHidden && (now - hintAt > 8200 || input.activeTime > 3.2)) { hintEl.classList.remove('on'); hintHidden = true; }
   }
   if (frame > 3) adaptResolution(dtMs);
   if (BENCH) updateBenchmark(dtMs);
-  fpsAcc += dtMs; fpsN++;
-  if (fpsN >= 30) {
-    fps = 1000 / (fpsAcc / fpsN); fpsAcc = 0; fpsN = 0;
-    if (statsEl) {
-      const g = gpuTimer ? Object.entries(gpuTimer.ms).map(([k, v]) => `${k} ${v.toFixed(2)}`).join('  ') + `  = ${gpuTimer.total().toFixed(2)} ms` : 'no gpu timer';
-      statsEl.textContent = `${fps.toFixed(1)} fps  ${R.w}x${R.h}  clouds ${R.lowW}x${R.lowH} (${R.scale.toFixed(2)})\n${g}\nalt ${bird_.pos[1].toFixed(0)} m  speed ${bird_.speed.toFixed(0)} m/s  sea ${seaTopAt(bird_.pos[0], bird_.pos[2]).toFixed(0)}  world jobs ${worldStats.jobs} queued ${bakeQueue.length}`;
-    }
-  }
+  updateReadout(dtMs);
   window.__frame = frame;
-  if (TEST && Q.has('log')) {
-    (window.__log = window.__log || []).push([+clock.toFixed(3), +bird_.pos[0].toFixed(1), +bird_.pos[1].toFixed(1), +bird_.pos[2].toFixed(1),
-      +bird_.speed.toFixed(2), +(bird_.bank / DEG).toFixed(1), +(bird_.gamma / DEG).toFixed(2), +(bird_.yaw / DEG).toFixed(1),
-      +seaTopAt(bird_.pos[0], bird_.pos[2]).toFixed(0), probeData ? +probeData[2].toFixed(0) : null, +(cam.roll / DEG).toFixed(1), +(cam.fov / DEG).toFixed(1)]);
-  }
-  if (TEST && frame > LAST) stopped = true;
-}
-// tests: the frames handed over as PNG data URLs (window.__frames; the first also as window.__png),
-// then window.__done once the GPU is done. (Encoded after the frame's last pass; the returned
-// function runs once the frame is submitted.)
-const handed = [];
-function captureImage(tex) {
-  captureNext(null);
-  const n = handed.push(null) - 1;
-  const w = tex.width, h = tex.height, row = Math.ceil(w * 4 / 256) * 256;
-  const buf = device.createBuffer({ size: row * h, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-  enc().copyTextureToBuffer({ texture: tex }, { buffer: buf, bytesPerRow: row }, [w, h]);
-  return () => buf.mapAsync(GPUMapMode.READ).then(async () => {
-    const src = new Uint8Array(buf.getMappedRange()), px = new Uint8ClampedArray(w * h * 4);
-    const bgra = tex.format.startsWith('bgra');
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const i = y * row + x * 4, o = (y * w + x) * 4;
-      px[o] = src[i + (bgra ? 2 : 0)]; px[o + 1] = src[i + 1]; px[o + 2] = src[i + (bgra ? 0 : 2)]; px[o + 3] = 255;
-    }
-    buf.unmap();
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    c.getContext('2d').putImageData(new ImageData(px, w, h), 0, 0);
-    handed[n] = c.toDataURL('image/png');
-    if (handed.length < KEEP || handed.includes(null)) return;
-    window.__frames = handed;
-    window.__png = handed[0];
-    if (gpuTimer) await gpuTimer.settled();
-    await device.queue.onSubmittedWorkDone();
-    window.__done = true;
-  }, e => { window.__error = 'capture failed: ' + e.message; });
+  if (TEST && afterFrame(clock)) stopped = true;
 }
 
 // GPU reset (driver update, sleep): rebuild everything by reloading, once a GPU is there again.
@@ -132,17 +85,7 @@ device.lost.then(async info => {
   const a = navigator.gpu && performance.now() > 10000 ? await navigator.gpu.requestAdapter().catch(() => null) : null;
   if (a) location.reload(); else fail('The graphics device stopped working. Please reload the page.');
 });
-// quiet extras: double-click or F toggles fullscreen
-function toggleFullscreen() {
-  const d = document;
-  if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
-  else { const el = d.documentElement; const req = el.requestFullscreen || el.webkitRequestFullscreen; if (req) { const pr = req.call(el); if (pr && pr.catch) pr.catch(() => {}); } }
-}
-canvas.addEventListener('dblclick', toggleFullscreen);
-window.addEventListener('keydown', e => { if (e.code === 'KeyF' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) toggleFullscreen(); });
 document.addEventListener('visibilitychange', () => { last = -1; });
-// Boot: the shaders compile in parallel without blocking the page; then generate the static
-// data and start flying.
 window.__debug = {
   bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, worldStats, device, T, readTexture,
   probe: async () => {
@@ -154,6 +97,8 @@ window.__debug = {
 addEventListener('unhandledrejection', e => {
   if (!gpuState.lost && !window.__error) fail('Something went wrong — ' + (e.reason && e.reason.message || e.reason));
 });
+// The start: the shaders compile in parallel without blocking the page; then generate the static
+// data and start flying.
 try { await pipelinesReady(); } catch (e) { fail('Shader error — ' + e.message); throw e; }
 try { generateStatic(); } catch (e) { fail('Something went wrong while starting — ' + (e && e.message || e)); throw e; }
 requestAnimationFrame(loop);

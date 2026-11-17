@@ -1,17 +1,17 @@
-// Steering: mouse, touch, keys, gamepad (and the scripted input of the test mode)
+// Steering: mouse, touch, keys, gamepad, or a route
 //
 // Mouse: the pointer's offset from the centre, with a dead zone and shaping. Touch: the drag from
 // where the finger landed, shown by a ring. Keys: arrows and WASD (Cmd/Ctrl/Alt combinations are
 // shortcuts, not steering; releasing Meta clears held keys, as macOS drops their key-ups). Gamepad:
-// the left stick. The pointer leaving the window levels the bird out.
+// the left stick. The pointer leaving the window levels the bird out. A route (input.script) steers
+// instead of all of them: the benchmark's (core/benchmark.js), the test mode's (core/capture.js).
 
-import { Q, TEST } from './params.js';
 import { canvas, touchEl } from './page.js';
-import { damp } from './math.js';
+import { damp } from '../math.js';
 
 export const input = {
   mouse: null, touch: null, keys: new Set(), sx: 0, sy: 0, activeTime: 0,
-  script: null,   // (time) => [right, up]: a route that steers instead of the viewer (the benchmark)
+  script: null,   // (time) => [right, up] in -1..1: a route that steers instead of the viewer
 };
 
 function shaping(v, dead) {
@@ -87,18 +87,7 @@ export function updateInput(dt, time) {
     const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     if (Math.hypot(ax, ay) > 0.15) { tx = shaping(ax, 0.12); ty = -shaping(ay, 0.12); kind = 'pad'; }
   }
-  // the benchmark's flight (benchmark.js) steers instead of the viewer
   if (input.script) { [tx, ty] = input.script(time); kind = 'script'; }
-  if (TEST && !Q.has('live')) {
-    tx = 0; ty = 0;
-    const sc = Q.get('script'), t = time;
-    if (sc === 'dive') { ty = t > 1 && t < 9 ? -1 : 0; }
-    else if (sc === 'climb') { ty = t > 1 && t < 12 ? 1 : 0; }
-    else if (sc === 'turn') { tx = t > 1 && t < 12 ? 1 : 0; }
-    else if (sc === 'divedeep') { ty = t > 0.5 ? -1 : 0; }
-    else if (sc === 'holddive') { ty = -1; }
-    else if (sc === 'weave') { tx = Math.sin(t * 0.7); ty = 0.4 * Math.sin(t * 0.45); }
-  }
   // smooth: keys ramp in gently; analog inputs follow a little faster
   const k = kind === 'keys' ? 2.6 : 5.5;
   input.sx = damp(input.sx, tx, k, dt);

@@ -1,6 +1,6 @@
 // Pipelines, static textures, and the one-off generation of the static data
 
-import { DBG_MODE } from '../params.js';
+import { params } from '../core/params.js';
 import { DETAIL_N, SHAPE_N } from '../constants.js';
 import { CANVAS_FORMAT, flush, mipLevel, pass, pipeline, slices, texture, RENDER } from './gpu.js';
 import { sunColorAt, sunColTable } from './sun.js';
@@ -31,7 +31,7 @@ export const P = {
   mip: pipeline('mip', { fs: FS_MIP, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
   tsv: pipeline('tsv', { fs: FS_TSV, uniforms: U_TSV, targets: Array(NOUT).fill('r16float') }),
   bake: pipeline('bake', { fs: FS_BAKE, uniforms: U_BAKE, targets: Array(NOUT).fill('r16float') }),
-  trace: pipeline('trace', { fs: FS_TRACE, constants: { DBG: DBG_MODE ? 1 : 0 }, uniforms: U_TRACE, targets: [F16, 'r16float'] }),
+  trace: pipeline('trace', { fs: FS_TRACE, constants: { DBG: params.dbg ? 1 : 0 }, uniforms: U_TRACE, targets: [F16, 'r16float'] }),
   taau: pipeline('taau', { fs: FS_TAAU, uniforms: U_TAAU, targets: [F16, F16] }),
   probe: pipeline('probe', { fs: FS_PROBE, uniforms: U_PROBE, targets: ['rgba32float'] }),
   bird: pipeline('bird', {

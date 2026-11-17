@@ -33,7 +33,7 @@ export const CHECKS = [
   { name: 'volumes', what: 'the baked world volumes: no NaNs, no cloud cut off at a volume\'s ceiling, sound column maps', run: checkVolumes },
   { name: 'pointer-and-keys', what: 'the pointer leaving levels out; Cmd/Ctrl shortcuts don\'t steer; Meta clears held keys', run: checkPointerAndKeys },
   { name: 'errors', what: 'the tools hear what nothing on screen shows: a WebGPU validation error, a lost device', run: checkErrors },
-  { name: 'player', what: 'as a visitor sees it: the canvas fades in, the steering hint comes and goes, on a desktop, a phone, and with ?debug', run: checkPlayer, alone: true },
+  { name: 'player', what: 'as a visitor sees it: the canvas fades in, the steering hint comes and goes, on a desktop, a phone, with ?debug and after a 12 s frame', run: checkPlayer, alone: true },
   { name: 'benchmark', what: '?bench flies its route, measures every leg and ends with a summary to paste', run: checkBenchmark, alone: true },
 ];
 
@@ -96,10 +96,23 @@ async function checkPlayer(browser, { fail, note, problems }) {
     { label: 'desktop', options: { viewport: { width: 640, height: 360 } }, params: {}, hint: /^Move the mouse to steer/ },
     { label: 'desktop ?debug', options: { viewport: { width: 640, height: 360 } }, params: { debug: '' }, hint: /^Move the mouse to steer/, stats: true },
     { label: 'phone', options: { viewport: { width: 300, height: 600 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 }, params: {}, hint: /^Touch and drag to steer/ },
+    // a slow device (as SwiftShader on CI): the frames after the bird shows take long, here one 12 s
+    { label: 'a 12 s frame', options: { viewport: { width: 640, height: 360 } }, params: {}, hint: /^Move the mouse to steer/, stall: 12 },
   ];
   for (const v of variants) {
     const { page, done } = await openPage(browser, problems, v.options);
     try {
+      if (v.stall) {
+        await page.addInitScript((seconds) => addEventListener('DOMContentLoaded', () => {
+          const view = document.getElementById('view');
+          const once = new MutationObserver(() => {
+            if (!view.classList.contains('on')) return;
+            once.disconnect();
+            for (const end = performance.now() + seconds * 1000; performance.now() < end;);
+          });
+          once.observe(view, { attributes: true, attributeFilter: ['class'] });
+        }), v.stall);
+      }
       // Every class change of the hint and the canvas, timed in the page (src/main.js times the
       // hint by the wall clock), with the class it changed to: the class when the observer runs
       // would hide an "on" and an "off" within one frame.
@@ -116,7 +129,7 @@ async function checkPlayer(browser, { fail, note, problems }) {
         });
       });
       await page.goto(pageUrl(v.params));
-      // until the hint has come and gone (1.8 s and 10 s after the canvas faded in), and with
+      // until the hint has come and gone (1.8 s after the canvas faded in, for 8.2 s), and with
       // ?debug the overlay shows its numbers (after 30 frames)
       await until(page, (stats) => window.__error
         || (window.__ui.filter((e) => e[1] === 'hint').length >= 2 && (!stats || /fps/.test(document.getElementById('stats')?.textContent ?? ''))), Boolean(v.stats));

@@ -3,10 +3,10 @@
 // of each pass (the last one stays); a group without passes this frame (the world, mostly) took
 // no GPU time. ?cpuprof sums the times over a test run (tools/screenshot.js --profile).
 
-import { Q } from '../params.js';
+import { params } from '../core/params.js';
 import { device, enc, hooks, TIMESTAMPS } from './gpu.js';
 
-export const CPUPROF = Q.has('cpuprof');
+export const CPUPROF = params.cpuprof;
 export const gpuTimer = TIMESTAMPS ? (() => {
   const N = 32;
   const querySet = device.createQuerySet({ type: 'timestamp', count: N });

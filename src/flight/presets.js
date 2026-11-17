@@ -4,15 +4,16 @@
 // inside under (anvil: a tower that reached its ceiling and spread wide). Looked for only when a
 // preset is asked for: the search takes seconds.
 
-import { Q, TEST } from './params.js';
-import { lerp, PI } from './math.js';
-import { SUN_DIR } from './constants.js';
-import { forEachSys } from './world/cells.js';
-import { cloudTopAt, seaTopAt, towerDistAt, towersNear } from './world/queries.js';
+import { params } from '../core/params.js';
+import { refuse } from '../core/page.js';
+import { lerp, PI } from '../math.js';
+import { SUN_DIR } from '../constants.js';
+import { forEachSys } from '../world/cells.js';
+import { cloudTopAt, seaTopAt, towerDistAt, towersNear } from '../world/queries.js';
 import { bird_ } from './flight.js';
 
 function readPreset() {
-  const pre = Q.get('preset');
+  const pre = params.preset;
   if (!pre) return;     // (the test views look for towers far around: only when one is asked for)
   const sea0 = seaTopAt(0, 0);
   const presets = {
@@ -94,20 +95,17 @@ function readPreset() {
     }
     if (found) { presets.under = found; break; }
   }
+  // (a test capture would pass with the start in its place: refusing fails it; only the table's
+  // own entries, not what every object inherits, such as "constructor")
+  const towers = ['tower', 'giant', 'anvil', 'close', 'approach', 'inside', 'under'];
+  if (!Object.hasOwn(presets, pre)) return refuse(towers.includes(pre) ? `this world has no place for the preset "${pre}"` : `no preset "${pre}"`);
   const p = presets[pre];
-  if (!p) {
-    // (a test capture would pass with the start in its place: fail it)
-    const towers = ['tower', 'giant', 'anvil', 'close', 'approach', 'inside', 'under'];
-    const why = towers.includes(pre) ? `this world has no place for the preset "${pre}"` : `no preset "${pre}"`;
-    if (TEST) window.__error = why; else console.warn(why);
-    return;
-  }
   bird_.pos = [p.x || 0, p.y, p.z || 0];
   bird_.yaw = p.yaw; bird_.gamma = p.gamma; bird_.bank = p.bank || 0;
   if (p.speed) bird_.speed = p.speed;
 }
 readPreset();
-if (Q.has('pose')) {
-  const v = Q.get('pose').split(',').map(Number);
+if (params.pose) {
+  const v = params.pose;
   bird_.pos = [v[0], v[1], v[2]]; bird_.yaw = v[3] || 0; bird_.gamma = v[4] || 0; bird_.bank = v[5] || 0;
 }

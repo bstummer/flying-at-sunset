@@ -8,12 +8,12 @@
 // sea's floor and the towers can be flown through. Ceiling 11.5 km.
 //
 // updateFlight(b, dt, time, steer, probe) moves the bird b by dt seconds: steer { sx, sy } in
-// -1..1 (input.js), probe the GPU's last readback at the bird (render/probe.js: σ at the camera,
+// -1..1 (core/input.js), probe the GPU's last readback at the bird (render/probe.js: σ at the camera,
 // σ at the bird, distance to the cloud, sea top, distance to the sea's billows) or null. It needs
 // only the world (seaTopAt): tests/flight.test.js flies it in Node.
 
-import { add, clamp, cross, damp, DEG, lerp, norm, sat, scl, smoothstep, spring, sub } from './math.js';
-import { seaTopAt } from './world/queries.js';
+import { add, clamp, cross, damp, DEG, lerp, norm, sat, scl, smoothstep, spring, sub } from '../math.js';
+import { seaTopAt } from '../world/queries.js';
 
 export const FLIGHT = { vCruise: 64, vStall: 31, vMax: 185, g: 11.5, gTurn: 16.5, maxBank: 56 * DEG, maxClimb: 30 * DEG, maxDive: 42 * DEG };
 // the bird at the start (presets.js and ?pose move it)
