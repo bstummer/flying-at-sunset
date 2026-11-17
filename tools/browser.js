@@ -1,16 +1,12 @@
-// Headless Chromium for the tools (tools/screenshot.js, tools/checks.js): launching it with a
-// WebGPU adapter, opening the built page, watching it for errors, and the page's test mode.
-//
-// The adapter: hardware (the machine's GPU) or swiftshader (Chromium's software GPU, which CI
-// uses; WebGPU has it on Linux only: on Windows and macOS, run the tool in a Linux container with
-// node tools/linux.js); auto takes the hardware and falls back to SwiftShader.
-//
-// The test mode (?test, CLAUDE.md §7) renders a fixed number of frames at a fixed time step and
-// then hands the last frame over as a PNG: window.__png, then window.__done (or window.__error).
-//
-// Nothing a page does can hang a tool: a page that draws no frame for STALL_MS fails (until), and
-// one not done in its time is closed (watchdog: a page whose main thread hangs answers nothing,
-// and Playwright's own timeouts don't fire then). A crash, a lost device or no image is a problem.
+// Headless Chromium for the tools (screenshot.js, checks.js, flights.js): launch() with a WebGPU
+// adapter (hardware: the machine's GPU; swiftshader: Chromium's software GPU, CI's, on Linux only,
+// elsewhere through node tools/linux.js; auto: the hardware, else SwiftShader), the built page
+// (assertFreshBuild refuses a build older than its sources), watchPage() for problems (console,
+// page and WebGPU errors, a lost device, any network request), testRender(): the page's test mode
+// (CLAUDE.md §7) to its last frame, a PNG, and pool(): jobs n at a time.
+// Nothing a page does can hang a tool: one that draws no frame for STALL_MS fails (until), and one
+// not done in its time is closed (watchdog: while a page's main thread hangs it answers nothing,
+// and Playwright's own timeouts don't fire).
 import { chromium } from 'playwright';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';

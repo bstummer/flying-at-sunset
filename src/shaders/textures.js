@@ -1,8 +1,12 @@
-// Static textures, generated once: noise volumes (cloud shapes, detail), cirrus, the two high layers
+// Static textures, generated once (render/setup.js): the noise volumes (the cloud shapes: signed
+// distances to random spheres on four lattices; the detail: Worley and Perlin noise), the cirrus
+// and the two high layers (tileable value-noise fbm, chunks/vnoise.wgsl), the layers with mip levels
 
-
-export const U_NOISE3D = { z: 'f32', size: 'f32', mode: 'i32', cells: 'vec4f' };
-export { default as FS_NOISE3D } from './noise3d.wgsl';
+// the noise volumes, each written whole by one compute dispatch (cells: lattice cells per tile of
+// each channel)
+export const U_NOISE3D = { size: 'f32', cells: 'vec4f' };
+export { default as CS_SHAPE } from './noise-shape.wgsl';
+export { default as CS_DETAIL } from './noise-detail.wgsl';
 
 export const U_SIZE = { size: 'f32' };
 export { default as FS_CIRRUS } from './cirrus.wgsl';

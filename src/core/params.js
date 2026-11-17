@@ -1,25 +1,26 @@
-// URL parameters: every one the page reads, read here and nowhere else (CLAUDE.md §7).
+// URL parameters: every one the page reads, read here and nowhere else (CLAUDE.md §7)
 //
-// parseParams(search) is pure, for tests/params.test.js; `params` holds the page's own. A switch is
-// true when it is there at all (?test, ?test=); any other parameter is null when it is missing or
-// blank, and the module that reads it keeps its default (next to what it tunes, as below). A value
-// that isn't of its kind (?seed=abc, ?frames=0) or a name the page doesn't know (?preest=tower) is
-// left out and named in `params.errors`: main.js refuses the request (core/page.js), which in the
-// test mode fails the capture, so a typo can't render something else in silence.
+// parseParams(search) is pure (tests/params.test.js); `params` holds the page's own. A switch is
+// true when it is there at all (?test, ?test=); any other parameter is null when missing or blank,
+// and the module that reads it keeps its default next to what it tunes. A value not of its kind
+// (?seed=abc, ?frames=0) or a name the page doesn't know (?preest=tower) is left out and named in
+// `params.errors`, which main.js refuses (core/page.js): in the test mode that fails the capture, so
+// a typo can't render something else in silence.
 //
-//   modes      test (the test mode, core/capture.js), bench (the benchmark, not with test:
-//              core/benchmark.js), debug (the readout, not with test: core/readout.js)
+// Every parameter, its default, and the module that reads it:
+//   modes      test (core/capture.js); bench (core/benchmark.js) and debug (core/readout.js), both
+//              off in the test mode
 //   the world  seed (7: world/noise.js), towers (1: the density of convective cells, world/cells.js)
-//   the bird   preset (a test view: where the bird starts) and pose (x,y,z[,yaw,pitch,bank]): both
+//   the bird   preset (a test view), pose (x,y,z[,yaw,pitch,bank]): where it starts,
 //              flight/presets.js
-//   the look   view (0: what goes into the final image, 1..5), dbg (0: the cloud debug views,
-//              1..7: render/setup.js), tm (1: the tone curve, 0 the other), con (1: contrast), haze
-//              (2.8e-5), exp (14: exposure), rays (0.18), bloom (0.09), bloomw (0.6), bclamp (3000):
-//              render/frame.js
+//   the look   view (0; 1..5: what goes into the final image), dbg (0; 1..7: the cloud debug views,
+//              also render/setup.js), tm (1: hue-preserving filmic, 0: ACES), con (1: contrast), haze
+//              (2.8e-5), exp (14: exposure), rays (0.18), bloom (0.09), bloomw (0.6: each coarser
+//              level's weight), bclamp (3000): render/frame.js
 //   benchmark  benchSeconds (8), benchWarmup (2): core/benchmark.js
-//   test mode  dt (0.0166), frames (24), keep (1), every (1), freeze, log, live, script: main.js and
+//   test mode  dt (0.0166), freeze: main.js; frames (24), keep (1), every (1), log, live, script:
 //              core/capture.js; w (960), h (540), scale (0.5): render/targets.js; closeup
-//              (right,up,forward: flight/camera.js); cpuprof (render/timing.js)
+//              (right,up,forward): flight/camera.js; cpuprof: render/timing.js
 
 const flag = { flag: true };
 const text = { read: (raw) => raw, kind: 'text' };
@@ -69,6 +70,9 @@ export function parseParams(search) {
   return out;
 }
 
-// (Node has no location: there the tools set one, tools/world/load.js, or every value is missing.)
-export const params = parseParams(globalThis.location?.search ?? '');
+// (Node has no location: there the tools set one, tools/world/load.js, or every value is missing.
+// The world's worker has one, its blob: URL, without the page's query: the page hands the query over
+// as the worker's name, which it has before its first module runs: core/world.js.)
+const search = globalThis.WorkerGlobalScope ? globalThis.name : globalThis.location?.search;
+export const params = parseParams(search ?? '');
 export const TEST = params.test, BENCH = params.bench;

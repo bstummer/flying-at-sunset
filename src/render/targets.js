@@ -1,4 +1,8 @@
-// Size-dependent render targets: allocated for the canvas size, retried smaller when GPU memory runs out
+// The size-dependent render targets, and resize(): the canvas in device pixels (at most 2 per CSS
+// pixel and R.maxPixels in all: 2.3 Mpx, 1.15 Mpx on touch devices; ?w × ?h in the test mode). R
+// holds the sizes and the clouds' scale. Running out of GPU memory shows in an error scope after
+// the fact: the next frame makes the targets again, smaller. Other modules' targets go in the same
+// scope (sizedTargets: render/bird.js's).
 
 import { params, TEST } from '../core/params.js';
 import { canvas, COARSE } from '../core/page.js';
@@ -8,7 +12,11 @@ import { T } from './setup.js';
 export const R = { w: 0, h: 0, lowW: 0, lowH: 0, lowMaxW: 0, lowMaxH: 0, scale: TEST ? (params.scale ?? 0.5) : 0.5, histValid: 0 };
 const HALF4 = 'rgba16float';
 export const bloomLevels = [];
-const SIZED = ['cloudCol', 'cloudDepth', 'histA', 'histB', 'scene', 'birdTex', 'birdMS', 'birdDepth', 'rayA', 'rayB'];
+const SIZED = ['cloudCol', 'cloudDepth', 'histA', 'histB', 'scene', 'rayA', 'rayB'];
+// the size-dependent targets of other modules (render/bird.js): their keys in T, and how to make
+// them for a canvas of w × h, in the same error scope as these
+const others = [];
+export function sizedTargets(keys, make) { SIZED.push(...keys); others.push(make); }
 function freeRes() {
   for (const k of SIZED) if (T[k]) { T[k].tex.destroy(); T[k] = null; }
   for (const b of bloomLevels) b.tex.destroy();
@@ -28,10 +36,7 @@ function allocate(w, h) {
   T.histA = texture(w, h, HALF4);
   T.histB = texture(w, h, HALF4);
   T.scene = texture(w, h, HALF4);
-  // bird: 4x MSAA colour + depth, resolved into a texture
-  T.birdTex = texture(w, h, HALF4);
-  T.birdMS = texture(w, h, HALF4, { samples: 4, usage: GPUTextureUsage.RENDER_ATTACHMENT });
-  T.birdDepth = texture(w, h, 'depth24plus', { samples: 4, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+  for (const make of others) make(w, h);
   // bloom chain
   let bw = w, bh = h;
   for (let i = 0; i < 7; i++) {

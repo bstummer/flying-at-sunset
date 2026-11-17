@@ -1,5 +1,8 @@
 #include "chunks/common.wgsl"
+#include "chunks/probe.wgsl"
 
+// The paper: fibres, the sun through the bird's shadow map (paper layers let some light through),
+// translucency when backlit, the sky and cloud-sea light and the mist from the probe (bProbe)
 struct Varyings { @builtin(position) pos: vec4f, @location(0) wpos: vec3f, @location(1) obj: vec3f, @location(2) shadow: vec4f, @location(3) panel: f32 }
 fn vnoise3(p: vec3f) -> f32 {
   let i = floor(p);
@@ -32,11 +35,11 @@ fn shadowAt(sp: vec4f) -> f32 {
   var N = select(vec3f(0.0, 1.0, 0.0), normalize(Nr), dot(Nr, Nr) > 1e-20);
   let V = normalize(-v.wpos);
   if (dot(N, V) < 0.0) { N = -N; }
-  let sun = textureLoad(tProbe, vec2i(0, 0), 0);
-  let ambUp = textureLoad(tProbe, vec2i(1, 0), 0).rgb;
-  let ambDn = textureLoad(tProbe, vec2i(2, 0), 0).rgb;
-  let mist = textureLoad(tProbe, vec2i(3, 0), 0);
-  let mistL = textureLoad(tProbe, vec2i(4, 0), 0).rgb;
+  let sun = bProbe.sun;
+  let ambUp = bProbe.ambUp.rgb;
+  let ambDn = bProbe.ambDn.rgb;
+  let mist = bProbe.medium;
+  let mistL = bProbe.mistL.rgb;
 
   // paper fibres
   let fib = vnoise3(v.obj * 160.0) * 0.55 + vnoise3(v.obj * vec3f(520.0, 520.0, 90.0)) * 0.45;

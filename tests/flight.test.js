@@ -1,10 +1,11 @@
+// The flight model (src/flight/flight.js) in Node, over the piece's own world (its seed, 7), without the
+// GPU's probe (null: the floor height map is all it has), at the page's time step and at a coarse
+// one. Properties, not tuning: the numbers of FLIGHT may change, these promises may not.
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadWorld } from '../tools/world/load.js';
 
-// The flight model (src/flight/flight.js) in Node, over the piece's own world (its seed, 7), without the
-// GPU's probe (null: the floor height map is all it has), at the page's time step and at a coarse
-// one. Properties, not tuning: the numbers of FLIGHT may change, these promises may not.
 const W = await loadWorld({ query: '' });
 const { FLIGHT, newBird, updateFlight } = await import('../src/flight/flight.js');
 const { DEG } = W;

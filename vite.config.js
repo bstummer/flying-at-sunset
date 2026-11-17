@@ -1,3 +1,9 @@
+// The build: index.html and src/ into one self-contained dist/index.html (vite-plugin-singlefile
+// inlines every script and style). It resolves the shaders' includes (tools/wgsl.js), bundles the
+// world's worker by a build of its own into a string in the page (?worker&inline), defines
+// __BUILD__ (the commit, for the benchmark's summary), and fails on any output but index.html or a
+// module from outside src/, in the page or its worker (tools/check-build.js).
+
 import { execFileSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
@@ -37,11 +43,32 @@ function singleFileOutput() {
   };
 }
 
+// The world's worker (`import W from './worker.js?worker&inline'`) is bundled by a build of its own
+// into a string in the page's bundle: the page's build sees only the entry's id, so the worker's
+// modules get the same check here.
+function workerModules() {
+  let root = '';
+  return {
+    name: 'worker-modules',
+    apply: 'build',
+    configResolved(config) {
+      root = config.root;
+    },
+    generateBundle() {
+      const failures = checkModules([...this.getModuleIds()], root);
+      if (failures.length) this.error(failures.map((f) => `worker: ${f.message}`).join('\n'));
+    },
+  };
+}
+
 export default defineConfig({
   base: './',
   publicDir: false, // dist/ holds index.html only
   define: { __BUILD__: JSON.stringify(buildId()) },
   plugins: [wgslPlugin(), viteSingleFile({ removeViteModuleLoader: true }), singleFileOutput()],
+  // ?worker&inline: a classic script (iife, Vite's default) in a string, started from a blob: URL
+  // (a module worker from a blob: URL doesn't start under file://, without a word)
+  worker: { plugins: () => [wgslPlugin(), workerModules()] },
   build: {
     // render/gpu.js waits for the GPU device at its top level.
     target: 'es2022',

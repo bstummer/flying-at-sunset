@@ -1,12 +1,10 @@
 #include "chunks/common.wgsl"
 #include "chunks/nan.wgsl"
 
+// Bloom: the next coarser level, a 13-tap filter of this one (each tap clamped, NaN and infinity
+// dropped)
 fn src(uv: vec2f) -> vec3f {
   var c = textureSampleLevel(tSrc, sLin, uv, 0.0).rgb;
-  if (u.first == 1 && uv.x > u.birdBox.x && uv.y > u.birdBox.y && uv.x < u.birdBox.z && uv.y < u.birdBox.w) {
-    let b = textureSampleLevel(tBird, sLin, uv, 0.0);
-    c = c * (1.0 - b.a) + b.rgb;
-  }
   if (isnan3(c) || isinf3(c)) { c = vec3f(0.0); }
   return min(c, vec3f(u.clampHi));
 }

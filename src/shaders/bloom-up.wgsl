@@ -1,5 +1,6 @@
 #include "chunks/common.wgsl"
 
+// Bloom: a coarser level, tent-filtered (3×3) and weighted, added onto the finer one
 @fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let uv = pos.xy * u.dstTexel;
   let t = u.srcTexel;

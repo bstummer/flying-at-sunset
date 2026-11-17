@@ -1,7 +1,10 @@
 #include "chunks/common.wgsl"
 #include "chunks/atmo.wgsl"
 #include "chunks/cloud.wgsl"
+#include "chunks/ambient.wgsl"
 
+// The cloud raymarch, at low resolution: the clouds' light and transmittance, and their depth in km
+// (shaders/trace.js)
 override DBG = false;   // the debug views of ?dbg (render/setup.js)
 const HAZE_H = 2400.0;
 fn hazeOD(t: f32, h0: f32, dy: f32) -> f32 {
@@ -39,12 +42,12 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
   // haze colour: the sky just above the horizon for downward rays (no seam at the horizon)
   let hazeDir = normalize(vec3f(dir.x, max(dir.y, 0.004), dir.z));
   let skyHaze = skyLookup(tSky, hazeDir, u.sunDir, h0 * 0.001);
-  let ambUp = textureLoad(tAmb, vec2i(0, 0), 0).rgb * 1.95;
+  let ambUp = bAmb.up.rgb * 1.95;
   // light bounced off the sunlit sea of clouds below (Lambertian deck, sun 5 degrees up)
   let seaBounce = u.ambSea * 0.38;
-  let ambSunS = textureLoad(tAmb, vec2i(2, 0), 0).rgb * 1.95 + seaBounce * 0.4;
+  let ambSunS = bAmb.sunSide.rgb * 1.95 + seaBounce * 0.4;
   // (a touch of violet: the anti-sun sky at dusk; on cloud sides it reads as cool, luminous shade)
-  let ambAnti = textureLoad(tAmb, vec2i(3, 0), 0).rgb * 1.95 * vec3f(1.06, 0.93, 1.1) + seaBounce * 0.15;
+  let ambAnti = bAmb.antiSun.rgb * 1.95 * vec3f(1.06, 0.93, 1.1) + seaBounce * 0.15;
   let cosT = dot(dir, u.sunDir);
   let phase = phaseOctaves(cosT);
   let powder = 1.0 - 0.28 * saturate(0.5 - 0.5 * cosT);

@@ -1,4 +1,6 @@
 
+// The clipmaps (render/stream.js): the clouds' constants, the level a sample uses, the distance to
+// the large shapes, the column data (shaders/cloud.js)
 const INV2R = 0.5 / 6360000.0;
 const SEA_BASE = 520.0;
 const SIGMA = 0.035;        // extinction inside clouds (1/m)

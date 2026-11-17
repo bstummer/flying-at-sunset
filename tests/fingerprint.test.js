@@ -1,3 +1,6 @@
+// The world's fingerprint (tools/world/fingerprint.js): a part tells values, and the places they come
+// in, apart, allowing only for the last bit of rounding (tests/world.test.js compares the world)
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { differences, summary } from '../tools/world/fingerprint.js';

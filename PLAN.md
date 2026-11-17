@@ -39,6 +39,19 @@ Worth knowing before tuning again.
   ≈ 5,600 bubbles in a 120 km box around the start, per bake block at most ≈ 1,700 of the 4096 cap.
 - **The coarse level** must take bubbles from coarse cells (`gatherBubbles(..., coarse)`), or the first
   frame grows everything in full across 524 km.
+- **The distance-volume bakes as compute shaders** (a slice an invocation, also with each workgroup
+  loading the bubbles into shared memory once): no faster than the fragment pass that writes 8
+  slices at once, often slower (L1 1.3–5×, L2 from 2× slower to 2× faster as the clocks drifted): it
+  looks at each bubble once for all 8. The shadow volume (one long march a texel, no bubbles) is
+  ~2.5× faster as compute, and is one now.
+- **The clipmap levels in one stacked 3D texture and a 2D array of column maps** (a level picked by
+  index, no branches in the trace): the trace 5–7% slower, and the stacked z coordinate shifts the
+  filtering (up to 10 levels on some pixels). The branches cost nothing measurable.
+- **The ambient light as a read-only storage buffer in the trace**: ~4% slower than the same buffer
+  bound as a uniform buffer (Chrome on Windows, FXC): `uniform` in `render/gpu.js`'s BUFFERS.
+- **Timing on this laptop GPU**: its clocks drift between runs (the same bake 2× apart), and a
+  page that waited idle before its frames runs them slower. Compare builds interleaved, A B B A, over
+  a few hundred frames, never two separate captures.
 - **Tests compare the world's sums, not a hash**: Math.sin, exp and pow round their last bit
   differently between Node versions (the recorded hash was off on Node 24 while every part agreed to
   12 digits).
@@ -50,14 +63,18 @@ Worth knowing before tuning again.
   phones, integrated GPUs or at full-screen sizes, so frame rate, dynamic resolution and memory there
   are unknown (`?bench` reports them). Only Chrome's WGSL compiler (Tint) has seen the shaders;
   Safari's and Firefox's haven't.
-- **The CPU world generation runs on the main thread**, synchronously when a new grid cell is first
-  needed (startup ≈ 4.7 s on software rendering; spikes of ≈ 200–250 ms entering new areas). The
-  generator is DOM-free and deterministic: a Web Worker posting column blocks and bubble arrays back
-  would remove the stalls. It would need an explicit start of the world (`initWorld({ seed, towers })`):
-  a worker has no `location`, so `core/params.js` would read every value as missing (the seed silently
-  7). The generator also allocates many small objects (`makeDome` and `lift` dominate profiles).
-- Textures created once at start (`T.trans` … `T.shadow`, the world volumes) have no out-of-memory
-  fallback: if one fails, the frames draw nothing (only the size-dependent targets retry smaller).
+- **The world grows in a worker** (src/worker.js), so new areas no longer stall frames; the page
+  applies what it sends within budgets (render/stream.js). The budget's GPU estimate (`bakeCost`) is
+  calibrated on one NVIDIA laptop GPU: on a weaker one a shift's bakes still spread over frames, but
+  each frame's share takes longer. Startup still waits for the whole first bake (canvas at ≈ 2.9 s
+  on that machine), and the generator allocates many small objects (`makeDome` and `lift` dominate
+  profiles). If the bird outran the worker's patch of domes (core/world.js: asked for ≥ 30 s ahead
+  at top speed), the page would grow the cells under it itself: a stall. Only Chrome has run the
+  worker; it carries its own copy of the world's code (the page ≈ 19 KB larger).
+- Textures and buffers created once at start (`T.trans` … `T.shadow`, the world volumes, the bubble
+  arena) have no out-of-memory fallback: if one fails, the frames draw nothing (only the
+  size-dependent targets retry smaller; the bird's are now only as big as its box can get, about a
+  third of the canvas, instead of three canvas-sized ones).
 - **Mushroom tops**: some towers have a wide spreading top over a narrower body (`tools/world/preview.js`
   and `catalog.js` show them); the author dislikes thin stems under spreading tops. Causes to look at:
   spreading lobes against column width, the shear drift of tops, column pieces evaporating before heads,
@@ -87,7 +104,7 @@ Worth knowing before tuning again.
   there, so the bird is inside them. Its brief wants billows up close; a pose a few hundred metres
   higher would show them.
 - Values JS and WGSL both keep as literals of their own: the sun-colour table's 750 m steps, the planet
-  radius, the high layers' heights, the probe's layout (CLAUDE.md §8 wants them from `constants.js`).
+  radius, the high layers' heights, the offsets of struct Probe's fields read back (CLAUDE.md §8 wants them from `constants.js`).
 - A WebGPU validation error shows no note (left out: a harmless one on a browser never tried would stop
   the piece); the tools hear every one.
 - Nothing publishes until main's first verified build makes the "latest" release; until then every

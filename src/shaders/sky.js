@@ -1,12 +1,10 @@
-// The sky: atmosphere lookup tables after Hillaire 2020 (transmittance, multiple scattering, sky view, ambient)
+// The sky: the atmosphere's lookup tables, after Hillaire 2020 (Rayleigh, Mie and ozone)
 //
-// Transmittance (256×64) and multiple scattering (32×32) once at start, the sky view (192×108) every
-// frame for the camera's height; Rayleigh, Mie and ozone. The same model gives the sun's colour at
-// every altitude (render/sun.js: a CPU copy for the clouds' light uniforms) and the haze (hazeOD in
-// the trace, HAZE_K = 2.8e-5). Cirrus (a 512² tile over 32 km at 9.8 km) and the two thin high layers
-// (1024² over 64 km at 6.3 and 7.7 km) are 2D textures (shaders/textures.js); they repeat.
-
-
+// Transmittance (256×64) and multiple scattering (32×32) once at the start; the sky view (192×108)
+// and the ambient light (bAmb) for the camera's height, again whenever it has moved 10 m up or down
+// (render/frame.js). render/sun.js keeps a CPU copy of the transmittance for the sun's colour. The
+// cirrus and the two high layers are textures (shaders/textures.js), laid over the sky by the TAAU
+// pass.
 
 export { default as FS_TRANSMITTANCE } from './transmittance.wgsl';
 
@@ -15,7 +13,8 @@ export { default as FS_MULTISCAT } from './multiscatter.wgsl';
 export const U_SKYVIEW = { camH: 'f32', sunDir: 'vec3f' };   // camH in km
 export { default as FS_SKYVIEW } from './skyview.wgsl';
 
-// ambient: px0 = cosine weighted sky irradiance / PI (upper hemisphere), px1 = mean radiance near
-// horizon, px2 / px3 = sky irradiance / PI on a vertical face turned toward / away from the sun
+// ambient (bAmb, chunks/ambient.wgsl): sky irradiance / PI on an upward face (cosine weighted over
+// the upper hemisphere) and on vertical faces turned toward and away from the sun; a compute
+// shader, one workgroup per face
 export const U_AMBIENT = { sunDir: 'vec3f', camH: 'f32' };
-export { default as FS_AMBIENT } from './ambient.wgsl';
+export { default as CS_AMBIENT } from './ambient.wgsl';

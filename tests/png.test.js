@@ -1,3 +1,6 @@
+// The PNG codec (tools/png.js): round trips with every filter type, the colour types it decodes,
+// broken files failing loudly
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { crc32, deflateSync, inflateSync } from 'node:zlib';

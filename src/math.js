@@ -1,4 +1,5 @@
-// Small math kit: scalars, 3-vectors (arrays), random streams, springs, 4x4 matrices (column-major)
+// The small math kit: scalars, 3-vectors (arrays), random streams (mulberry32), Halton numbers, an
+// implicit spring, float16 bits, and 4×4 matrices (column-major, GL's conventions)
 
 export const PI = Math.PI, DEG = PI / 180;
 export const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
@@ -23,6 +24,26 @@ export function halton(i, b) { let f = 1, r = 0; while (i > 0) { f /= b; r += f 
 export function spring(x, v, target, omega, dt) {
   const f = 1 + 2 * dt * omega, oo = omega * omega, hoo = dt * oo, hhoo = dt * hoo, inv = 1 / (f + hhoo);
   return [(f * x + dt * v + hhoo * target) * inv, (v + hoo * (target - x)) * inv];
+}
+// float32 -> float16 bits, rounded to nearest even (half-float textures take their data as bits:
+// the column maps, render/stream.js)
+const f32b = new Float32Array(1), u32b = new Uint32Array(f32b.buffer);
+function half(x) {
+  f32b[0] = x;
+  const i = u32b[0], sign = (i >>> 16) & 0x8000;
+  let a = i & 0x7FFFFFFF;
+  if (a > 0x7F800000) return 0x7FFF;                         // NaN
+  if (a > 0x47FFEFFF) return sign | 0x7C00;                  // too large: infinity
+  if (a < 0x38800000) {                                       // denormal
+    const e = 113 - (a >>> 23);
+    a = e < 24 ? ((a & 0x007FFFFF) | 0x00800000) >>> e : 0;
+    return sign | ((a + 0x0FFF + ((a >>> 13) & 1)) >>> 13);
+  }
+  return sign | ((a + 0xC8000000 + 0x0FFF + ((a >>> 13) & 1)) >>> 13);
+}
+export function toHalf(src, dst = new Uint16Array(src.length)) {
+  for (let k = 0; k < src.length; k++) dst[k] = half(src[k]);
+  return dst;
 }
 // column-major 4x4 matrices
 export function mat4Mul(a, b) {

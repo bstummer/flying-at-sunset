@@ -1,5 +1,6 @@
-// The page: its elements, the note shown when something fails, a request it refuses, the kind of
-// pointer, fullscreen (a double-click or F)
+// The page around the piece: its elements, fail() (the note shown when something fails, also in
+// window.__error), refuse() (a request the page can't serve), the kind of pointer (COARSE: a
+// finger), fullscreen (a double-click or F), and the test mode's mark on the document (style.css)
 
 import { TEST } from './params.js';
 

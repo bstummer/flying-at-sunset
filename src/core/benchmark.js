@@ -1,14 +1,13 @@
-// The benchmark (?bench): flies a fixed route from the start while it measures, then shows a
-// summary to paste into a session: how smoothly the piece runs on this machine, at what cloud
-// resolution, on which GPU, browser and screen. That is how numbers from real computers and
-// phones reach the AI (PLAN.md: never measured on real hardware).
+// The benchmark (?bench, not with ?test): flies a fixed route from the start and measures, then
+// shows a summary to paste into a session: how smoothly the piece runs on this machine, at what
+// cloud resolution, on which GPU, browser and screen. It is how numbers from real computers and
+// phones reach a session (PLAN.md, known issues).
 //
-// The piece runs as in normal use (dynamic resolution on, real frame times), without the hint,
-// steered by the route instead of the viewer. Each leg settles first (?benchWarmup seconds, and
-// at least 10 frames), then measures for ?benchSeconds: frame times, the GPU's time per frame
-// where the browser has timestamp queries, the clouds' resolution (render/resolution.js), and
-// hitches (frames over 50 ms: mostly the world generated on the main thread as the bird flies
-// on). Afterwards the viewer steers again. window.__BENCH__ holds the result for tools/checks.js.
+// The piece runs as in normal use (dynamic resolution, real frame times), steered by the route,
+// without the hint. Each leg (level, turn, dive, weave) settles first (?benchWarmup seconds and at
+// least 10 frames), then measures for ?benchSeconds: frame times, the GPU's time a frame where the
+// browser has timestamp queries, the clouds' scale (render/resolution.js) and hitches (frames over
+// 50 ms). Then the viewer steers again; window.__BENCH__ holds the result (tools/checks.js).
 
 import { BENCH, params } from './params.js';
 import { GPU_NAME } from '../render/gpu.js';
@@ -102,7 +101,7 @@ function formatBenchmark() {
     ...legs.map((l) => row(l.name, l.frameMs, l.gpuMs, l.scale)),
     row('all legs', all('frameMs'), all('gpuMs'), all('scale')),
     '',
-    `Hitches: frames over ${HITCH_MS} ms (mostly the world generated as the bird flies on).`,
+    `Hitches: frames over ${HITCH_MS} ms.`,
     'Frame times can\'t drop below the display\'s refresh interval; GPU ms shows the headroom,',
     'and the clouds\' scale (0.22 to 0.75 of the canvas) where dynamic resolution settled.',
   ].join('\n');

@@ -1,12 +1,11 @@
-// The folders of the site GitHub Pages serves (.github/workflows/pages.yml):
-// main's game at the root, and every other branch's build at /<branch>/.
+// The folders of the site GitHub Pages serves (.github/workflows/pages.yml): main's piece at the
+// root, every other branch's build in a folder named after it (folderFor).
 //
-// CI runs `node tools/pages.js <the run's branch>` with the repository's
-// branches on stdin, a line "<sha> <name>" each, and appends what it prints to
-// GITHUB_OUTPUT: `previews`, the branches to build as a JSON array of
-// { branch, sha, folder, artifact }, and `folder`, the run's own branch's folder
-// with a trailing '/' ('' for main's root, or a branch left out). Each branch
-// left out is a warning on stderr.
+// CI runs `node tools/pages.js <the run's branch>` with the repository's branches on stdin, a line
+// "<sha> <name>" each, and appends what it prints to GITHUB_OUTPUT: `previews`, the branches to
+// build as a JSON array of { branch, sha, folder, artifact }, and `folder`, the run's own branch's
+// folder with a trailing '/' ('' for main's root, or a branch left out). Each branch left out is a
+// warning on stderr.
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

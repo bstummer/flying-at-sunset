@@ -1,6 +1,8 @@
 #include "chunks/common.wgsl"
 #include "chunks/atmo.wgsl"
 
+// The transmittance table: the atmosphere's transmittance to its top, by height and view angle
+// (rMuToTransUv's mapping, chunks/atmo.wgsl)
 @fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let uv = (pos.xy - 0.5) / (TRANS_SIZE - 1.0);
   let H = sqrt(RT * RT - RG * RG);

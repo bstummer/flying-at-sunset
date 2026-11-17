@@ -10,28 +10,19 @@
 // earlier ones left. Whatever stopped rising drifts with the wind of its height, spreads, sags and
 // evaporates. Most cells only heap up the sea; the strong ones grow towers out of it.
 // air.js the air and the sea of clouds · thermals.js rising bubbles and what becomes of them ·
-// cells.js convective cells · shapes.js domes and bubbles · queries.js what the flight and the
-// test views ask · columns.js what the GPU gets
+// cells.js convective cells · shapes.js domes and bubbles · noise.js the seed and the noise ·
+// queries.js what the flight and the test views ask · columns.js what the GPU gets
 //
-// The air:
-// - warpOf: a domain warp (±4.5 km) for the slow fields.
-// - restOf: restlessness I in [0, 1], calm .. storms: broad patches (fbm at 2.4e-5 /m, 4 octaves)
-//   plus long winding bands (ridged fbm at 9e-6, 0.25·band^6), through smoothstep(0.4, 0.85, ...). About 30%
-//   of the world is calm (I < 0.1). REST_O shifts the field: the spawn draw (after subsidenceAt in cells.js).
-// - columnFields(x, z, lod): the sea of clouds without its heaps. hb = 1650 m + swells (±1.7 km
-//   over ~50 km) + hills (±1.1 km) + narrow deep valleys (−700 m) + rolling mounds (billow noise
-//   |2·fbm − 1|: rounded tops, creases between; 220 m + 700 m·I·(0.4 + rough)) + 250 m × I; valleys below
-//   1000 m level out softly toward 700 m. amp: the billow strength for the shader (0.65–1.4, mostly
-//   ~1: the sea always overturns); fine: the small billows (0.4–1.3). lod drops mound octaves.
-// - airAt(x, z): what a rising bubble meets above a place: zs the sea's level; ceil the ceiling
-//   (tropopause), 11.6–13.4 km; wind shear 0.3–2.4 (m/s)/km, its direction turning ±1 rad around
-//   WIND (ux, uz); cap, the inversion over the sea, 0.2·e^(−2.6·I) m/s² × 0.7–1.3 over 380 m (dInv);
-//   dry, the chill of mixed-in dry air, 0.09–0.05 m/s² (by moisture) × (1 − 0.4·I); bmax, the
-//   buoyancy, 0.015 + 0.12·I^1.3 m/s²; el, the equilibrium level, zs + 600 m + (ceil − 1500 − zs −
-//   600)·I^0.5·deep, where deep (0.65–1, a slow field of its own) is how high unstable air reaches.
-// - buoyAt(A, y): the buoyancy by height: 0 inside the sea (a bubble coasts), −cap through the
-//   inversion, bmax·(0.3 + 2.8u(1 − u)) up to the equilibrium level, −0.03 − 0.12/km above it, −1.2
-//   above the ceiling.
+// This module: the slow fields of the air (fbm, some domain-warped by warpOf).
+// - restAt: restlessness I, calm (0) .. ready to boil up into storms (1): broad patches and long
+//   winding bands; REST_O shifts the field (the spawn draw, cells.js).
+// - columnFields: the sea of clouds without its heaps: its level hb (swells, hills, narrow deep
+//   valleys and rolling billow mounds, higher and rougher where the air is restless), and for the
+//   shaders the billow strength amp (about 1: the sea always overturns) and the small billows' fine.
+// - airAt: what a bubble rising from the sea meets above a place: the inversion capping the sea
+//   (weaker where the air is restless), buoyancy above it up to the level where it ends (higher where
+//   restless, and how high varies on its own too), the ceiling (11.6–13.4 km), the wind's shear,
+//   and the chill of mixed-in dry air (by moisture). buoyAt(A, y): the buoyancy at height y.
 
 import { clamp, lerp, smoothstep } from '../math.js';
 import { WIND_ANG } from '../constants.js';

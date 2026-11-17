@@ -1,5 +1,6 @@
 #include "chunks/common.wgsl"
 
+// A mist puff: a soft disc broken up by value noise
 struct Varyings { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) col: vec4f, @location(2) seed: f32 }
 fn vn(p: vec2f, seed: f32) -> f32 {
   let i = floor(p);

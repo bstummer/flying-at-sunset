@@ -1,3 +1,6 @@
+// The image analysis of tools/image.js: crops, zooms, tiles, the banding view and the banded share,
+// flicker and its heat map, diffs
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bandedShare, bandingView, createImage, crop, diffImage, flicker, heatImage, shrink, tile, zoom } from '../tools/image.js';

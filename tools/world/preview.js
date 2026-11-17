@@ -1,14 +1,15 @@
-// CPU preview of the large shapes (no billows, no volumetric light): sphere-traces the generated
-// world the way the GPU bake builds it (the sea's column heights united with the 3D bubbles) with a
-// simple sun + sky shading. Seconds instead of minutes, and no GPU needed: for judging shapes,
-// sizes and arrangement while tuning the generator.
+// CPU preview of the large shapes (no billows, no volumetric light): sphere-traces the sea's column
+// heights united with the 3D bubbles, blended as the GPU bake blends them (with a fixed slope
+// factor here), with a simple sun and sky shading. Seconds instead of minutes, and no GPU needed:
+// for judging shapes, sizes and arrangement while tuning the generator.
 //
 //   node tools/world/preview.js out.png x,y,z,yawDeg,pitchDeg        camera pose (metres, degrees)
 //   node tools/world/preview.js out.png --look tx,tz,dist,azDeg[,camY[,pitchDeg]]
 //        look at the point (tx, tz) from `dist` metres away, from azimuth azDeg (0 = from -Z, the
-//        sun side; 90 = from +X), camera height camY (default 3000)
+//        sun side; 90 = from +X), camera height camY (default 3000), pitch default 8°
 //   OPT='{"w":640,"h":360,"fov":60,"half":60000,"cell":128,"tmax":120000,"sunEl":20,"sunAz":-60}'
-// yaw 0 looks toward -Z (the sun), positive yaw turns right (toward +X).
+// yaw 0 looks toward -Z (the piece's sun), positive yaw turns right (toward +X). The preview's own
+// light comes from sunAz and sunEl (default -60° and 20°).
 import { loadWorld, outPath, savePng } from './load.js';
 const W = await loadWorld();
 const smin = (a, b, k) => { if (k <= 0) return Math.min(a, b); const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };

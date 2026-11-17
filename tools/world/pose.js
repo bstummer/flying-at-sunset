@@ -1,10 +1,12 @@
-// A camera pose looking at a point, for `?test&pose=x,y,z,yaw,pitch` (and tools/screenshot.js --query).
+// A bird's pose facing a point, for ?pose=x,y,z,yaw,pitch (a view of tools/views.js, or --query);
+// the chase camera sits a few metres behind it.
 //
 //   node tools/world/pose.js tx tz dist azDeg [y] [pitch]
-//     -> x,y,z,yaw,pitch : standing `dist` m from (tx, tz) at azimuth azDeg (0 = on the -Z side,
-//        the sun's; 90 = on the +X side), at height y (default 900 m above the cloud sea there),
-//        looking at the point; pitch in radians (default 0.08)
-//   node tools/world/pose.js --towers [R]      list towers near the start to pick from
+//     -> x,y,z,yaw,pitch: `dist` m from (tx, tz) at azimuth azDeg (0 = on the -Z side, the sun's;
+//        90 = on the +X side), at height y (default 900 m over the sea's top there), its yaw toward
+//        the point; pitch: the flight-path angle in radians (default 0.08)
+//   node tools/world/pose.js --towers [R]      the 20 tallest towers with tops above 6 km within R
+//                                              of the start (default 60 km), to pick from
 import { loadWorld } from './load.js';
 const W = await loadWorld();
 if (process.argv[2] === '--towers') {

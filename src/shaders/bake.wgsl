@@ -1,5 +1,8 @@
 #include "chunks/common.wgsl"
 
+// NOUT slices of a block of a clipmap's distance volume: the sea (from the column map, its distance
+// slope-corrected) united with the block's bubbles, with a broad fillet where they swell out of it
+// (shaders/volumes.js)
 const NOUT = 8;
 struct Slices {
   @location(0) o0: f32,
@@ -28,12 +31,12 @@ fn ellD(q: vec3f, r: vec3f) -> f32 {   // distance to an ellipsoid (good near it
   var acc: array<f32, NOUT>;
   for (var k = 0; k < NOUT; k++) { acc[k] = u.maxD; }
   for (var b = 0; b < u.nb; b++) {
-    let bt = vec2i(b & 1023, (b >> 10u) * 3);
-    let A = textureLoad(tBub, bt, 0);
-    let E = textureLoad(tBub, bt + vec2i(0, 2), 0);
+    let i = 3 * (u.b0 + b);
+    let A = bBub[i];
+    let E = bBub[i + 2];
     let dxz = pl - A.xz;
     if (length(dxz) - E.y > u.maxD || y0 - (A.y + E.y) > u.maxD || (A.y - E.y) - y1 > u.maxD) { continue; }
-    let B = textureLoad(tBub, bt + vec2i(0, 1), 0);
+    let B = bBub[i + 1];
     let ca = cos(B.w);
     let sa = sin(B.w);
     let q = vec2f(dxz.x * ca + dxz.y * sa, -dxz.x * sa + dxz.y * ca);

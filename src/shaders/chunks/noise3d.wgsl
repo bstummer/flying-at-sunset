@@ -1,6 +1,6 @@
-#include "chunks/common.wgsl"
+// Tileable 3D noise for the noise volumes (shaders/textures.js): random spheres, Worley, Perlin
 
-// field of random spheres in a tileable lattice; returns signed distance in cell units
+// a field of random spheres on a tileable lattice: the signed distance, in cell units
 fn sphereField(p: vec3f, cells: f32, seed: u32) -> f32 {
   let pc = p * cells;
   let id = floor(pc);
@@ -60,22 +60,4 @@ fn perlin(p: vec3f, period: f32, seed: u32) -> f32 {
   let n011 = dot(grad3(i + vec3f(0.0, 1.0, 1.0), period, seed), f - vec3f(0.0, 1.0, 1.0));
   let n111 = dot(grad3(i + vec3f(1.0, 1.0, 1.0), period, seed), f - vec3f(1.0, 1.0, 1.0));
   return mix(mix(mix(n000, n100, fu.x), mix(n010, n110, fu.x), fu.y), mix(mix(n001, n101, fu.x), mix(n011, n111, fu.x), fu.y), fu.z);
-}
-@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  let p = vec3f(pos.xy / u.size, u.z);
-  if (u.mode == 0) {
-    let d = vec4f(sphereField(p, u.cells.x, 1u), sphereField(p, u.cells.y, 2u), sphereField(p, u.cells.z, 3u), sphereField(p, u.cells.w, 4u));
-    return clamp(d * 0.5 + 0.5, vec4f(0.0), vec4f(1.0));
-  }
-  let w1 = 1.0 - worley(p, u.cells.x, 5u);
-  let w2 = 1.0 - worley(p, u.cells.y, 6u);
-  let w3 = 1.0 - worley(p, u.cells.z, 7u);
-  let wf = saturate(w1 * 0.6 + w2 * 0.28 + w3 * 0.12);
-  var pf = 0.0;
-  var amp = 0.5;
-  var per = u.cells.x;
-  for (var k = 0; k < 4; k++) { pf += amp * perlin(p * per, per, u32(9 + k)); amp *= 0.5; per *= 2.0; }
-  pf = saturate(pf * 0.9 + 0.5);
-  let w4 = 1.0 - worley(p, u.cells.w, 8u);
-  return vec4f(wf, pf, saturate(w3 * 0.6 + w4 * 0.4), saturate(perlin(p * u.cells.y, u.cells.y, 21u) * 0.9 + 0.5));
 }

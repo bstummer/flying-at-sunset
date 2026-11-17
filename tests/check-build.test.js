@@ -1,3 +1,7 @@
+// tools/check-build.js: each HTML rule against its fixtures (tests/fixtures/check-build/), the
+// bundle's files and modules, the size budget, the source lint and its comment blanking, and
+// checkBuild as a whole
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

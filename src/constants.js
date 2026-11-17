@@ -1,4 +1,6 @@
-// Constants of the scene: the sun, the wind, noise texture sizes, the render origin, the ceiling
+// Constants several modules share: the sun (low, toward −Z), the wind, the noise volumes' sizes and
+// tiles, the render origin's step, the clouds' ceiling. The shaders get CLOUD_TOP and the tiles from
+// here too (render/gpu.js).
 
 import { DEG, norm } from './math.js';
 

@@ -1,10 +1,11 @@
-// Verifies that dist/ is a single, self-contained HTML file within the size
-// budget, that src/ has no source of randomness but the world's seed (and the
-// world no clock), and that it imports nothing from outside src/.
-// Usage: node tools/check-build.js   (exits non-zero on any failure)
-// The individual checks are exported for tests/check-build.test.js; vite.config.js
-// uses checkOutputFiles() and checkModules() to fail any build that would emit
-// more than index.html, or bundle a module from outside src/.
+// Checks that dist/ is one self-contained index.html, loading nothing from anywhere (no script src,
+// link href, fetch, XHR, WebSocket ...; URLs only as XML namespaces), within the size budget (a
+// warning above it, a failure above twice it), and lints src/: no Math.random or Date anywhere, no
+// performance.now in world/, no import from outside src/ (comments don't count).
+//   node tools/check-build.js   (npm run check; exits non-zero on any failure)
+// The checks are exported for tests/check-build.test.js; vite.config.js runs checkOutputFiles() and
+// checkModules() on the bundle, failing a build that would emit more than index.html or bundle a
+// module from outside src/.
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';

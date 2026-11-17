@@ -1,27 +1,23 @@
-// One frame: sky, probe, clouds, temporal upsampling and composite, bird, bloom, sun rays, tone mapping
+// One frame, render(time): its passes in order, each group timed (render/timing.js)
 //
-// frameStep (main.js) runs resize() (render/targets.js: the canvas in device pixels, capped at
-// 2.3 Mpx, 1.15 Mpx on touch devices), then input, flight and camera, then render():
-// - world: streamWorld shifts the clipmap windows and runs bake jobs (render/stream.js; all of them
-//   on the first frame and in tests, else within 4 ms);
-// - sky: the sky-view lookup table for the camera's height (192×108) and the 4 ambient texels;
-// - probe (8×1 texels): light at the bird, in-cloud density at the camera and the bird, distance to
-//   the real billowy surface below the bird (the flight's floor), mist radiance; copied out and read
-//   back when the GPU is done, used one or two frames later (render/probe.js);
-// - trace: the cloud raymarch at reduced resolution (R.scale × full, jittered per frame);
-// - taau: temporal upsampling to full resolution, with the sky, the sun's disk, the cirrus veil and
-//   the two thin high layers; then drifting mist puffs while inside cloud;
-// - bird: shadow map, MSAA mesh, resolve;
-// - post: bloom (7-level down/up chain), sun rays (quarter-resolution mask and 2 radial blurs), the
-//   final pass (exposure, tone curve, split tone, vignette, grain; the image turned the right way up);
-// then the frame's commands are submitted (flush), and the probe and the timestamps mapped.
+// - world: apply what the world's worker sent for the clipmaps (render/stream.js);
+// - sky: the sky view (192×108) and the ambient light, again whenever the camera has moved 10 m up
+//   or down; probe: light and cloud at the bird and the camera, read back later (render/probe.js);
+// - trace: the clouds at R.scale of the canvas, jittered each frame (shaders/trace.js);
+// - taau: upsampled to full resolution over the sky, the sun's disk, the cirrus and the two high
+//   layers (shaders/taau.js); drifting mist puffs while the camera is in cloud (shaders/mist.js);
+// - bird: its shadow map and mesh, laid over the scene (render/bird.js);
+// - post: bloom (a 7-level chain), sun rays (while the sun is near the view) and the final pass
+//   onto the canvas (shaders/post.js);
+// then the commands are submitted (flush) and the probe and the timestamps read back. The look's
+// tunables, each with its URL parameter, are at the end.
 
 import { params, TEST } from '../core/params.js';
 import { dot, fmod, halton, mat4Mul, perspective, PI, scl, smoothstep, sub, viewFromBasis } from '../math.js';
 import { DETAIL_TILE, SHAPE_TILE, SUN_DIR, WIND } from '../constants.js';
-import { clearPass, context, flush, pass } from './gpu.js';
-import { sunColorAt } from './sun.js';
-import { layerColUniform, P, sunColUniform, T } from './setup.js';
+import { clearPass, context, dispatch, flush, pass } from './gpu.js';
+import { sunColorAt, sunColTable } from './sun.js';
+import { layerColUniform, P, T } from './setup.js';
 import { originOf, streamWorld, worldUniforms } from './stream.js';
 import { bloomLevels, R } from './targets.js';
 import { inCloud, mapProbe, readProbeAsync } from './probe.js';
@@ -29,9 +25,12 @@ import { bird_ } from '../flight/flight.js';
 import { cam } from '../flight/camera.js';
 import { gpuTimer, tBegin, tEnd } from './timing.js';
 import { renderBird } from './bird.js';
+import { PROBE_FIELDS } from '../shaders/probe.js';
 
 export let frame = 0;
 let prevVP = null;
+let skyH = null;     // the camera height the sky view and the ambient light were made for
+const SKY_STEP = 10; // m: made again once the camera has moved this far up or down
 
 function viewProjRot(camR, camU, camF, fovy, aspect) {
   const V = viewFromBasis(camR, camU, camF, [0, 0, 0]);
@@ -47,7 +46,7 @@ export function render(time) {
   const O = originOf(cam.pos);
   const camR = [cam.pos[0] - O[0], cam.pos[1], cam.pos[2] - O[2]];
   tBegin('world');
-  streamWorld(cam.pos, O, TEST || frame === 0 ? -1 : 4, frame);
+  streamWorld(O, TEST || frame === 0);
   tEnd();
   const camDelta = sub(cam.pos, cam.prevPos);
   const tanY = Math.tan(cam.fov / 2), tanX = tanY * aspect;
@@ -58,29 +57,32 @@ export function render(time) {
   const ambSea = scl(sunColorAt(1500), 0.065);
   const common = Object.assign(worldUniforms(O), {
     tShape: T.shape, tDetail: T.detail, tTsv: T.tsv,
-    shapeOff, detailOff, sunDir: SUN_DIR, sunCol: sunColUniform,
+    shapeOff, detailOff, sunDir: SUN_DIR, sunCol: sunColTable,
   });
 
-  // --- sky view LUT for the current altitude + ambient
+  // --- sky view LUT for the current altitude + ambient (they change slowly with it)
   tBegin('sky');
-  pass(P.sky, [T.sky], { tTrans: T.trans, tMS: T.ms, camH: cam.pos[1] * 0.001, sunDir: SUN_DIR });
-  pass(P.amb, [T.amb], { tSky: T.sky, sunDir: SUN_DIR, camH: cam.pos[1] * 0.001 });
+  if (skyH === null || Math.abs(cam.pos[1] - skyH) > SKY_STEP) {
+    skyH = cam.pos[1];
+    pass(P.sky, [T.sky], { tTrans: T.trans, tMS: T.ms, camH: skyH * 0.001, sunDir: SUN_DIR });
+    dispatch(P.amb, { tSky: T.sky, bAmb: T.amb, sunDir: SUN_DIR, camH: skyH * 0.001 }, [3]);
+  }
 
   // --- probe (bird lighting, mist)
   const birdRel = sub(bird_.pos, cam.pos);
-  pass(P.probe, [T.probe], Object.assign({}, common, {
-    tAmb: T.amb, camPos: camR, birdRel, ambSea,
-  }));
+  dispatch(P.probe, Object.assign({}, common, {
+    bAmb: T.amb, bProbe: T.probe, camPos: camR, birdRel, ambSea,
+  }), [PROBE_FIELDS]);
   tEnd();
   readProbeAsync();
 
   // --- clouds (low res)
   tBegin('trace');
   pass(P.trace, [T.cloudCol, T.cloudDepth], Object.assign({}, common, {
-    tSky: T.sky, tAmb: T.amb, res: [R.lowW, R.lowH], jitter, camPos: camR,
+    tSky: T.sky, bAmb: T.amb, res: [R.lowW, R.lowH], jitter, camPos: camR,
     camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], frame,
     ambSea, hazeK: HAZE_K, dbgMode: DBG_MODE, inCloud,
-  }), { viewport: [0, 0, R.lowW, R.lowH] });
+  }), { viewport: [0, 0, R.lowW, R.lowH], load: false });   // (nothing reads past it)
 
   tEnd();
   // --- temporal upsample + sky composite
@@ -99,7 +101,7 @@ export function render(time) {
   // drifting mist puffs: only while the camera is inside cloud (they float in the fog around us)
   if (inCloud > 0.02) {
     pass(P.mist, [T.scene], Object.assign({}, common, {
-      tAmb: T.amb, camPos: camR, camOffset: [fmod(cam.pos[0], 180), fmod(cam.pos[1], 180), fmod(cam.pos[2], 180)],
+      bAmb: T.amb, camPos: camR, camOffset: [fmod(cam.pos[0], 180), fmod(cam.pos[1], 180), fmod(cam.pos[2], 180)],
       camRight: cam.right, camUp: cam.up, viewProj: curVP, strength: 0.42 * inCloud,
     }), { load: true, count: 4, instances: 64 });
   }
@@ -110,7 +112,7 @@ export function render(time) {
 
   // --- bird
   tBegin('bird');
-  const birdBox = renderBird(time, curVP, birdRel);
+  renderBird(time, curVP, birdRel);
   tEnd();
 
   // --- bloom
@@ -118,7 +120,7 @@ export function render(time) {
   let src = T.scene;
   for (let i = 0; i < bloomLevels.length; i++) {
     const L = bloomLevels[i];
-    pass(P.down, [L], { tSrc: src, tBird: T.birdTex, birdBox, srcTexel: [1 / src.w, 1 / src.h], first: i === 0 ? 1 : 0, clampHi: BLOOM_CLAMP });
+    pass(P.down, [L], { tSrc: src, srcTexel: [1 / src.w, 1 / src.h], clampHi: BLOOM_CLAMP });
     src = L;
   }
   // (added onto each finer level)
@@ -137,7 +139,7 @@ export function render(time) {
     rayStrength = 1 - smoothstep(0.6, 1.3, off);
   }
   if (rayStrength > 0.001) {
-    pass(P.raymask, [T.rayA], { tHist: histTex, tBird: T.birdTex, birdBox, camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], sunDir: SUN_DIR, dstTexel: [1 / R.rayW, 1 / R.rayH] });
+    pass(P.raymask, [T.rayA], { tScene: T.scene, camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], sunDir: SUN_DIR, dstTexel: [1 / R.rayW, 1 / R.rayH] });
     pass(P.rayblur, [T.rayB], { tSrc: T.rayA, sunUv, dstTexel: [1 / R.rayW, 1 / R.rayH], stepScale: 1 / 24 / 24 * 0.95, decay: 1.0 });
     pass(P.rayblur, [T.rayA], { tSrc: T.rayB, sunUv, dstTexel: [1 / R.rayW, 1 / R.rayH], stepScale: 1 / 24 * 0.95, decay: 0.93 });
   } else {
@@ -148,7 +150,7 @@ export function render(time) {
   const sunC = sunColorAt(cam.pos[1]);
   const out = { view: context.getCurrentTexture().createView(), w, h };
   pass(P.final, [out], {
-    tScene: T.scene, tBird: T.birdTex, tBloom: bloomLevels[0], tRays: T.rayA, birdBox,
+    tScene: T.scene, tBloom: bloomLevels[0], tRays: T.rayA,
     exposure: EXPOSURE * (1.0 + 0.45 * inCloud), bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
   });
   tEnd();

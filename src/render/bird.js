@@ -4,14 +4,31 @@
 // when backlit), a shadow map of its own in which paper layers let some light through
 // (shaders/bird.js), wings that flex with load, a slow breathing and a flutter at speed; lit by the
 // probe (sun and sky at the bird, in cloud or not).
+//
+// Drawn with 4x MSAA into targets only as big as the box the bird can take on screen (its bounding
+// sphere seen from the chase camera at its nearest; all of the canvas for the close-up test
+// camera): a crop of the view-projection maps its box on screen onto them. The resolved bird is
+// then laid over the scene, texel for texel, in its box; the scene's alpha (how much sky shows,
+// the sun rays' mask) loses what it covers.
 
 import { add, clamp, cross, dot, mat4Mul, norm, ortho, sat, scl, viewFromBasis } from '../math.js';
 import { SUN_DIR } from '../constants.js';
-import { bindGroup, device, enc, hooks, texture, uniforms } from './gpu.js';
+import { bindGroup, device, enc, hooks, pass, texture, uniforms } from './gpu.js';
 import { P, T } from './setup.js';
-import { R } from './targets.js';
+import { R, sizedTargets } from './targets.js';
 import { bird_, FLIGHT } from '../flight/flight.js';
-import { cam } from '../flight/camera.js';
+import { baseFovY, cam, CAM_NEAREST, CLOSEUP } from '../flight/camera.js';
+
+const BIRD_R = 0.75;   // m: a sphere around the bird and its flexing wings
+// the bird's targets: the largest box its sphere can take (in pixels, with a pixel of rounding on
+// each side)
+sizedTargets(['birdTex', 'birdMS', 'birdDepth'], (w, h) => {
+  const k = BIRD_R / (CAM_NEAREST - BIRD_R), tanY = Math.tan(baseFovY(w / h) / 2), tanX = tanY * w / h;
+  const bw = CLOSEUP ? w : Math.min(w, Math.ceil(w * k / tanX) + 2), bh = CLOSEUP ? h : Math.min(h, Math.ceil(h * k / tanY) + 2);
+  T.birdTex = texture(bw, bh, 'rgba16float');
+  T.birdMS = texture(bw, bh, 'rgba16float', { samples: 4, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+  T.birdDepth = texture(bw, bh, 'depth24plus', { samples: 4, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+});
 
 const bird = (() => {
   // An origami crane in flight. Local frame: +X right, +Y up, -Z forward (head). ~1 m wingspan.
@@ -84,7 +101,7 @@ export function renderBird(time, VP, birdRel) {
   const SV = viewFromBasis(sR, sU, sF, eye);
   const SP = ortho(-0.62, 0.62, -0.62, 0.62, 0.5, 6);
   const shadowVP = mat4Mul(SP, SV);
-  const vals = { model: M, viewProj: shadowVP, shadowVP, flex, sunDir: SUN_DIR, shadowTexel: 1 / SHADOW_N, tProbe: T.probe, tShadowMap: T.shadow };
+  const vals = { model: M, viewProj: shadowVP, shadowVP, flex, sunDir: SUN_DIR, shadowTexel: 1 / SHADOW_N, bProbe: T.probe, tShadowMap: T.shadow };
   let offsets = uniforms(P.shadow, vals);
   let rp = enc().beginRenderPass({
     colorAttachments: [],
@@ -97,20 +114,21 @@ export function renderBird(time, VP, birdRel) {
   rp.setVertexBuffer(1, bird.attr);
   rp.draw(bird.count);
   rp.end();
-  // screen bounding box of the bird (generous sphere projection)
+  // the bird's box on screen, in pixels from the bottom left (a generous sphere projection)
   const c = [dot(birdRel, cam.right), dot(birdRel, cam.up), dot(birdRel, cam.fwd)];
-  let box = [0, 0, 0, 0];
-  if (c[2] > 0.2) {
-    const tanY = Math.tan(cam.fov / 2), tanX = tanY * R.w / R.h;
-    const rad = 0.75;
-    const cx = 0.5 + 0.5 * c[0] / c[2] / tanX, cy = 0.5 + 0.5 * c[1] / c[2] / tanY;
-    const ex = 0.5 * rad / Math.max(c[2] - rad, 0.05) / tanX, ey = 0.5 * rad / Math.max(c[2] - rad, 0.05) / tanY;
-    box = [clamp(cx - ex, 0, 1), clamp(cy - ey, 0, 1), clamp(cx + ex, 0, 1), clamp(cy + ey, 0, 1)];
-  }
-  const px = [Math.floor(box[0] * R.w), Math.floor(box[1] * R.h), Math.ceil(box[2] * R.w), Math.ceil(box[3] * R.h)];
-  if (px[2] - px[0] < 1 || px[3] - px[1] < 1) return [2, 2, -1, -1];
-  // the bird (4x MSAA, resolved into T.birdTex; only its box is drawn and read)
-  vals.viewProj = VP;
+  if (c[2] <= 0.2) return;
+  const tanY = Math.tan(cam.fov / 2), tanX = tanY * R.w / R.h;
+  const cx = 0.5 + 0.5 * c[0] / c[2] / tanX, cy = 0.5 + 0.5 * c[1] / c[2] / tanY;
+  const ex = 0.5 * BIRD_R / Math.max(c[2] - BIRD_R, 0.05) / tanX, ey = 0.5 * BIRD_R / Math.max(c[2] - BIRD_R, 0.05) / tanY;
+  const TW = T.birdTex.w, TH = T.birdTex.h;
+  const x0 = Math.floor(clamp(cx - ex, 0, 1) * R.w), y0 = Math.floor(clamp(cy - ey, 0, 1) * R.h);
+  const bw = Math.min(Math.ceil(clamp(cx + ex, 0, 1) * R.w) - x0, TW), bh = Math.min(Math.ceil(clamp(cy + ey, 0, 1) * R.h) - y0, TH);
+  if (bw < 1 || bh < 1) return;
+  // the bird (4x MSAA, resolved into T.birdTex): the view-projection cropped to its box, which
+  // lands in the targets' first bw × bh texels
+  const ax = R.w / TW, ay = R.h / TH;
+  const crop = new Float32Array([ax, 0, 0, 0, 0, ay, 0, 0, 0, 0, 1, 0, ax - 2 * x0 / TW - 1, ay - 2 * y0 / TH - 1, 0, 1]);
+  vals.viewProj = mat4Mul(crop, VP);
   offsets = uniforms(P.bird, vals);
   rp = enc().beginRenderPass({
     colorAttachments: [{ view: T.birdMS.view, resolveTarget: T.birdTex.view, loadOp: 'clear', clearValue: [0, 0, 0, 0], storeOp: 'discard' }],
@@ -119,11 +137,11 @@ export function renderBird(time, VP, birdRel) {
   });
   rp.setPipeline(P.bird.pipe);
   rp.setBindGroup(0, bindGroup(P.bird, vals), offsets);
-  rp.setScissorRect(px[0], px[1], px[2] - px[0], px[3] - px[1]);
+  rp.setScissorRect(0, 0, bw, bh);
   rp.setVertexBuffer(0, bird.pos);
   rp.setVertexBuffer(1, bird.attr);
   rp.draw(bird.count);
   rp.end();
-  // shrink by half a pixel to avoid sampling texels outside the box
-  return [(px[0] + 0.5) / R.w, (px[1] + 0.5) / R.h, (px[2] - 0.5) / R.w, (px[3] - 0.5) / R.h];
+  // over the scene, in its box
+  pass(P.birdOver, [T.scene], { tBird: T.birdTex, origin: [x0, y0] }, { viewport: [x0, y0, bw, bh] });
 }

@@ -1,9 +1,11 @@
-// Temporal upsampling and the sky composite
+// Temporal upsampling and the sky composite (FS_TAAU)
 //
-// FS_TAAU reprojects the history with the clouds' depth, samples it Catmull-Rom and clamps it
-// smoothly to the 3×3 neighbourhood (bilinear taps per output pixel: no low-resolution grid shows);
-// Halton(2,3) jitter over 16 frames.
-
+// The low-resolution clouds, jittered by Halton(2,3) over 16 frames, build up at full resolution:
+// the history is reprojected by the clouds' depth, sampled Catmull-Rom and clamped smoothly to the
+// 3×3 neighbourhood (bilinear taps per output pixel: no low-resolution grid shows). Behind them the
+// sky (the sky view, the cirrus veil, the sun's disk); the two high layers are sheets at their
+// heights, in front of or behind the clouds by depth. Outputs: the history, and the scene, whose
+// alpha (how much sky shows past the clouds) masks the sun rays.
 
 export const U_TAAU = {
   prevVP: 'mat4x4f',

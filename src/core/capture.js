@@ -1,12 +1,13 @@
 // The test mode (?test, CLAUDE.md §7): what tools/screenshot.js, tools/flights.js and
 // tools/checks.js rely on
 //
-// main.js steps the page at a fixed time step (?dt) and waits each frame for the probe of the
-// last, so renders are deterministic. Here: the `frames`th frame is copied out of the canvas
-// texture and handed over as a PNG data URL (window.__png); with ?keep=K&every=S, K frames S apart
-// from it on (window.__frames, the first the same as __png); then window.__done once the GPU is
-// done. ?log keeps a row per frame of the flight (window.__log, the columns at afterFrame); ?script
-// steers by one of ROUTES instead of the viewer, and without ?live nothing else steers.
+// main.js steps the page at a fixed time step (?dt) and makes each frame wait for its world and for
+// the last frame's probe, so renders repeat exactly. Here: the `frames`th frame is copied out of the
+// canvas texture and handed over as a PNG data URL (window.__png); with ?keep=K&every=S, K frames S
+// apart from it on (window.__frames, the first the same as __png); then window.__done once the GPU
+// is done. ?log keeps a row per frame of the flight (window.__log, the columns at afterFrame);
+// ?script steers by one of ROUTES (tools/flights.js, the flight check), and without ?live nothing
+// else steers.
 
 import { params, TEST } from './params.js';
 import { refuse } from './page.js';

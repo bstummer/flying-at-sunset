@@ -1,6 +1,8 @@
 #include "chunks/common.wgsl"
 #include "chunks/atmo.wgsl"
 
+// The multiple-scattering table (Hillaire 2020): by the sun's angle and the height, the light
+// scattered twice over 8 × 8 directions, summed over all orders as a geometric series
 @fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let uv = (pos.xy - 0.5) / 31.0;
   let muS = uv.x * 2.0 - 1.0;

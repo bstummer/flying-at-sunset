@@ -1,7 +1,9 @@
-// GPU timing (timestamp queries), which drives dynamic resolution when available. Each group of
-// passes (tBegin .. tEnd) writes two timestamps: at the start of its first pass and at the end
-// of each pass (the last one stays); a group without passes this frame (the world, mostly) took
-// no GPU time. ?cpuprof sums the times over a test run (tools/screenshot.js --profile).
+// GPU timing with timestamp queries, where the browser has them (gpuTimer, else null): it drives
+// dynamic resolution (render/resolution.js) and feeds the readout and the benchmark. Each group of
+// passes (tBegin .. tEnd) writes two timestamps: at the start of its first pass and at the end of
+// each pass (the last one stays); a group without passes this frame (the world, mostly) took no GPU
+// time. They are read back once the GPU is done. ?cpuprof: their sums over a test run
+// (window.__gpu, tools/screenshot.js --profile).
 
 import { params } from '../core/params.js';
 import { device, enc, hooks, TIMESTAMPS } from './gpu.js';

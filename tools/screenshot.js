@@ -2,25 +2,20 @@
 //
 //   node tools/screenshot.js [--views start,tower] [--label before] [--size 960x540] [--frames 12]
 //                            [--scale 0.5] [--seed 7] [--query "dbg=1&exp=16"]
-//                            [--gl auto|hardware|swiftshader] [--profile] [--checks] [--no-measurements]
+//                            [--gl auto|hardware|swiftshader] [--profile] [--checks]
+//                            [--no-measurements]
 //   node tools/screenshot.js --compare <labelA> <labelB> [--views sun,anvil]
 //
-// Capture renders each view of tools/views.js in the page's test mode (a fixed time step for
-// `frames` frames, then the last frame) and writes screenshots/<label>/<view>.png,
-// contact-sheet.png and info.json, from dist/index.html as built (it refuses a build older than
-// its sources: npm run shot builds first). A reused label replaces the old capture. Each view also gets
-// its measurements in <label>/<view>/ (tools/measure.js: banding, zoomed crops, shimmer while
-// nothing moves, a motion strip), with their numbers in info.json and a warning above the
-// limits; --no-measurements (CI's runs: they only warn, and take most of the time on
-// SwiftShader) leaves them out. --profile adds the page's per-pass GPU times (?cpuprof) to
-// info.json. --checks (npm run verify does it) then runs the behaviour checks of tools/checks.js.
-// Compare writes screenshots/compare/<A>_vs_<B>.png: A | B | diff for every view (or those of
-// --views), and says for each how many pixels differ: captures are deterministic, so on the same
-// backend any difference is real. For each view that changed it also writes
-// compare/<A>_vs_<B>/<view>.png at full size, with its crops zoomed below (A | B | diff each):
-// the sheet's cells are too small to judge a subtle change by.
-// Exits non-zero on console errors, page errors, WebGPU errors, a lost device, network requests,
-// the page's error note, timeouts or a failed check.
+// Capture: each view of tools/views.js in the page's test mode, two at a time, into
+// screenshots/<label>/ (a reused label replaces its capture): <view>.png, contact-sheet.png,
+// info.json, and the view's measurements in <view>/ (tools/measure.js: its render runs on for the
+// motion strip, and once more held still for the shimmer; --no-measurements leaves them out).
+// Refuses a build older than its sources (npm run shot builds first). --profile adds ?cpuprof's
+// per-pass GPU times; --checks then runs tools/checks.js into <label>/checks/ (npm run verify).
+// Exits non-zero on any problem a view or check reports (tools/browser.js).
+// Compare: compare/<A>_vs_<B>.png, A | B | diff per view, with how many pixels differ (captures are
+// deterministic: on one backend any difference is real) and how the measurements and GPU times
+// changed; for each view that differs, compare/<A>_vs_<B>/<view>.png at full size, crops zoomed.
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';

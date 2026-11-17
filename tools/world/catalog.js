@@ -1,6 +1,8 @@
-// Side views (orthographic, looking along +Z, 40 km wide x 16 km tall) of the biggest towers in an
-// area, one tile each, with a 1 km tick (bottom left, red) and the ceiling (dashed red). Large
-// shapes only (the bubbles and the sea level), shaded by one light: for judging tower silhouettes.
+// Side views of the tallest towers within R of (CX, CZ), one tile each (none within 15 km of one
+// already shown): orthographic, 40 km wide × 16 km tall, marched along +Z onto their sunward faces,
+// drawn with +X to the right (a mirror of what a camera looking along +Z sees), with a 1 km tick
+// (bottom left, red) and the ceiling (dashed red). Large shapes only (the bubbles over a flat sea
+// at the tower's sea level), shaded by one light: for judging tower silhouettes.
 //
 //   node tools/world/catalog.js [out.png]       CX=0 CZ=0 R=150000 K=12 MINTOP=... ONE=1 (only the
 //                                              tower's own bubbles, not its neighbours')

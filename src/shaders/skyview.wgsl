@@ -1,6 +1,8 @@
 #include "chunks/common.wgsl"
 #include "chunks/atmo.wgsl"
 
+// The sky view (Hillaire 2020): the sky's light for the camera's height, by the view's zenith angle
+// (finer near the horizon) and its azimuth from the sun
 fn msLookup(r: f32, muS: f32) -> vec3f {
   var uv = vec2f(muS * 0.5 + 0.5, (r - RG) / (RT - RG));
   uv = (uv * 31.0 + 0.5) / 32.0;

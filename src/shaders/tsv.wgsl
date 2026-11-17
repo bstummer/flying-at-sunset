@@ -1,17 +1,8 @@
 #include "chunks/common.wgsl"
 #include "chunks/clip.wgsl"
 
-const NOUT = 8;
-struct Slices {
-  @location(0) o0: f32,
-  @location(1) o1: f32,
-  @location(2) o2: f32,
-  @location(3) o3: f32,
-  @location(4) o4: f32,
-  @location(5) o5: f32,
-  @location(6) o6: f32,
-  @location(7) o7: f32,
-}
+// The shadow volume's bake: from each texel, the optical depth toward the sun through the large
+// shapes of L1 or L2, as half floats packed in pairs into bTsv (shaders/volumes.js)
 fn march(xz: vec2f, y0: f32, jit: f32) -> f32 {
   var trans = 1.0;
   var s = 200.0 + 320.0 * jit;
@@ -34,17 +25,16 @@ fn march(xz: vec2f, y0: f32, jit: f32) -> f32 {
   }
   return min(-log(max(trans, 1e-6)), 14.0);
 }
-@fragment fn fs(@builtin(position) pos: vec4f) -> Slices {
-  let xz = u.p0 + vec2f(vec2i(pos.xy) - u.tex0) * u.cellT;
-  let jit = ign(pos.xy);
-  var o: Slices;
-  o.o0 = march(xz, (f32(u.z0 + 0) + 0.5) * u.cellTV, fract(jit + f32(0) * 0.618));
-  o.o1 = march(xz, (f32(u.z0 + 1) + 0.5) * u.cellTV, fract(jit + f32(1) * 0.618));
-  o.o2 = march(xz, (f32(u.z0 + 2) + 0.5) * u.cellTV, fract(jit + f32(2) * 0.618));
-  o.o3 = march(xz, (f32(u.z0 + 3) + 0.5) * u.cellTV, fract(jit + f32(3) * 0.618));
-  o.o4 = march(xz, (f32(u.z0 + 4) + 0.5) * u.cellTV, fract(jit + f32(4) * 0.618));
-  o.o5 = march(xz, (f32(u.z0 + 5) + 0.5) * u.cellTV, fract(jit + f32(5) * 0.618));
-  o.o6 = march(xz, (f32(u.z0 + 6) + 0.5) * u.cellTV, fract(jit + f32(6) * 0.618));
-  o.o7 = march(xz, (f32(u.z0 + 7) + 0.5) * u.cellTV, fract(jit + f32(7) * 0.618));
-  return o;
+// a texel per invocation; each pair of them in a row is packed into one u32 of bTsv (rows of u.row)
+var<workgroup> v: array<f32, 64>;
+@compute @workgroup_size(8, 8, 1) fn cs(@builtin(global_invocation_id) g: vec3u, @builtin(local_invocation_index) li: u32) {
+  let inside = i32(g.x) < u.n.x && i32(g.y) < u.n.y;
+  let t = u.tex0 + vec2i(g.xy);
+  let z = i32(g.z);
+  // (the march's jitter turns over every 8 slices, as when they were baked 8 at a time)
+  if (inside) { v[li] = march(u.p0 + vec2f(g.xy) * u.cellT, (f32(z) + 0.5) * u.cellTV, fract(ign(vec2f(t) + 0.5) + f32(z % 8) * 0.618)); }
+  workgroupBarrier();
+  if (inside && (g.x & 1u) == 0u) {
+    bTsv[(g.z * u32(u.n.y) + g.y) * u32(u.row) + g.x / 2u] = pack2x16float(vec2f(v[li], v[li + 1u]));
+  }
 }

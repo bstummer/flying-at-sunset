@@ -1,16 +1,15 @@
-// Runs a command in a Linux container like CI's runner (tools/linux.Dockerfile),
-// with the repo mounted, for machines whose own Chromium lacks what CI has:
-// on Windows, WebGPU has no SwiftShader adapter, so SwiftShader captures that
-// compare with CI's come from here.
+// Runs a command in a Linux container like CI's runner (tools/linux.Dockerfile), the repo mounted:
+// WebGPU has a SwiftShader adapter on Linux only, so on Windows and macOS the SwiftShader captures
+// that compare with CI's come from here.
 //
 //   node tools/linux.js npm run verify:ci          (verify as CI runs it)
-//   node tools/linux.js node tools/screenshot.js --gl swiftshader --size 320x180 --frames 8 --no-measurements --views start,tower
+//   node tools/linux.js node tools/screenshot.js --gl swiftshader --size 320x180 --frames 8 \
+//     --no-measurements --views start,tower
 //
-// Needs Docker, running. The image is built on first use (and again when the
-// Dockerfile or the Playwright of package-lock.json changes: the image installs
-// that version's system libraries). node_modules and Playwright's browsers live
-// in Docker volumes, as the host's are for another OS; `npm ci` runs there
-// whenever package-lock.json changed.
+// Needs Docker, running. The image is built on first use, and again when the Dockerfile or
+// package-lock.json's Playwright changes (it installs that version's system libraries).
+// node_modules and Playwright's browsers live in Docker volumes (the host's are for another OS);
+// `npm ci` runs there whenever package-lock.json changed.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';

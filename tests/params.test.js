@@ -1,3 +1,6 @@
+// The URL parameters (src/core/params.js): each read as its kind, an error for what can't be read,
+// and src/ reading exactly the names PARAMS has
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';

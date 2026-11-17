@@ -1,4 +1,6 @@
 
+// The atmosphere (Rayleigh, Mie, ozone; lengths in km), phase functions, and lookups into the
+// transmittance and sky-view tables (shaders/sky.js)
 const RG = 6360.0;
 const RT = 6460.0;
 const RAY_S = vec3f(5.802e-3, 13.558e-3, 33.1e-3);
@@ -38,6 +40,11 @@ fn rMuToTransUv(r: f32, mu: f32) -> vec2f {
   let dMax = rho + H;
   let uv = vec2f((d - dMin) / max(dMax - dMin, 1e-4), rho / H);
   return (uv * (TRANS_SIZE - 1.0) + 0.5) / TRANS_SIZE;
+}
+// Henyey-Greenstein: the clouds, the cirrus, the high layers
+fn HG(c: f32, g: f32) -> f32 {
+  let g2 = g * g;
+  return (1.0 - g2) / (4.0 * PI * pow(max(1.0 + g2 - 2.0 * g * c, 1e-4), 1.5));
 }
 fn rayleighPhase(c: f32) -> f32 { return 3.0 / (16.0 * PI) * (1.0 + c * c); }
 fn cornetteShanks(c: f32, g: f32) -> f32 {

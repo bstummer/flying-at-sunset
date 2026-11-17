@@ -209,14 +209,17 @@ For every change that can affect pixels:
 
 ```
 index.html            source template: canvas, hint, touch ring, note, the benchmark's panel
-vite.config.js        single-file build to dist/ (the shaders' includes: tools/wgsl.js; __BUILD__, the build id)
+vite.config.js        single-file build to dist/ (the shaders' includes: tools/wgsl.js; the world's worker, inlined; __BUILD__, the build id)
 PLAN.md               what was tried and failed, and why; what is still open
 src/
   main.js             the start, the main loop (frameStep), the steering hint, a lost device, window.__debug
+  worker.js           the world's worker: src/world/ off the page's thread (column data, bubbles, the domes around
+                      the bird, ?preset's place), bundled into the page as a string and started from a blob: URL
   math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the render origin, the ceiling
   core/               the page around the piece: every URL parameter (params.js, §7), its elements, the note,
-                      refused requests and fullscreen (page.js), steering (input.js), the test mode (capture.js),
-                      the readout (readout.js, ?debug), the benchmark (benchmark.js, ?bench)
+                      refused requests and fullscreen (page.js), steering (input.js), the world's worker from the
+                      page's side (world.js), the test mode (capture.js), the readout (readout.js, ?debug), the
+                      benchmark (benchmark.js, ?bench)
   flight/             the glider (flight.js, needs only the world), the chase camera (camera.js), where the bird
                       starts (presets.js: the test views, ?preset, ?pose)
   world/              the CPU world generator: the air, thermals, cells, shapes, what the GPU and the flight get. No DOM, no GPU
@@ -231,12 +234,14 @@ tests/                node:test suites and their fixtures
 ```
 
 Each module's header says what it does and how; `src/world/air.js` gives the overview of the world.
-`main.js` imports the modules in the order they are set up: the GPU device and the canvas
-(`render/gpu.js` awaits the device at its top level), the world (its spawn draw runs as `world/cells.js`
-loads), the shaders and static resources (`render/setup.js` creates every pipeline; they compile in
+`main.js` imports the modules in the order they are set up: the world's worker (`core/world.js`
+starts it; it grows the world around the start while the rest sets up), the GPU device and the canvas
+(`render/gpu.js` awaits the device at its top level), the world's queries (the spawn draw runs again
+as `world/cells.js` loads: the page may grow cells itself, `core/world.js`), the shaders and static resources (`render/setup.js` creates every pipeline; they compile in
 parallel and `main.js` waits for them before the first frame), the streamed volumes, the render
 targets, the flight, the test views, the frame, then what reads them all: the benchmark, the test
-mode, the readout. (`npm run dev` runs the modules natively, where those
+mode, the readout. Before the first frame `main.js` waits for the pipelines, the worker's start (where
+the bird starts) and the domes around the bird; the first frame waits for its world volumes. (`npm run dev` runs the modules natively, where those
 that don't import `render/gpu.js` can run while it awaits the device; the build waits for it
 everywhere. Verify judges the build.)
 
@@ -246,9 +251,9 @@ The tools rely on these; keep them, or change the tools with them.
 
 - `?test`: a fixed time step (`dt`, default 0.0166), a canvas of `w`×`h` (default 960×540), clouds at
   `scale` (0.5), stops after `frames` (24): the last frame is copied out of the canvas texture as a PNG
-  data URL in `window.__png`, then `window.__done = true`. No hint, no dynamic resolution, every bake
-  job every frame, and each frame waits for the probe of the last, as on a GPU that keeps up: renders
-  are deterministic (`src/core/capture.js`). A request the page can't serve sets `__error`, which
+  data URL in `window.__png`, then `window.__done = true`. No hint, no dynamic resolution, each frame
+  waits for the world's worker to answer what it asked and bakes all of it, and for the probe of the
+  last frame, as on a GPU and a worker that keep up: renders are deterministic (`src/core/capture.js`). A request the page can't serve sets `__error`, which
   fails the capture: a URL parameter it doesn't know or a value not of its kind (`src/core/params.js`),
   an unknown preset or route, a tower view the world has no place for; so does a lost device (the page
   never reloads). `&live`: input is read as normally (the steering checks).
@@ -288,12 +293,17 @@ header; outside the test mode one the page can't read is a console warning, and 
 ## 8. Conventions
 
 - Plain JS ES modules, no TypeScript, no framework. Small modules, short comments that explain *why*,
-  no dead code. Each module's header says what it does and how.
+  no dead code. Each module's header says what it does and how, briefly: what a reader needs before
+  the code (its job, its mechanism, its entry points, who uses it), not the code's formulas restated.
+  A `.wgsl` file's header follows its `#include` lines (a line above them would stop the includes);
+  its family's `.js` module describes the family.
 - **Shaders** are `.wgsl` files in `src/shaders/`, one per shader, that `#include "chunks/x.wgsl"` shared
   code at their top (`tools/wgsl.js`: each chunk once, in the order first reached); a `.js` module per
   family exports them with their uniforms. A shader names its uniforms `u.x`, declared in that module
-  as `U_...` fields, and its textures `tX` (registered in `render/gpu.js`; a name in a comment doesn't
-  count); a pass hands them over by those names, and a missing one throws (`render/gpu.js`'s header).
+  as `U_...` fields, its textures `tX`, storage textures `oX` (a compute shader's output) and storage
+  buffers `bX` (registered in `render/gpu.js`; a name in a comment doesn't count; a buffer's struct is
+  declared in a chunk the shaders that use it include); a pass (`pass`, `dispatch`) hands them over by
+  those names, and a missing one throws (`render/gpu.js`'s header). Entry points: `vs`, `fs`, `cs`.
   A value JS and WGSL both use comes from `constants.js` through the pipeline's header (`CLOUD_TOP`,
   the noise tiles), never as a second literal; a switch is an `override` set by the pipeline's
   `constants` (the trace's `DBG`).
@@ -307,9 +317,9 @@ header; outside the test mode one the page can't read is a console warning, and 
   (`updateFlight(bird, dt, time, steer, probe)`), so they run without the page.
 - `src/world/` stays free of the DOM and the GPU, and every value it gives is a function of position and
   the seed (§2): the Node tools and the tests run it.
-- Tunables live as named constants next to what they tune, or as numbers in formulas a module header
-  states (the world's, in `src/world/`). A number a header quotes is part of the header: change both
-  together, and state the formula as the code has it.
+- Tunables live as named constants next to what they tune, or as numbers in the formula they belong
+  to, whose comment says what it does (the world's, in `src/world/`). A number a header quotes is
+  part of the header: change both together.
 - **URL parameters** are read in `src/core/params.js` alone (`PARAMS`: each with its kind), and a module
   reads one as `params.x`, null when it is missing, keeping the default next to what it tunes
   (`params.exp ?? 14.0`). `tests/params.test.js` holds `src/` to reading exactly the names `PARAMS` has.
@@ -324,8 +334,9 @@ Smooth before sharp: dynamic resolution keeps the GPU under 12.5 ms a frame wher
 timestamp queries, else it aims at the display's frame rate by frame times (`render/resolution.js`),
 and detail gives way first. Phones get a lower resolution cap and cloud scale. Real computers and
 phones report through the benchmark (`?bench`, §3); the numbers in hand are in PLAN.md (known issues). CI's
-SwiftShader timings are only relative. Watch the CPU too: the world generator runs on the main thread
-(PLAN.md, known issues), which the benchmark shows as hitches.
+SwiftShader timings are only relative. Watch the CPU too: the world generator runs in a worker, but the
+page applies what it sends within a budget of main-thread and estimated GPU time (`render/stream.js`):
+a hitch in the benchmark is a question for that budget.
 
 ## 10. Definition of done
 
@@ -344,25 +355,25 @@ SwiftShader timings are only relative. Watch the CPU too: the world generator ru
 
 ## 11. How to work a request
 
-The author directs the work, one request at a time, and reviews the result. You build, measure and
-report, and say plainly what you couldn't judge: you see still images only, so motion, the feel of the
-flight and speed on real hardware are for the author to check.
+The author directs the work, one request at a time, and reviews the result. In between, the approach
+is yours: read a request for what it is after, not only for what it says, and build whatever serves
+the result best (§1), within the hard rules (§2). Experiment, try several ideas side by side, rethink
+or rebuild a part when that beats tuning it, and drop what doesn't work.
 
-1. Read this file, then PLAN.md: what failed before, and what is open.
-2. Take a `before` capture (§4) and look at it. Write down what falls short of the request and of the
-   vision (§1).
-3. Build. Change natural causes, not special-case features (§2). One convincing result beats broad,
-   mediocre coverage. For the world, iterate with `tools/world/` (stats, map, preview, catalog: seconds
-   each) before GPU captures.
-4. Finish to §10. If the change can cost GPU time, capture with `--profile` before and after and note
-   the per-pass change.
-5. Review the result harshly before the author does: every view against its brief and against what the
-   author keeps coming back to (§1). List everything that still falls short, including what got worse.
-   A subagent that hasn't seen the code makes a good second pair of eyes.
-6. Hand over: the capture label, the compare images, the known flaws and the frame cost, and what needs
-   the author's eyes (motion, feel, real hardware). Make sure they can open the images (from a cloud
-   session: CI's `screenshots` artifact, or copied out). Once pushed with their OK, a branch's preview
-   is at `https://bstummer.github.io/flying-at-sunset/<branch>/`, `?bench` there to measure it.
+What tends to help:
 
-Stop and ask when a new dependency looks necessary, when the frame rate can't be held, or when a
-choice is about taste or scope rather than engineering.
+- A `before` capture (§4) shows where the piece falls short of the request and the vision.
+- For the world, `tools/world/` (stats, map, preview, catalog) answers in seconds, before any GPU
+  capture; `--profile` shows what a change costs on the GPU.
+- Judging the result as harshly as the author will: the views against their briefs and against what
+  the author keeps coming back to (§1). A subagent that hasn't seen the code is a good second pair of
+  eyes.
+
+When handing over, say what changed, what still falls short (what got worse too), what it costs, and
+what you couldn't judge: you see still images only, so motion, the feel of the flight and speed on real
+hardware are for the author's eyes. Make sure they can open the images (from a cloud session: CI's
+`screenshots` artifact, or copied out). A pushed branch's preview is at
+`https://bstummer.github.io/flying-at-sunset/<branch>/`, with `?bench` there to measure it.
+
+Ask when a new dependency looks necessary, when the frame rate can't be held, or when a choice is
+about taste or scope rather than engineering.

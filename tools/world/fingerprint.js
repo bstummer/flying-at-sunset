@@ -6,7 +6,9 @@
 //
 //   node tools/world/fingerprint.js            compare with the recorded fingerprint
 //   node tools/world/fingerprint.js --write    record the current world as the expected one
-//   WSRC=... / QS="seed=3" node tools/world/fingerprint.js   another world (see load.js)
+//   WSRC=dir node tools/world/fingerprint.js   another checkout's world against the recorded one
+//   QS="seed=3" node tools/world/fingerprint.js   another seed: its parts, nothing to compare with
+//   (--write records only src/'s world at the default seed: it refuses QS and WSRC)
 //
 // Each part keeps its count and sums, not a hash: Math.sin, exp and pow may round their last bit
 // differently in another Node version, which a hash would report as a different world. One sum
@@ -62,13 +64,10 @@ export function fingerprint(W) {
       const out = new Float32Array(L.chunk * L.chunk * 4);
       W.fillColumns(L.cell, L.lod, gi, gj, L.chunk, L.chunk, out);
       cols.push(...out);
-      const bub = new Float32Array(1024 * 4 * 3 * 4), ox = gi * L.cell, oz = gj * L.cell;
+      const bub = new Float32Array(4096 * 12), ox = gi * L.cell, oz = gj * L.cell;
       const n = W.gatherBubbles(ox, oz, ox + L.chunk * L.cell, oz + L.chunk * L.cell, L.maxD + 300, L.minBR, ox, oz, bub, 4096, L.lod >= 2);
       bubs.push(n);
-      for (let k = 0; k < n; k++) {
-        const q = (((k >> 10) * 3) * 1024 + (k & 1023)) * 4;
-        for (const r of [0, 4096, 8192]) for (let c = 0; c < 4; c++) bubs.push(bub[q + r + c]);
-      }
+      for (let k = 0; k < n * 12; k++) bubs.push(bub[k]);
     }
     parts[`columns L${L.lod}`] = summary(cols);
     parts[`bubbles L${L.lod}`] = summary(bubs);

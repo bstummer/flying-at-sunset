@@ -1,10 +1,12 @@
 // Steering: mouse, touch, keys, gamepad, or a route
 //
 // Mouse: the pointer's offset from the centre, with a dead zone and shaping. Touch: the drag from
-// where the finger landed, shown by a ring. Keys: arrows and WASD (Cmd/Ctrl/Alt combinations are
-// shortcuts, not steering; releasing Meta clears held keys, as macOS drops their key-ups). Gamepad:
-// the left stick. The pointer leaving the window levels the bird out. A route (input.script) steers
-// instead of all of them: the benchmark's (core/benchmark.js), the test mode's (core/capture.js).
+// where the finger landed, shown by a ring that follows a finger dragged past it. Keys: arrows and
+// WASD (Cmd/Ctrl/Alt combinations are shortcuts, not steering; releasing Meta clears held keys, as
+// macOS drops their key-ups). Gamepad: the left stick. The pointer leaving the window levels the
+// bird out. A route (input.script) steers instead of all of them: the benchmark's
+// (core/benchmark.js), the test mode's (core/capture.js). updateInput smooths what steers into
+// input.sx and sy (keys ramp in slower) and counts how long the viewer has steered (the hint).
 
 import { canvas, touchEl } from './page.js';
 import { damp } from '../math.js';

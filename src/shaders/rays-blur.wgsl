@@ -1,7 +1,8 @@
 #include "chunks/common.wgsl"
 
+// Sun rays: a radial blur toward the sun, run twice (short strides, then long) for smooth,
+// noise-free rays
 @fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  // radial blur toward the sun; run twice (short then long strides) for smooth, noise-free rays
   let uv = pos.xy * u.dstTexel;
   let d = (u.sunUv - uv) * u.stepScale;
   var p = uv;

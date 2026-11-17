@@ -1,19 +1,14 @@
-// Behaviour checks of the built page, beyond its stills: what a visitor sees, steering, flight,
-// running out of GPU memory, streaming the world, the baked volumes, captures that repeat byte
-// for byte, the benchmark, and that the tools hear errors nothing on screen shows. Each check
-// fails on a broken promise of the piece, and on any page error, console error or WebGPU error.
+// Behaviour checks of the built page, beyond its stills: CHECKS below, each with what it holds the
+// piece to. A check fails on a broken promise of the piece, and on any problem the page's watcher
+// hears (tools/browser.js: errors, a lost device, a network request, a crash, a timeout).
 //
-//   node tools/checks.js [names...] [--gl auto|hardware|swiftshader]
-//   (tools/screenshot.js --checks runs them all after a capture: npm run verify)
+//   node tools/checks.js [names...] [--gl auto|hardware|swiftshader]     into screenshots/checks/
+//   (tools/screenshot.js --checks runs them all after a capture, into <label>/checks/: npm run verify)
 //
-// The longest run first, two at a time; player and benchmark last, alone: they time the page by
-// the wall clock, and pages drawing side by side wait for each other's frames (SwiftShader draws
-// every pixel on the CPU). Every page has a watchdog (tools/browser.js): nothing hangs.
-//
-// The steering checks run the page in ?test&live: a fixed time step, but input read as in normal
-// use, so they don't depend on how fast the machine renders. The thresholds are far from what the
-// page does (bank ±55°, climb 29°, dive 40°, level within a degree): they catch what is broken,
-// not tuning.
+// Two at a time, in CHECKS' order (the longest first); player and benchmark last, alone: they time
+// the page by the wall clock, and pages drawing side by side wait for each other's frames. The
+// steering checks run ?test&live (a fixed time step, input read as in normal use), with thresholds
+// far below what the page does: they catch what is broken, not tuning.
 import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,6 +66,12 @@ function unknown(name) {
 async function openPage(browser, problems, contextOptions = { viewport: { width: 400, height: 300 } }, { timeoutMs = 900_000 } = {}) {
   const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
+  // The pointer rests in the middle of the page, where it steers nothing. Playwright's starts at
+  // (0, 0), the top left corner, and headless Chromium on CI now and then delivers a pointer move
+  // there, which steers the bird up and left: letting go of the keys banked it -40° (steering), and
+  // the hint went as it came, the page counting it as the visitor steering (player).
+  const view = page.viewportSize();
+  if (view) await page.mouse.move(view.width / 2, view.height / 2);
   const watched = await watchPage(page);
   const dog = watchdog(context, timeoutMs);
   let crashed = false;
@@ -137,6 +138,7 @@ async function checkPlayer(browser, { fail, note, problems }) {
         events: window.__ui,
         hint: document.getElementById('hint').innerText.replace(/\n/g, ' | '),
         stats: document.getElementById('stats')?.textContent ?? null,
+        steered: window.__debug?.input.activeTime ?? 0,
         error: window.__error ?? null,
         note: getComputedStyle(document.getElementById('note')).display,
       }));
@@ -147,7 +149,7 @@ async function checkPlayer(browser, { fail, note, problems }) {
       if (shown === undefined) fail(`${v.label}: the canvas never faded in`);
       if (on === undefined || off === undefined) fail(`${v.label}: the hint ${on === undefined ? 'never showed' : 'never went away'}`);
       // (8.2 s; the page changes it between frames, which take a second or two on SwiftShader)
-      else if (!(off - on > 5)) fail(`${v.label}: the hint showed for only ${(off - on).toFixed(1)} s (expected about 8 s)`);
+      else if (!(off - on > 5)) fail(`${v.label}: the hint showed for only ${(off - on).toFixed(1)} s (expected about 8 s; the page counted ${s.steered.toFixed(1)} s of steering)`);
       else if (on < shown) fail(`${v.label}: the hint showed before the canvas faded in`);
       if (!v.hint.test(s.hint)) fail(`${v.label}: the hint says "${s.hint}"`);
       if (v.stats && !/fps/.test(s.stats ?? '')) fail(`${v.label}: no frame rate in the debug overlay (${JSON.stringify(s.stats)})`);
@@ -170,8 +172,8 @@ async function livePage(browser, problems, options) {
   return {
     ...opened,
     state: async () => {
-      const row = await last();
-      return { t: row[LOG.t], bank: row[LOG.bank], gamma: row[LOG.gamma], speed: row[LOG.speed] };
+      const [row, steer] = await page.evaluate(() => [window.__log.at(-1), window.__debug.input.kind]);
+      return { t: row[LOG.t], bank: row[LOG.bank], gamma: row[LOG.gamma], speed: row[LOG.speed], steer };
     },
     waitSim: async (seconds) => {
       const t0 = (await last())[LOG.t];
@@ -188,7 +190,7 @@ async function checkSteering(browser, { fail, note, problems }) {
     const live = await livePage(browser, problems, { viewport: { width: 400, height: 300 }, hasTouch: mode === 'touch' });
     const { page, state, waitSim } = live;
     const expect = (what, s, ok) => {
-      if (!ok) fail(`${mode}: ${what}: ${fmt(s)}`);
+      if (!ok) fail(`${mode}: ${what}: ${fmt(s)} (steered by ${s.steer})`);
     };
     try {
       if (mode === 'mouse') {

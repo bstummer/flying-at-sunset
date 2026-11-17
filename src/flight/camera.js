@@ -4,7 +4,8 @@
 // the vertical one kept within 47–78° (47° on 16:9 and wider screens, 59° at 4:3, up to 78° on
 // portrait ones), widening by up to 24% toward top speed; a subtle shake at speed and in cloud.
 // updateCamera(dt, snap, time, aspect, inCloud) follows bird_ (aspect: the canvas's width over
-// height; inCloud: 0..1, how deep the camera is in cloud, render/probe.js).
+// height; inCloud: 0..1, how deep the camera is in cloud, render/probe.js). ?closeup: a test camera
+// fixed to the bird instead.
 
 import { params } from '../core/params.js';
 import { add, clamp, cross, damp, DEG, mix3, norm, sat, scl, spring, sub } from '../math.js';
@@ -14,7 +15,12 @@ export const cam = {
   pos: [0, 0, 0], prevPos: [0, 0, 0], offset: null, fwdSmooth: null, roll: 0, fov: 50 * DEG,
   right: [1, 0, 0], up: [0, 1, 0], fwd: [0, 0, -1],
 };
-const CLOSEUP = params.closeup;   // (?closeup: a test camera)
+export const CLOSEUP = params.closeup;   // (?closeup: a test camera)
+// the vertical field of view at rest (it only widens with speed): 74° across, within 47–78°
+export const baseFovY = aspect => clamp(2 * Math.atan(Math.tan(37 * DEG) / aspect), 47 * DEG, 78 * DEG);
+// how near the chase camera can come to the bird: 4.1 m behind it, less up to 0.48 m in a hard
+// climb (dist below), with room for its spring (render/bird.js sizes the bird's targets by it)
+export const CAM_NEAREST = 3.0;
 
 export function updateCamera(dt, snap, time, aspect, inCloud) {
   const b = bird_;
@@ -63,8 +69,7 @@ export function updateCamera(dt, snap, time, aspect, inCloud) {
   cam.up = norm(add(scl(up, cr), scl(right, sr)));
   cam.fwd = fwd;
   // field of view: wider with speed
-  const baseFovY = clamp(2 * Math.atan(Math.tan(37 * DEG) / aspect), 47 * DEG, 78 * DEG);
-  const fovT = baseFovY * (1 + 0.24 * sp);
+  const fovT = baseFovY(aspect) * (1 + 0.24 * sp);
   cam.fov = snap ? fovT : damp(cam.fov, fovT, 2.0, dt);
   if (snap) cam.prevPos = cam.pos;
 }

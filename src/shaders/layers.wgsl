@@ -1,22 +1,8 @@
 #include "chunks/common.wgsl"
+#include "chunks/vnoise.wgsl"
 
-fn vnoise(p: vec2f, per: vec2f, seed: u32) -> f32 {
-  let i = floor(p);
-  let f = p - i;
-  let fu = f * f * (3.0 - 2.0 * f);
-  let a = hash33(vec3u(vec2u(mod2(i, per)), seed)).x;
-  let b = hash33(vec3u(vec2u(mod2(i + vec2f(1.0, 0.0), per)), seed)).x;
-  let c = hash33(vec3u(vec2u(mod2(i + vec2f(0.0, 1.0), per)), seed)).x;
-  let d = hash33(vec3u(vec2u(mod2(i + vec2f(1.0, 1.0), per)), seed)).x;
-  return mix(mix(a, b, fu.x), mix(c, d, fu.x), fu.y);
-}
-fn fbm(p: vec2f, per0: vec2f, seed: u32) -> f32 {
-  var s = 0.0;
-  var a = 0.5;
-  var per = per0;
-  for (var i = 0; i < 6; i++) { s += a * vnoise(p * per, per, seed + u32(i)); a *= 0.5; per *= 2.0; }
-  return s;
-}
+// The two thin high layers' tile: a few long patches, stretched along x and streaky inside (r, g:
+// the two layers; b: fine streaks)
 fn layer(p: vec2f, seed: u32) -> f32 {
   let w = vec2f(fbm(p, vec2f(3.0, 6.0), seed + 60u), fbm(p + 0.31, vec2f(3.0, 6.0), seed + 70u)) - 0.5;
   let q = p + w * vec2f(0.05, 0.03);

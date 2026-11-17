@@ -1,3 +1,6 @@
+// The shaders' files (src/shaders/, tools/wgsl.js): includes, entry points, the constants JS and
+// WGSL share, the bake's NOUT
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -28,7 +31,7 @@ test('every shader the modules export is a .wgsl file whose includes resolve', (
   for (const [name, file] of Object.entries(ENTRIES)) {
     const code = resolveWgsl(join(SHADERS, file));
     assert.doesNotMatch(code, /#include/, `${name}: an #include below the top of a file is left as it is`);
-    assert.match(code, /@(vertex|fragment) fn (vs|fs)\(/, `${name}: no entry point vs or fs`);
+    assert.match(code, /@(vertex|fragment|compute @workgroup_size\([^)]*\)) fn (vs|fs|cs)\(/, `${name}: no entry point vs, fs or cs`);
   }
 });
 
@@ -39,8 +42,8 @@ test('the constants JS and WGSL share are declared once, by the pipeline (render
   assert.deepEqual([CLOUD_TOP, SHAPE_TILE, DETAIL_TILE].map(Number.isFinite), [true, true, true]);
 });
 
-test('the volume bakes write NOUT slices a pass, as render/stream.js hands them over', () => {
-  for (const name of ['FS_TSV', 'FS_BAKE']) {
+test('the volume bake writes NOUT slices a pass, as render/stream.js hands them over', () => {
+  for (const name of ['FS_BAKE']) {
     const code = resolveWgsl(join(SHADERS, ENTRIES[name]));
     assert.match(code, new RegExp(`const NOUT = ${NOUT};`), `${name}: its NOUT`);
     const outputs = [...code.matchAll(/@location\((\d+)\) o\d+: f32/g)].map((m) => Number(m[1]));

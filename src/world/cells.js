@@ -1,40 +1,26 @@
 // Convective cells: places where bubbles keep rising for a while
 //
-// - Potential P (m): the size of a cell's strongest bubbles. A power law: density 0.36e-6/m² ×
-//   (0.12 + 0.88·I) × TOWER_RATE for P > P_MIN (600 m), slope ALPHA 2, cut exp(−(P − 600)/P_CUT)
-//   (P_CUT 2800). Kept in three grids ("tiers") by size: 8 km (P 600–1000), 16 km (1000–3000), 32 km
-//   (3000–8000). tierSites places them cheaply (drawn as dense as the most restless air, each kept
-//   as likely as the air where it lies allows).
-// - Life: 1400 s·√(P/1 km)·(0.7–1.3); a cell is shown at a random age up to 1.25·life.
-// - Pulses (growCell): up to 24, every gap = 240·(min(P, R_TH)/1 km)^0.3 s (shorter for cells bigger
-//   than R_TH, 3500 m: they send more bubbles, not bigger ones); strength s = √sin(π·age/life) ×
-//   lognormal; r0 = min(P, R_TH)·lerp(0.35, 1, s), launch speed (1.5 + 4.5·√(r0/1 km))·lerp(0.75, 1.1, s) m/s, spread
-//   0.6·P around the (drifting) cell centre. Each pulse is lifted roots-only first; if its top passes
-//   zs + H_FLAT it is tall, and grown in full as 3D bubbles (only bubbles with r > 420 m, and pieces
-//   ≥ 200 m), else its heads become 2D domes.
-// - Subsidence (subsidenceAt, SUB_R 2.6): air sinking around a stronger cell nearby (within
-//   ~1.8·2.6·P) strengthens the inversion (+0.12·sub), cuts buoyancy (×(1 − 0.7·sub)) and lowers
-//   the equilibrium level (×(1 − 0.6·sub)) of weaker cells (P ≥ 1000; half for daughters). This
-//   spaces towers.
-// - Daughters: outflows set off Poisson(1.2·I·min(age/life, 1)) younger cells 1.8–3.5 P away (60% within
-//   ±1.2 rad of downwind), P × 0.4–1, two generations deep.
-// - tierCell grows all cells of one grid cell, then per cell: the start's clearance (if any bubble
-//   comes within 2.5 km of the start column at the bird's height, the cell's 3D bubbles are
-//   dropped), pruneBubbles (drops bubbles mostly inside a clearly bigger one), dropAdrift (keeps
-//   only pieces that hang together, piece by piece, with the sea: fragments cut off evaporate
-//   first), and a tower summary {x, z, P, y0, top, wide, R0, ceil, gen, cell} for the test views and
-//   the tools (top 0 when nothing of its bubbles is left).
-// - Caches: per tier a full cache, a coarse cache (for the coarsest level: low pulses roots-only,
-//   tall ones without sub-bubbles under 600 m; the smallest tier is skipped there) and a site cache;
-//   worldGC forgets far ones (every 900 frames when a cache holds ≥ 2500 entries). What a place
-//   holds never depends on what was asked before (tests/world.test.js).
-// - The spawn draw (after subsidenceAt): the restlessness field is drawn again and again (REST_O, up
-//   to 64 draws, each as random as any other) until one leaves the start calm (rest < 0.3 within
-//   3–9 km and toward the sun, bearings −0.35..0.15 out to 35 km) with ≥ 3 strong, unsuppressed cell
-//   sites (P > 2200, I > 0.5, subsidence < 0.4) at bearings 0.3–0.95 rad right of the sun, 12–40 km
-//   out: towers lit from the side, in view of the start yaw 0.45, their tops drifting away
-//   downwind. Failing that, the best draw (seed 5 starts with no tower in view). ~30 ms. If the
-//   sun's azimuth, the start yaw or the wind change, revisit these bearings.
+// - Sites (tierSites): a cell's potential P, the size of its strongest bubbles, follows a power law,
+//   with more cells where the air is restless (×TOWER_RATE, ?towers); they are kept in three grids
+//   ("tiers") by size, 8, 16 and 32 km across.
+// - growCell: a cell sends up pulses through its life, weak as it builds up, strongest in its prime;
+//   no bubble bigger than R_TH (a bigger cell sends more of them). Each pulse is lifted alone first
+//   (thermals.js): if it rises past H_FLAT it is tall and grown in full as 3D bubbles, else its
+//   pieces become 2D domes on the sea.
+// - subsidenceAt: air sinking around a stronger cell nearby holds weaker ones down (a stronger
+//   inversion, less buoyancy, a lower top), which spaces the towers. A cell's outflow also sets off
+//   younger cells near it, mostly downwind, two generations deep.
+// - tierCell grows the cells of one grid cell, dropping a cell's 3D bubbles if any comes near the
+//   bird's start, bubbles a bigger one holds (pruneBubbles) and pieces that don't hang together with
+//   the sea (dropAdrift: cut off, they would evaporate first), and sums up each tower for the test
+//   views and the tools. Grid cells are cached (separately for the coarsest clipmap level, which
+//   leaves out small cells and small bubbles); worldGC forgets far ones. What a place holds never depends on
+//   what was asked before (tests/world.test.js). forEachDome, forEachSys: what lies over a box.
+// - The spawn draw, as the module loads: the restlessness field is drawn again (REST_O, up to 64
+//   draws) until the start is calm and open toward the sun, with strong cells 12–40 km off to its
+//   right (lit from the side, in view of the start's yaw, their tops drifting away downwind);
+//   failing that, the best draw. If the sun's azimuth, the start's yaw or the wind change, revisit
+//   its bearings.
 
 import { params } from '../core/params.js';
 import { clamp, lerp, mulberry32, PI, sat } from '../math.js';

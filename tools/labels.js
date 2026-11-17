@@ -1,6 +1,7 @@
 // The labels the tools name their output by in screenshots/: a capture's folder
-// (tools/screenshot.js), a flight log's file (tools/flights.js). A module of its own: a tool must
-// not import another tool, whose main would wait for it (tests/layout.test.js).
+// (tools/screenshot.js), a flight log's file (tools/flights.js). A module of its own: flights.js
+// importing them from screenshot.js would close the loop screenshot.js → checks.js → flights.js,
+// and a tool's main, awaited at its top level, would wait for itself (tests/layout.test.js).
 import { execFileSync } from 'node:child_process';
 import { ROOT } from './browser.js';
 

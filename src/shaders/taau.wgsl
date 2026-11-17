@@ -1,6 +1,7 @@
 #include "chunks/common.wgsl"
 #include "chunks/atmo.wgsl"
 
+// Temporal upsampling of the clouds and the sky composite (shaders/taau.js)
 fn sampleHist(uv: vec2f) -> vec4f {
   // Catmull-Rom with 9 taps (5 bilinear) for a sharp, stable history
   let p = uv * u.res;
@@ -35,8 +36,7 @@ fn skyColor(dir: vec3f) -> vec3f {
     let cs = textureSampleLevel(tCirrus, sRep, p, 0.0);
     let a = cs.r * smoothstep(0.003, 0.08, dir.y);
     let cosT = dot(dir, u.sunDir);
-    let g = 0.6;
-    let ph = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
+    let ph = HG(cosT, 0.6);
     let cc = u.cirrusCol * (0.25 + 4.0 * ph) * (0.75 + 0.5 * cs.g);
     let fade = exp(-t / 60000.0);
     c = mix(c, cc + c * 0.6, a * 0.32 * fade);
@@ -85,8 +85,7 @@ fn highLayer(k: i32, dir: vec3f, tL: f32, behind: vec3f) -> vec4f {
   let a = (1.0 - exp(-tau)) * exp(-tL / 75000.0) * smoothstep(0.02, 0.1, slope) * smoothstep(60.0, 450.0, abs(u.camPos.y - H));
   // thin and translucent: forward scattering makes them glow toward the sun, golden all over
   let cosT = dot(dir, u.sunDir);
-  let g = 0.7;
-  let ph = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
+  let ph = HG(cosT, 0.7);
   let c = u.layerCol[k] * (0.22 + 3.2 * ph) * (0.7 + 0.5 * tx.b) + behind * 0.45;
   return vec4f(c * a, a);
 }
@@ -155,5 +154,6 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
   var frontT = 1.0;
   if (t1 > 0.0) { if (t1 < cd) { frontL = l1.rgb; frontT = 1.0 - l1.a; } else { back = back * (1.0 - l1.a) + l1.rgb; } }
   if (t0 > 0.0) { if (t0 < cd) { frontL = l0.rgb + frontL * (1.0 - l0.a); frontT *= 1.0 - l0.a; } else { back = back * (1.0 - l0.a) + l0.rgb; } }
-  return Out(res, vec4f(frontL + frontT * (back * res.a + res.rgb), 1.0));
+  // (the scene's alpha: how much sky shows past the clouds, the sun rays' mask)
+  return Out(res, vec4f(frontL + frontT * (back * res.a + res.rgb), res.a));
 }

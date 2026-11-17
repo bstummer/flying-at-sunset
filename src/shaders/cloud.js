@@ -1,24 +1,18 @@
-// Clouds: what the trace, the shadow volume, the probe and the mist share
-// The world lives in camera-centred clipmaps (render space: world minus a snapped origin):
-// three 3D distance volumes of the large shapes (sea relief, heaps, towers), 128 m / 512 m / 2 km,
-// each with a 2D map of per-column data, addressed toroidally so they stream as the bird flies.
-// - levelAt: L0 below ~7–10 km (a dithered handover), L1 below ~40–55 km, else L2; a level only
-//   inside its valid window. lvMargin: the interpolation error of each level (80, 260, 750 m).
-// - Billows (cloudSDF): the large shapes dm from the volume, then octaves of an fbm of spheres: a
-//   128³ rgba16float texture tiled over 5120 m holds signed distances to random spheres on lattices
-//   of 4, 8, 16, 32 cells per tile (1280, 640, 320, 160 m; the two large channels packed close,
-//   radius 0.4–0.78 cell, the small ones a little looser), looked up through a slow,
-//   never-repeating warp and squashed 1.35× vertically. octave(d, n, shell, k) clips the spheres to
-//   `shell` above the current surface (soft max) and unites them with it (a tight smooth min: crisp
-//   creases). Shells 300·A, 160·A, 56·w3·fine, 26·w4·fine (A: the billow strength of the column
-//   map); the two fine octaves only above the sea's troughs, fading with distance (w4 over
-//   5–15 km, w3 over 12–30 km); within ~2.2 km two more (80 and 40 m cells, shells 20 and 10 m).
-//   shellOf(a) = 400a + 120 bounds how far billows rise above dm (empty-space skipping).
-// - Density (densityEx): from the signed distance with a soft rim, 14 m wide near the camera, 80 m
-//   at 4 km; crisp (≤ max(30 m, 0.3% of the distance)) on the billowy tops of the sea and on
-//   everything heaped on it, soft in the sea's deep troughs; wispy erosion by the detail texture
-//   (64³ Worley/Perlin over 512 m); far silhouettes of heaps fray; extra fine wisps near the camera.
-// - lightTauN: the light march toward the sun (chunks/cloud.wgsl; the trace's header describes the lighting).
+// Clouds: what the trace, the shadow volume, the probe and the mist share (chunks/clip.wgsl,
+// chunks/cloud.wgsl)
+//
+// - The large shapes (sea relief, heaps, towers) come from the clipmaps (render/stream.js): levelAt
+//   picks a level by distance (dithered handovers at ~7–10 and ~40–55 km; a coarser one outside a
+//   level's valid window), macroAt reads its distance volume, colAt its column data.
+// - cloudSDF heaps billows on them: octaves of signed distances to random spheres (the shape volume:
+//   four lattices, 1280 to 160 m, tiled over 5120 m, looked up through a slow warp that never repeats
+//   and squashed vertically), each clipped to a shell above the surface so far and united with it
+//   (octave: crisp creases). The two fine octaves only above the sea's troughs, fading with
+//   distance; two finer ones within ~2 km. shellOf bounds how high billows rise (empty-space skipping).
+// - densityEx: density from the signed distance with a soft rim, wispy erosion by the detail volume,
+//   frayed far silhouettes, finer wisps near the camera.
+// - lightTauN: the optical depth toward the sun (5 growing steps) and which way the surface faces
+//   it. The trace's header describes the lighting.
 
 // uniforms of the clipmap lookups (part of the uniforms of every shader that includes them)
 export const U_CLIP = {

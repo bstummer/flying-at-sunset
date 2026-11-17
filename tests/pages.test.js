@@ -1,3 +1,6 @@
+// The site's folders (tools/pages.js): a folder per branch, safe in a URL, main at the root, and the
+// outputs CI's run prints
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';

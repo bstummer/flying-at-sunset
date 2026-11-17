@@ -1,6 +1,10 @@
 #include "chunks/common.wgsl"
 #include "chunks/nan.wgsl"
 
+// The final image: bloom and sun rays added, exposure and contrast, the tone curve (tm 1:
+// hue-preserving with a golden-hour split tone; 0: ACES), vignette, sRGB and grain, its rows turned
+// top-down for the canvas; view 1..5 shows what goes into it
+
 // ACES fitted (Stephen Hill)
 fn RRTAndODTFit(v: vec3f) -> vec3f { let a = v * (v + 0.0245786) - 0.000090537; let b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
 fn aces(c0: vec3f) -> vec3f {
@@ -22,10 +26,6 @@ fn toSRGB(c: vec3f) -> vec3f { return mix(c * 12.92, 1.055 * pow(c, vec3f(1.0 / 
   if (u.view == 4) { return vec4f(toSRGB(saturate(textureSampleLevel(tRays, sLin, uv, 0.0).rgb * u.rayCol * u.exposure)), 1.0); }
   if (u.view == 5) { return vec4f(toSRGB(saturate(textureSampleLevel(tBloom, sLin, uv, 0.0).rgb * u.exposure * 0.25)), 1.0); }
   var c = textureSampleLevel(tScene, sLin, uv, 0.0).rgb;
-  if (uv.x > u.birdBox.x && uv.y > u.birdBox.y && uv.x < u.birdBox.z && uv.y < u.birdBox.w) {
-    let b = textureSampleLevel(tBird, sLin, uv, 0.0);
-    c = c * (1.0 - b.a) + b.rgb;
-  }
   if (isnan3(c)) { c = vec3f(0.0); }
   let bloom = textureSampleLevel(tBloom, sLin, uv, 0.0).rgb;
   c = c * (1.0 - u.bloomMix) + bloom * u.bloomScale;   // energy-conserving mix with the normalised bloom

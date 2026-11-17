@@ -1,6 +1,6 @@
-// Pure image analysis for the measurements of tools/measure.js. Images are { width, height, data }
-// with data as RGBA bytes, rows from the top, as tools/png.js decodes them. Tested in
-// tests/image.test.js.
+// Pure image helpers for the tools: crops, zooms, tiles, the compares' diff (tools/screenshot.js)
+// and the measurements' banding and flicker (tools/measure.js). Images are { width, height, data },
+// data RGBA bytes, rows from the top, as tools/png.js decodes them. Tested in tests/image.test.js.
 
 export function createImage(width, height, [r, g, b] = [0, 0, 0]) {
   const data = new Uint8Array(width * height * 4);

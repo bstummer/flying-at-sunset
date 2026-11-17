@@ -1,3 +1,6 @@
+// The repo's layout: only tests/ holds files node --test runs, and no tool reaches itself through
+// its imports (its main's top-level await would wait for itself)
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

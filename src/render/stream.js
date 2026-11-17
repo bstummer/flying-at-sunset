@@ -1,40 +1,27 @@
-// Streamed world volumes: clipmaps around the camera
+// The streamed world volumes: clipmaps around the camera
 //
-// Three clipmap levels, each a 256×256×nz r16float 3D distance volume plus a 256×256 rgba16float
-// column map, centred on the camera and addressed toroidally (only strips that enter are rebuilt):
-//
-//   level  cell (h × v)   nz  reach     maxD     minBR                 shift step  block
-//   L0      128 × 128 m  112  ±16 km    1200 m   0                     16 cells    32
-//   L1      512 × 256 m   56  ±65 km    4000 m   200 m                 8           32
-//   L2     2048 × 512 m   32  ±262 km  12000 m   900 m (coarse cells)  4           16
-//
-// - A shadow volume (TSV: 768 × 360 m cells, 40 slices) holds the optical depth toward the sun,
-//   marched through the coarser levels; it shifts once L1 and L2 are settled.
-// - Jobs: per block first the column fill (CPU, written into the column map as half floats), then
-//   the volume bake (GPU, NOUT = 8 slices per pass; the block's bubbles go into a texture first,
-//   after submitting the bakes that read the last block's). Until a shift is baked a level is valid
-//   only in the overlap of its old and new windows (valid), and the shaders fall back to a coarser
-//   level.
-// - The bake reads the sea's slope from the neighbouring columns, which at a window's edge wrap to
-//   the far side: the edge is never sampled (worldUniforms keeps two cells clear), and when a strip
-//   enters, the line of the old window next to it is baked again (shiftLevel). Streamed levels then
-//   hold what a fresh start bakes (tools/checks.js streaming).
-// - The bake (FS_BAKE, shaders/volumes.js): per texel the sea (above·cs, a slope-corrected
-//   distance) united with the bubble ellipsoids (smooth min with each bubble's k), with a broad
-//   fillet where they swell out of the sea, smin(sea, bubbles, mix(700, 60, smoothstep(0, 1800,
-//   above))), clamped to ±maxD. It loops over every bubble gathered for the block (cap BUB_MAX
-//   4096): keep the counts down.
-// - Origin: rendering is relative to an origin snapped to ORIGIN_Q (81.92 km, a multiple of every
-//   noise tile), so float precision holds on endless flights.
-// - The CPU generates a new grid cell of the world synchronously when it is first needed (a stall:
-//   PLAN.md, known issues).
+// LEVELS: three levels (cells of 128 m, 512 m and 2 km, reaching ±16, ±65 and ±262 km), each a
+// 256×256×nz distance volume of the large shapes and a 256×256 map of column data, centred on the
+// camera and addressed toroidally: once the camera is more than `step` cells off its centre the
+// window shifts, and only the blocks that entered it are made. TSVL, the shadow volume (the optical depth toward the
+// sun), is marched through the coarser levels and shifts once they are settled. A shifting level
+// asks the world's worker (core/world.js) for all its blocks at once; a block's column data goes
+// into the column map, its bubbles into the frame's bubble arena, to be baked (shaders/volumes.js).
+// Until a shift is baked a level is valid only where its old and new windows overlap, and the
+// shaders fall back to a coarser one. A frame applies what has come within budgets (2 ms of this
+// thread; GPU time as bakeCost estimates it), the first frame and the tests' frames all of it. The
+// bake reads the sea's slope from neighbouring columns, which wrap at the edge: the shaders keep two
+// cells clear of it, and the old edge beside an entering strip is baked again, so a streamed level
+// holds what a fresh start bakes (tools/checks.js streaming). Render space: the world minus an
+// origin snapped to ORIGIN_Q (originOf), so floats keep their precision on endless flights.
 
 import { PI } from '../math.js';
 import { ORIGIN_Q, SUN_DIR } from '../constants.js';
-import { device, flush, pass, slices, texture, toHalf } from './gpu.js';
-import { NOUT } from '../shaders/volumes.js';
+import { COARSE } from '../core/page.js';
+import { forgetFar, request } from '../core/world.js';
+import { buffer, device, dispatch, enc, flush, pass, slices, texture } from './gpu.js';
+import { NOUT, TSV_ROW } from '../shaders/volumes.js';
 import { worldGC } from '../world/cells.js';
-import { fillColumns, gatherBubbles } from '../world/columns.js';
 import { P, T } from './setup.js';
 
 // Each level: a 3D distance volume of the large shapes and a 2D map of column data, 256 cells
@@ -49,20 +36,24 @@ export const LEVELS = [
   { cell: 2048, cellV: 512, nz: 32, maxD: 12000, minBR: 900, lod: 2, step: 4, chunk: 16 },
 ];
 export const TSVL = { cell: 768, cellV: 360, nz: 40, step: 8, chunk: 32, tsv: true };
-const VOL_USE = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC;
-const DATA_USE = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST;
+const TU = GPUTextureUsage;
 for (const L of [...LEVELS, TSVL]) {
-  L.vol = texture(CLIP_N, CLIP_N, 'r16float', { depth: L.nz, dim: '3d', usage: VOL_USE });
-  if (!L.tsv) L.col = texture(CLIP_N, CLIP_N, 'rgba16float', { usage: DATA_USE | GPUTextureUsage.COPY_SRC });
+  L.vol = texture(CLIP_N, CLIP_N, 'r16float', { depth: L.nz, dim: '3d', usage: TU.TEXTURE_BINDING | TU.COPY_SRC | (L.tsv ? TU.COPY_DST : TU.RENDER_ATTACHMENT) });
+  if (!L.tsv) L.col = texture(CLIP_N, CLIP_N, 'rgba16float', { usage: TU.TEXTURE_BINDING | TU.COPY_DST | TU.COPY_SRC });
   L.gi = null; L.gj = 0; L.valid = null; L.pending = 0;
 }
 T.tsv = TSVL.vol;
-const BUB_MAX = 4096;
-T.bub = texture(1024, (BUB_MAX >> 10) * 3, 'rgba32float', { usage: DATA_USE });
-const bubData = new Float32Array(1024 * (BUB_MAX >> 10) * 3 * 4);
-let bubUsed = false;     // a bake that reads the bubbles is encoded but not yet submitted
+// the shadow volume's bake writes a block here, then it is copied into the volume
+T.tsvStage = buffer(TSV_ROW * 4 * TSVL.chunk * TSVL.nz);
+// the bubbles of the bakes of a frame, one after another (12 floats each): a frame's first starts
+// at 0 again, as the last frame's bakes are submitted before it writes any
+const BUB_MAX = 4096, BUB_ARENA = 4 * BUB_MAX;
+T.bub = buffer(BUB_ARENA * 48);
+let bubUsed = 0;
 export const bakeQueue = [];
 export const worldStats = { jobs: 0, bubbles: 0, maxBub: 0, ms: 0 };
+const CPU_BUDGET = 2, GPU_BUDGET = COARSE ? 1 : 2;   // ms a frame
+let camXZ = [0, 0];
 
 // the blocks of global cell rectangle [i0, i1) x [j0, j1) of level L (blocks never wrap around
 // the texture: they are aligned to the block size, which divides the texture size)
@@ -74,10 +65,16 @@ function rectBlocks(L, i0, j0, i1, j1, out) {
   }
 }
 // queue a batch: first the column data of all its blocks (the bake reads the sea's slope from
-// neighbouring columns), then the volume bakes
+// neighbouring columns), then the volume bakes; the worker is asked for their data at once
 function queueBatch(L, blocks) {
-  if (!L.tsv) for (const b of blocks) bakeQueue.push(Object.assign({ fill: true }, b));
-  for (const b of blocks) bakeQueue.push(b);
+  if (!L.tsv) for (const b of blocks) bakeQueue.push(Object.assign({ fill: true, req: request({ kind: 'fill', cell: L.cell, lod: L.lod, gi: b.gi, gj: b.gj, ni: b.ni, nj: b.nj }) }, b));
+  for (const b of blocks) {
+    // the tower bubbles near it, relative to its corner (the coarsest level takes them from the
+    // cells grown for it: far cheaper, and all it can show)
+    const ox = b.gi * L.cell, oz = b.gj * L.cell;
+    if (!L.tsv) b.req = request({ kind: 'gather', x0: ox, z0: oz, x1: ox + b.ni * L.cell, z1: oz + b.nj * L.cell, pad: L.maxD + 300, minBR: L.minBR, ox, oz, max: BUB_MAX, coarse: L.lod >= 2 });
+    bakeQueue.push(b);
+  }
   return blocks.length * (L.tsv ? 1 : 2);
 }
 // keep a level's window centred on the camera (within +-step cells), queueing what enters it
@@ -105,59 +102,72 @@ function shiftLevel(L, cx, cz) {
   L.pending = queueBatch(L, blocks);
   if (!L.pending) L.valid = [ti, tj, ti + CLIP_N, tj + CLIP_N];
 }
+// What a job's GPU work costs, estimated (ms on the GPU measured): a bake pass loops over the
+// block's bubbles in every texel, the shadow volume marches every texel toward the sun.
+function bakeCost(job) {
+  if (job.fill) return 0;
+  if (job.L.tsv) return 0.1 + 1.5e-5 * job.ni * job.nj * job.L.nz;
+  return job.L.nz / NOUT * (0.02 + 1.5e-4 * job.req.reply.nb);
+}
 function runJob(job, O) {
   const L = job.L, tx = job.gi & CLIP_M, ty = job.gj & CLIP_M;
   if (job.fill) {
     // column data of the block
-    const col = new Float32Array(job.ni * job.nj * 4);
-    fillColumns(L.cell, L.lod, job.gi, job.gj, job.ni, job.nj, col);
-    device.queue.writeTexture({ texture: L.col.tex, origin: [tx, ty] }, toHalf(col), { bytesPerRow: job.ni * 8 }, [job.ni, job.nj]);
+    device.queue.writeTexture({ texture: L.col.tex, origin: [tx, ty] }, job.req.reply.col, { bytesPerRow: job.ni * 8 }, [job.ni, job.nj]);
     worldStats.jobs++;
     L.pending--;
     return;
   }
-  const viewport = [tx, ty, job.ni, job.nj];
   if (L.tsv) {
-    const vals = Object.assign(worldUniforms(O), {
-      tex0: [tx, ty], p0: [(job.gi + 0.5) * L.cell - O[0], (job.gj + 0.5) * L.cell - O[2]], cellT: L.cell, cellTV: L.cellV, sunDir: SUN_DIR, z0: 0,
-    });
-    for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.tsv, slices(L.vol, z, NOUT), vals, { viewport }); }
+    dispatch(P.tsv, Object.assign(worldUniforms(O), {
+      bTsv: T.tsvStage, tex0: [tx, ty], n: [job.ni, job.nj], row: TSV_ROW, p0: [(job.gi + 0.5) * L.cell - O[0], (job.gj + 0.5) * L.cell - O[2]],
+      cellT: L.cell, cellTV: L.cellV, sunDir: SUN_DIR,
+    }), [Math.ceil(job.ni / 8), Math.ceil(job.nj / 8), L.nz]);
+    enc().copyBufferToTexture({ buffer: T.tsvStage.buf, bytesPerRow: TSV_ROW * 4, rowsPerImage: job.nj }, { texture: L.vol.tex, origin: [tx, ty, 0] }, [job.ni, job.nj, L.nz]);
   } else {
-    // the tower bubbles near it, relative to its corner (the coarsest level takes them from the
-    // cells grown for it: far cheaper, and all it can show)
-    const ox = job.gi * L.cell, oz = job.gj * L.cell;
-    const nb = gatherBubbles(ox, oz, ox + job.ni * L.cell, oz + job.nj * L.cell, L.maxD + 300, L.minBR, ox, oz, bubData, BUB_MAX, L.lod >= 2);
+    const { nb, bub } = job.req.reply;
     worldStats.bubbles += nb; worldStats.maxBub = Math.max(worldStats.maxBub, nb);
-    if (nb) {
-      // (the queue writes at once: submit the bakes that read the previous bubbles first)
-      if (bubUsed) { flush(); bubUsed = false; }
-      const rows = ((nb + 1023) >> 10) * 3;
-      device.queue.writeTexture({ texture: T.bub.tex }, bubData.subarray(0, rows * 1024 * 4), { bytesPerRow: 1024 * 16 }, [1024, rows]);
-      bubUsed = true;
-    }
-    const vals = { tCol: L.col, tBub: T.bub, nb, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0 };
+    // (the queue writes at once: when the arena is full, submit the bakes that read it first)
+    if (bubUsed + nb > BUB_ARENA) { flush(); bubUsed = 0; }
+    const b0 = bubUsed;
+    if (nb) device.queue.writeBuffer(T.bub.buf, b0 * 48, bub);
+    bubUsed += nb;
+    const vals = { tCol: L.col, bBub: T.bub, nb, b0, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0 };
+    const viewport = [tx, ty, job.ni, job.nj];
     for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.bake, slices(L.vol, z, NOUT), vals, { viewport }); }
   }
   worldStats.jobs++;
   if (--L.pending === 0) L.valid = [L.gi, L.gj, L.gi + CLIP_N, L.gj + CLIP_N];
 }
-// per frame: shift the windows (coarse levels first; the shadow volume once they are settled) and
-// work through the queue within a time budget (all of it on the first frame and in tests)
-export function streamWorld(camPos, O, budgetMs, frame) {
-  if (frame % 900 === 899) worldGC(camPos[0], camPos[2]);
-  for (let l = LEVELS.length - 1; l >= 0; l--) shiftLevel(LEVELS[l], camPos[0], camPos[2]);
+// Once a frame, after the camera moved (main.js): shift the windows (coarse levels first; the
+// shadow volume once they are settled), asking the worker for what enters them; now and then the
+// worker, and this thread, forget the cells far behind.
+export function shiftWorld(camPos, frame) {
+  camXZ = [camPos[0], camPos[2]];
+  if (frame % 900 === 899) { forgetFar(camXZ[0], camXZ[1]); worldGC(camXZ[0], camXZ[1]); }
+  for (let l = LEVELS.length - 1; l >= 0; l--) shiftLevel(LEVELS[l], camXZ[0], camXZ[1]);
+  if (!LEVELS[1].pending && !LEVELS[2].pending) shiftLevel(TSVL, camXZ[0], camXZ[1]);
+}
+// In the frame (render/frame.js): work through the queue, as far as the replies have come, within
+// the budgets (all: everything, the first frame's and the tests')
+export function streamWorld(O, all) {
+  bubUsed = 0;
   const t0 = performance.now();
+  let gpu = 0, n = 0;
   for (let round = 0; round < 2; round++) {
     // the shadow volume reads the coarser levels: it shifts once they are settled
-    if (!LEVELS[1].pending && !LEVELS[2].pending) shiftLevel(TSVL, camPos[0], camPos[2]);
+    if (!LEVELS[1].pending && !LEVELS[2].pending) shiftLevel(TSVL, camXZ[0], camXZ[1]);
     while (bakeQueue.length) {
       const job = bakeQueue[0];
       if (job.L.tsv && (LEVELS[1].pending || LEVELS[2].pending)) break;
+      if (job.req && !job.req.reply) break;     // (its data hasn't come yet)
+      const cost = bakeCost(job);
+      if (!all && n && (gpu + cost > GPU_BUDGET || performance.now() - t0 > CPU_BUDGET)) break;
       bakeQueue.shift();
       runJob(job, O);
-      if (budgetMs >= 0 && performance.now() - t0 > budgetMs) break;
+      gpu += cost; n++;
     }
-    if (budgetMs >= 0) break;
+    if (!all) break;
   }
   worldStats.ms = performance.now() - t0;
 }

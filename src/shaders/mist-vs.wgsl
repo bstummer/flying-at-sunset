@@ -1,6 +1,9 @@
 #include "chunks/common.wgsl"
 #include "chunks/cloud.wgsl"
+#include "chunks/ambient.wgsl"
 
+// A mist puff (one instance) in its wrapped cell around the camera: the cloud's density and light
+// there (the volume's model), on a quad facing the camera
 struct Varyings { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) col: vec4f, @location(2) seed: f32 }
 const CELL = 180.0;
 @vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> Varyings {
@@ -20,7 +23,7 @@ const CELL = 180.0;
   if (alpha > 0.002) {
     let tau = lightTau(wp, h, 0, C, 0.5, 0.0);
     let farT = exp(-tsvTau(wp, h));
-    let ambSky = textureLoad(tAmb, vec2i(0, 0), 0).rgb;
+    let ambSky = bAmb.up.rgb;
     let cosT = dot(rel / max(dist, 1e-3), u.sunDir);
     let di = max(-d, 0.0);
     col = sunColorAt(h) * ((msScatterP(tau, phaseOctaves(cosT)) + 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-di / 80.0))) * farT + 0.007 * (1.0 - farT))

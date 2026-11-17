@@ -1,13 +1,12 @@
-// The world for the GPU: column data and bubbles of the blocks of the clipmap levels
+// The world for the GPU: the column data and the bubbles of a block of a clipmap level
+// (render/stream.js asks for them through the world's worker)
 //
-// fillColumns(cell, lod, gi0, gj0, ni, nj, out): RGBA per column: R the sea surface with its domes
-// (a smooth max of every dome, small domes widened and lowered on coarse levels so their volume
-// stays, then slope-limited to 2.2 cells of rise per cell so the volumes can hold it), G the billow
-// strength (raised to 1.45 under and around big bubbles: air rising vigorously), B the fine billows,
-// A the sea level without heaps. Never under 650 m.
-// gatherBubbles(...) writes a block's bubbles into the bake shader's texture: 1024 wide; per 1024
-// bubbles three rows: (x, y, z, rh), (ryU, ryD, stretch, angle), (union smoothness k, bounding
-// radius, 0, 0). minBR per level.
+// fillColumns: RGBA per column: R the sea's surface with its domes (a smooth max; domes small for
+// the cells are widened and lowered so their volume stays, the coarsest level takes only those that
+// grew from the sea; then slope-limited to 2.2 cells of rise per cell, which the volumes can hold), G
+// the billow strength (raised under and around big bubbles, where air rises vigorously), B the small
+// billows' strength, A the sea's level without heaps.
+// gatherBubbles: a block's bubbles as the bake reads them, 12 floats each (none smaller than minBR).
 
 import { smoothstep } from '../math.js';
 import { columnFields } from './air.js';
@@ -82,9 +81,9 @@ export function fillColumns(cell, lod, gi0, gj0, ni, nj, out) {
   }, rootsOnly);
   for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) out[(j * ni + i) * 4] = Math.max(hs[(j + A) * mi + i + A], 650);
 }
-// all bubbles near a box, positions relative to (ox, oz), written in the layout of the bake
-// shader's bubble texture (1024 wide; per 1024 bubbles three rows: centre & horizontal radius;
-// radii up / down, stretch, angle; union smoothness, bounding radius). Bubbles smaller than minBR
+// all bubbles near a box, positions relative to (ox, oz), written as the bake shader reads them (12
+// floats each: centre & horizontal radius; radii up / down, stretch, angle; union smoothness,
+// bounding radius, 0, 0). Bubbles smaller than minBR
 // are left out (coarse levels; the coarsest sees small cells without what their bubbles shed).
 export function gatherBubbles(x0, z0, x1, z1, pad, minBR, ox, oz, out, max, coarse = false) {
   let n = 0;
@@ -93,10 +92,10 @@ export function gatherBubbles(x0, z0, x1, z1, pad, minBR, ox, oz, out, max, coar
       if (n >= max || b.br < minBR) continue;
       const e = b.br + pad;
       if (b.x + e < x0 || b.x - e > x1 || b.z + e < z0 || b.z - e > z1) continue;
-      const q = (((n >> 10) * 3) * 1024 + (n & 1023)) * 4, r = 4096;
+      const q = n * 12;
       out[q] = b.x - ox; out[q + 1] = b.y; out[q + 2] = b.z - oz; out[q + 3] = b.rh;
-      out[q + r] = b.ryU; out[q + r + 1] = b.ryD; out[q + r + 2] = b.an; out[q + r + 3] = b.ang;
-      out[q + 2 * r] = b.k; out[q + 2 * r + 1] = b.br; out[q + 2 * r + 2] = 0; out[q + 2 * r + 3] = 0;
+      out[q + 4] = b.ryU; out[q + 5] = b.ryD; out[q + 6] = b.an; out[q + 7] = b.ang;
+      out[q + 8] = b.k; out[q + 9] = b.br; out[q + 10] = 0; out[q + 11] = 0;
       n++;
     }
   }, coarse);

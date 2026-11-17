@@ -1,4 +1,6 @@
-// Sun colours by altitude: a CPU copy of the atmosphere's transmittance
+// The sun's colour by altitude: the atmosphere's transmittance toward the sun (the model of
+// chunks/atmo.wgsl, marched on the CPU) at 16 heights 750 m apart (sunColTable: the shaders'
+// sunCol), and sunColorAt(h) between them
 
 import { clamp, mix3, scl } from '../math.js';
 import { SUN_DIR } from '../constants.js';

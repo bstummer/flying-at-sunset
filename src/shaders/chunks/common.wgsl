@@ -1,4 +1,6 @@
 
+// For every shader: smooth min and max, hashes, interleaved gradient noise, luma, GLSL's mod, and
+// toClip (GL-style matrices to WebGPU's clip space, rows kept bottom-up)
 const PI = 3.14159265359;
 fn smin(a: f32, b: f32, k: f32) -> f32 { let h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }
 fn smax(a: f32, b: f32, k: f32) -> f32 { let h = max(k - abs(a - b), 0.0) / k; return max(a, b) + h * h * k * 0.25; }

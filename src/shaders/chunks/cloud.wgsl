@@ -1,5 +1,7 @@
+#include "atmo.wgsl"
 #include "clip.wgsl"
 
+// The clouds' shape, density and light toward the sun (shaders/cloud.js)
 fn sunColorAt(h: f32) -> vec3f {
   let f = clamp(h / 750.0, 0.0, 14.99);
   let i = i32(f);
@@ -96,10 +98,6 @@ fn tsvTau(wp: vec3f, h: f32) -> f32 {
   return textureSampleLevel(tTsv, sVol, vec3f(wp.x * u.tsvA.x + u.tsvA.y, wp.z * u.tsvA.x + u.tsvA.z, h * u.tsvA.w), 0.0).r * saturate(w / 8000.0);
 }
 
-fn HG(c: f32, g: f32) -> f32 {
-  let g2 = g * g;
-  return (1.0 - g2) / (4.0 * PI * pow(max(1.0 + g2 - 2.0 * g * c, 1e-4), 1.5));
-}
 // Multiple scattering approximation (Wrenninge): sum of octaves with reduced extinction & anisotropy
 fn phaseOctaves(c: f32) -> vec4f {
   return vec4f(mix(HG(c, -0.3), HG(c, 0.8), 0.62), mix(HG(c, -0.15), HG(c, 0.4), 0.62),

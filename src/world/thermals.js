@@ -1,35 +1,19 @@
 // Thermals: bubbles of warm air rising out of the sea of clouds, and what becomes of them
 //
-// lift: one bubble rising from the sea, an entraining-parcel model stepped in height (60 m through
-// the inversion, so a big bubble can't hop over it, else 0.3·r clamped to 40–450 m):
-// - mixing: the kept share of buoyancy f *= exp(−MIX·dz/r) (MIX 0.6; ×0.7 inside cloud left by
-//   earlier bubbles of the same cell; none inside the sea): smaller bubbles lose strength faster;
-// - w² += 2·dz·(buoyancy·f − (1 − f)·dry − DRAG·w²/r) (DRAG 0.35); it stops when w² ≤ 0 (it
-//   settles), or when the moment shown comes first (it is still rising);
-// - it swells (SWELL 0.04 m per m, plus r·dz/60 km), drifts with the wind of its height
-//   (U = shear·(y − zs)), and outward if shed, and is pushed aside by earlier heads in its way;
-// - its wake: turbulent lumps (2 per step for r > 700 m, else 1) every 0.55·r of rise;
-// - shedding: with probability dz/(SHED·r) per step a smaller bubble (0.3–0.62 r) breaks away and
-//   rises on its own stream (only at depth > 1);
-// - at the top it boils into 2–6 crowns (more the faster it rose; 0.18–0.5 r), which boil in turn (to C.depth levels: 2 for
-//   small cells, 3 for big). Sub-bubbles smaller than C.minR are not grown (150 m for low pulses,
-//   250 m for tall ones, 600 m for the coarsest level);
-// - roofOf: how far a piece may bulge above its centre: the inversion while below it, the ceiling
-//   always, never above CLOUD_TOP − 300.
-//
-// settle: what became of each piece by the moment the world shows:
-// - life: 450–1600 s (by moisture) × √(r/1 km); up to ×3.5 at the sea (moist), fading out by
-//   2.5 km above it; ice above 8 km
-//   lives 1700·√r s; wake pieces live 1.5× while their cell is still active, 0.8× after; heads above
-//   2.5 km no longer than 0.75× (dying towers crumble from the top). Pieces shrink as
-//   √(1 − (age/life)²) and vanish at the end;
-// - they drift with the wind of their height × age; wakes widen with age (detrainment);
-// - a stopped head settles: pressed flat by the stability of the air that stopped it (stabOf,
-//   headUp), sags (its underside) and softens; where it was stopped hard it spreads out beneath that
-//   air in 1–7 lobes, S = sat(−bu/0.6)·(0.5 + 3·sat((w − 4)/22)^1.5): a little under the inversion,
-//   far under the ceiling (anvils).
-// placeDome: low pulses (head top below zs + H_FLAT, 2200 m) become 2D domes that raise the sea's
-// surface, standing on what they grew from, never steeper than h/r ≈ 0.65 (r ≥ height/0.5).
+// lift: one bubble rising, an entraining parcel stepped in height (short steps through the
+// inversion, so a big bubble can't hop over it). It mixes with the air around it (the smaller, the
+// faster; less inside cloud earlier bubbles left), which dilutes its buoyancy and chills it with dry
+// air; drag slows it; it stops when its speed runs out, or is still rising at the moment the world
+// shows. On the way it swells, drifts with the wind of its height, is pushed aside by earlier heads,
+// leaves a wake of lumps and sheds smaller bubbles; at the top it boils into a few crowns, which
+// rise in turn (C.depth levels deep, none smaller than C.minR). roofOf: how far a piece may bulge
+// above its centre (the inversion while below it, the ceiling, CLOUD_TOP).
+// settle: what became of each piece by that moment: it drifted with the wind and evaporates (sooner
+// higher up and in dry air, the small first; ice lingers; dying towers crumble from the top); a
+// stopped head is pressed flat by the air that stopped it, sags, and where stopped hard spreads out
+// beneath that air in lobes: a little under the inversion, far under the ceiling (anvils).
+// placeDome: the pieces of a low pulse become 2D domes raising the sea's surface, standing on what
+// they grew from, never steeper than h/r ≈ 0.65. START_Y, nearStart: the start is kept clear.
 
 import { clamp, lerp, mulberry32, PI, sat, smoothstep } from '../math.js';
 import { CLOUD_TOP } from '../constants.js';

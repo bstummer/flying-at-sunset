@@ -1,3 +1,8 @@
+// The world generator (src/world/), run as the page runs it: the recorded fingerprint, independence
+// from the order places are asked for, sound data for the GPU over seeds 1 to 20, a tower in view at
+// the start. A module graph holds one world (it reads ?seed as it loads), so each seed runs in a
+// worker thread of its own: this file is also the worker (the end of the file).
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -5,10 +10,6 @@ import { availableParallelism } from 'node:os';
 import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads';
 import { differences, fingerprint, RECORDED } from '../tools/world/fingerprint.js';
 import { loadWorld, WORLD_DIR } from '../tools/world/load.js';
-
-// The world generator (src/world/), run as the page runs it. A module graph holds one world (it
-// reads ?seed as it loads), so each seed is measured in a worker thread of its own: this file is
-// also the worker (the end of the file).
 
 const SEEDS = Array.from({ length: 20 }, (_, i) => i + 1);
 const LEVELS = [
@@ -58,7 +59,7 @@ const JOBS = {
   // the same, after asking for other places first: far before near, coarse before fine
   fingerprintAfterOthers(W) {
     W.towersNear(150000, -90000, 60000);
-    const out = new Float32Array(16 * 16 * 4), bub = new Float32Array(1024 * 4 * 3 * 4);
+    const out = new Float32Array(16 * 16 * 4), bub = new Float32Array(4096 * 12);
     for (const [gi, gj] of [[40, -60], [-16, -16], [0, 0]]) {
       W.fillColumns(2048, 2, gi, gj, 16, 16, out);
       W.gatherBubbles(gi * 2048, gj * 2048, (gi + 16) * 2048, (gj + 16) * 2048, 12300, 900, gi * 2048, gj * 2048, bub, 4096, true);

@@ -1,15 +1,17 @@
 // The CPU world generator in Node, so the world can be generated, measured and drawn without a
 // browser: the very modules the page runs (src/world/, which never touches the page or the GPU,
-// and the constants and maths it imports), as ES modules.
+// and what it imports: constants.js, math.js, and core/params.js, which reads the query from the
+// location set here), as ES modules.
 //
 //   import { loadWorld } from './load.js';
-//   const W = await loadWorld();             // every export of src/world/, constants.js and math.js
-//   QS="seed=3&towers=1.5" node tool.js      // the URL parameters the world reads (?seed, ?towers)
-//   WSRC=path/to/src/world node tool.js      // the world of another checkout, to compare with
+//   const W = await loadWorld();         // every export of src/world/, constants.js and math.js
+//   QS="seed=3&towers=1.5" node tool.js  // the URL parameters the world reads (?seed, ?towers)
+//   WSRC=path/to/src/world node tool.js  // the world of another checkout, to compare with
 //
 // A process holds one world: modules load once, and the world reads its parameters as it loads
-// (the spawn draw in world/cells.js runs then). tests/world.test.js runs a world per seed in
-// worker threads.
+// (the spawn draw in world/cells.js runs then). tests/world.test.js runs a world per seed in worker
+// threads (loadWorld({ query, dir }) in place of QS and WSRC). outPath, savePng: the world tools'
+// images, in screenshots/world/.
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

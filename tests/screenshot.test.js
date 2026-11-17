@@ -1,3 +1,7 @@
+// The tools' logic that needs no browser: the screenshot tool's arguments, plans, labels and compares
+// (tools/screenshot.js, labels.js, views.js), why a page stopped (browser.js), the flight logs'
+// compare (flights.js) and the streaming check's (checks.js)
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';

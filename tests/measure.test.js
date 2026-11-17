@@ -1,3 +1,6 @@
+// The measurements of a captured view (tools/measure.js): limits and warnings, how they print and
+// change, the frames the page must hand over, and what they write into a view's folder
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';

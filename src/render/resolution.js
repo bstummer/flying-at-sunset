@@ -1,11 +1,10 @@
-// Dynamic resolution: keep the frame inside budget by scaling the cloud trace resolution.
-// With GPU timers we solve for the trace budget directly; otherwise we watch frame times and aim
-// for 60 fps, or for the rate the display or browser caps us at (50 Hz screens, power saving).
-// Clouds are traced at R.scale × full resolution (0.22–0.75, starting at 0.5; 0.36 on touch
-// devices); full resolution itself is capped (2.3 Mpx, 1.15 Mpx on touch devices, and lower still
-// if even the cheapest clouds are too slow). GPU timestamps (timestamp-query; Chrome rounds them to
-// 0.1 ms) keep the GPU under 12.5 ms a frame. Without them, a capped rate shows as much cheaper
-// frames coming no faster; the quality ceiling recovers after hitches.
+// Dynamic resolution: the clouds are traced at R.scale of the canvas (0.22–0.75; 0.5 at the start,
+// 0.36 on touch devices), adapted so frames stay within budget. With GPU timestamps it keeps the GPU
+// under 12.5 ms a frame, solving for the trace's share; without them it aims for 60 fps by frame
+// times, or for the rate the display or the browser caps at (much cheaper frames coming no faster).
+// The ceiling it may rise to recovers after hitches. If even the cheapest clouds are too slow, the
+// canvas gets fewer pixels (R.maxPixels). In the test mode it only hands over the GPU times
+// (window.__gpu).
 
 import { TEST } from '../core/params.js';
 import { clamp } from '../math.js';

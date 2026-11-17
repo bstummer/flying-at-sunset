@@ -1,5 +1,7 @@
 #include "chunks/common.wgsl"
 
+// The bird's vertices, its wings flexed (bend and flutter, and a washout twist toward the tips);
+// also the shadow map's
 struct Varyings { @builtin(position) pos: vec4f, @location(0) wpos: vec3f, @location(1) obj: vec3f, @location(2) shadow: vec4f, @location(3) panel: f32 }
 // aAttr: x: wing flex weight, y: side (-1, 0, 1), z: panel shade
 @vertex fn vs(@location(0) aPos: vec3f, @location(1) aAttr: vec3f) -> Varyings {

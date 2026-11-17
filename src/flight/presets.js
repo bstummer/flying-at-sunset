@@ -1,20 +1,19 @@
-// Test views (?preset=..., ?pose=...): where the bird starts
+// Where the bird starts for the test views (?preset=..., ?pose=...)
+//
 // Around the start: start sun away side skim high bank fastdive humps high2 upward. At towers the
-// world generated within 200 km of it, sunlit and in clear sight: tower giant anvil close approach
-// inside under (anvil: a tower that reached its ceiling and spread wide). Looked for only when a
-// preset is asked for: the search takes seconds.
+// world generated within 200 km, picked sunlit and in clear sight: tower giant anvil close approach
+// inside under (an anvil: a tower that reached its ceiling and spread wide). presetPose runs in the
+// world's worker (src/worker.js), and only when a preset is asked for: the search takes seconds;
+// placeBird puts the page's bird there, then at ?pose (main.js).
 
-import { params } from '../core/params.js';
-import { refuse } from '../core/page.js';
 import { lerp, PI } from '../math.js';
 import { SUN_DIR } from '../constants.js';
 import { forEachSys } from '../world/cells.js';
 import { cloudTopAt, seaTopAt, towerDistAt, towersNear } from '../world/queries.js';
-import { bird_ } from './flight.js';
 
-function readPreset() {
-  const pre = params.preset;
-  if (!pre) return;     // (the test views look for towers far around: only when one is asked for)
+// where preset `pre` puts the bird: { x, y, z, yaw, gamma, bank, speed } (what is left out: 0, or
+// as it was), or { refused: why } (a test capture with the start in its place would pass)
+export function presetPose(pre) {
   const sea0 = seaTopAt(0, 0);
   const presets = {
     start: { y: sea0 + 750, yaw: 0.45, gamma: 0 },
@@ -95,17 +94,17 @@ function readPreset() {
     }
     if (found) { presets.under = found; break; }
   }
-  // (a test capture would pass with the start in its place: refusing fails it; only the table's
-  // own entries, not what every object inherits, such as "constructor")
+  // (only the table's own entries, not what every object inherits, such as "constructor")
   const towers = ['tower', 'giant', 'anvil', 'close', 'approach', 'inside', 'under'];
-  if (!Object.hasOwn(presets, pre)) return refuse(towers.includes(pre) ? `this world has no place for the preset "${pre}"` : `no preset "${pre}"`);
-  const p = presets[pre];
-  bird_.pos = [p.x || 0, p.y, p.z || 0];
-  bird_.yaw = p.yaw; bird_.gamma = p.gamma; bird_.bank = p.bank || 0;
-  if (p.speed) bird_.speed = p.speed;
+  if (!Object.hasOwn(presets, pre)) return { refused: towers.includes(pre) ? `this world has no place for the preset "${pre}"` : `no preset "${pre}"` };
+  return presets[pre];
 }
-readPreset();
-if (params.pose) {
-  const v = params.pose;
-  bird_.pos = [v[0], v[1], v[2]]; bird_.yaw = v[3] || 0; bird_.gamma = v[4] || 0; bird_.bank = v[5] || 0;
+// the bird b at a preset's pose p (presetPose), then at ?pose ([x, y, z, yaw, pitch, bank])
+export function placeBird(b, p, pose) {
+  if (p) {
+    b.pos = [p.x || 0, p.y, p.z || 0];
+    b.yaw = p.yaw; b.gamma = p.gamma; b.bank = p.bank || 0;
+    if (p.speed) b.speed = p.speed;
+  }
+  if (pose) { b.pos = [pose[0], pose[1], pose[2]]; b.yaw = pose[3] || 0; b.gamma = pose[4] || 0; b.bank = pose[5] || 0; }
 }
