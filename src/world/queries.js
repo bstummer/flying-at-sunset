@@ -8,7 +8,7 @@
 // in the same order, so the same surface.
 
 import { seaLevelAt } from './air.js';
-import { domeHeightAt, ellDist, smaxJS } from './shapes.js';
+import { domeBlend, domeHeightAt, ellDist, smaxJS } from './shapes.js';
 import { forEachDome, forEachSys } from './cells.js';
 
 // the sea surface the bird skims (heaps piled high above it may be entered) and the full top
@@ -18,7 +18,7 @@ export function setDomeSource(fn) { domesAt = fn; }
 export function seaSurfaceAt(x, z) {
   const hb = seaLevelAt(x, z);
   let hs = hb;
-  domesAt(x, z, d => { const v = domeHeightAt(d, x, z); if (v > -1e8) hs = smaxJS(hs, v, 0.12 * d.h + 25); });
+  domesAt(x, z, d => { const v = domeHeightAt(d, x, z); if (v > -1e8) hs = smaxJS(hs, v, domeBlend(d.h)); });
   return { hb, hs, floor: Math.min(hs, hb + 330) };
 }
 export const seaTopAt = (x, z) => seaSurfaceAt(x, z).floor;

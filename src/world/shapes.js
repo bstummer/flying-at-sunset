@@ -16,10 +16,18 @@ function profileTable(prof) {
   if (!t) {
     t = new Float32Array(258);
     for (let i = 0; i <= 256; i++) { const u2 = i / 256; t[i] = Math.pow(1 - u2, k) * (u2 > 0.49 ? smoothstep(1, 0.7, Math.sqrt(u2)) : 1); }
+    // its steepest fall per unit of radius (a flank's slope is this × h / r)
+    t.steep = 0;
+    for (let i = 1; i <= 256; i++) t.steep = Math.max(t.steep, (t[i - 1] - t[i]) / (Math.sqrt(i / 256) - Math.sqrt((i - 1) / 256)));
     PROF.set(k, t);
   }
   return t;
 }
+// the slope of a dome's steepest flank per unit of h/r
+export const domeSteepness = prof => profileTable(prof).steep;
+// how wide the smooth max is where a dome meets what it stands on or another dome: a rounded
+// saddle (narrower, two heaps met in a crease a cell wide, a box's corner from afar)
+export const domeBlend = h => 0.25 * h + 40;
 export const domeProfile = (t, u2) => { const f = u2 * 256, i = f | 0; return t[i] + (t[i + 1] - t[i]) * (f - i); };
 export function makeDome(x, z, r, h, base, prof, ex, ang, sea, root) {
   return { x, z, r, h, base, top: base + h, prof: profileTable(prof), ex, ang, ca: Math.cos(ang), sa: Math.sin(ang), reach: r * ex, sea, root };

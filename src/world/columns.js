@@ -10,7 +10,7 @@
 
 import { smoothstep } from '../math.js';
 import { columnFields } from './air.js';
-import { domeProfile, smaxJS } from './shapes.js';
+import { domeBlend, domeProfile, smaxJS } from './shapes.js';
 import { forEachDome, forEachSys } from './cells.js';
 
 // Column data of a block of one clipmap level (cells of size `cell`, global cell indices gi0.., gj0..):
@@ -36,7 +36,7 @@ export function fillColumns(cell, lod, gi0, gj0, ni, nj, out) {
     let r = d.r, h = d.h * (rootsOnly ? 1.25 : 1);   // (the roots stand in for whole heaps)
     const pf = (lod ? 0.9 : 0.6) * cell;
     if (r < 2.5 * pf) { const r2 = Math.sqrt(r * r + pf * pf); h *= (r * r) / (r2 * r2); r = r2; }
-    const rr = r * d.ex, k = 0.12 * h + 25;
+    const rr = r * d.ex, k = domeBlend(h);
     const i0 = Math.max(0, Math.floor((d.x - rr - x0) / cell)), i1 = Math.min(mi - 1, Math.floor((d.x + rr - x0) / cell));
     const j0 = Math.max(0, Math.floor((d.z - rr - z0) / cell)), j1 = Math.min(mj - 1, Math.floor((d.z + rr - z0) / cell));
     const ir2 = 1 / (r * r), base = d.base + (d.h - h) * 0.5;

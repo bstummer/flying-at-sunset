@@ -13,12 +13,12 @@
 // stopped head is pressed flat by the air that stopped it, sags, and where stopped hard spreads out
 // beneath that air in lobes: a little under the inversion, far under the ceiling (anvils).
 // placeDome: the pieces of a low pulse become 2D domes raising the sea's surface, standing on what
-// they grew from, never steeper than h/r ≈ 0.65. START_Y, nearStart: the start is kept clear.
+// they grew from, their flanks never steeper than ~60°. START_Y, nearStart: the start is kept clear.
 
 import { clamp, lerp, mulberry32, PI, sat, smoothstep } from '../math.js';
 import { CLOUD_TOP } from '../constants.js';
 import { buoyAt, seaLevelAt } from './air.js';
-import { domeHeightAt, makeDome } from './shapes.js';
+import { domeHeightAt, domeSteepness, makeDome } from './shapes.js';
 
 // One bubble of warm air rising from (x, y, z) (its centre) with radius r and vertical speed w,
 // keeping the share f of its buoyancy (it mixes with the air around it as it rises, the faster
@@ -143,12 +143,13 @@ export const nearStart = (x, z, r) => Math.hypot(x, z) < r + 600;
 // a piece lying low on the sea becomes a dome of its surface, standing on what it grew from
 // (sea: the sea level near it as a plane [level, slope x, slope z, x, z])
 const surfAt = (pd, sea, x, z) => Math.max(pd ? domeHeightAt(pd, x, z) : -1e9, sea[0] + sea[1] * (x - sea[3]) + sea[2] * (z - sea[4]));
+const MAX_FLANK = 1.8;   // the steepest a dome's flank may be (61°; the volumes hold 2.2)
 export function placeDome(p, sea, out) {
   if (p.rh < 150) return;
   const pd = p.parent && p.parent.dome, under = surfAt(pd, sea, p.x, p.z), top = p.y + p.ryU;
   if (top < under + 30) return;
   // never steeper than cloud can stand (its skirt spreads to hold it up)
-  const r = Math.max(p.rh, (top - under) / 0.5);
+  let r = Math.max(p.rh, (top - under) / 0.5);
   if (top > START_Y - 350 && nearStart(p.x, p.z, 1.2 * r * p.an)) return;
   let base = under - 0.3 * (top - under), h = top - base;
   if (pd) {
@@ -161,8 +162,13 @@ export function placeDome(p, sea, out) {
     }
     if (low < base) { h += base - low; base = low; }
   }
+  // no flank steeper than cloud can stand: wider, not lower (steeper, the volumes' slope limit
+  // would cut it into flat faces with straight corners, columns.js)
+  const prof = p.kind === 2 ? 1.1 : lerp(0.8, 1.4, sat(p.age / 1500));
+  r = Math.max(r, h * domeSteepness(prof) / MAX_FLANK);
+  if (top > START_Y - 350 && nearStart(p.x, p.z, 1.2 * r * p.an)) return;
   const seaHere = sea[0] + sea[1] * (p.x - sea[3]) + sea[2] * (p.z - sea[4]);
-  const d = makeDome(p.x, p.z, r, h, base, p.kind === 2 ? 1.1 : lerp(0.8, 1.4, sat(p.age / 1500)), p.an, p.ang, seaHere, !p.parent);
+  const d = makeDome(p.x, p.z, r, h, base, prof, p.an, p.ang, seaHere, !p.parent);
   p.dome = d;
   out.push(d);
 }
