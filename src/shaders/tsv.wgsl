@@ -2,14 +2,15 @@
 #include "chunks/clip.wgsl"
 
 // The shadow volume's bake: from each texel, the optical depth toward the sun through the large
-// shapes of L1 or L2, as half floats into bTsv (shaders/volumes.js). It counts from where the trace's
-// own light march ends (LIGHT_REACH) on, in two parts: through the cloud the texel sits in, until the
-// march first comes out of it (light diffuses on through one body of cloud), and through the clouds
-// beyond (their shadow is a shadow: a tower 100 km toward the sun darkens the sea here).
+// shapes of L1 or L2, as half floats into bTsv (shaders/volumes.js), in two parts: through the cloud
+// the texel sits in, until the march first comes out of it (light diffuses on through one body of
+// cloud), past where the trace's own march follows it (LIGHT_REACH); and through the clouds beyond,
+// past where the trace's march through the billows ends (LIGHT_NEAR) (their shadow is a shadow: a
+// tower 100 km toward the sun darkens the sea here).
 fn march(xz: vec2f, y0: f32, jit: f32) -> vec2f {
   var tau = vec2f(0.0);
   var self_ = true;
-  var s = LIGHT_REACH + 320.0 * (jit - 0.5);
+  var s = LIGHT_NEAR + 320.0 * (jit - 0.5);
   for (var i = 0; i < 320; i++) {
     let p = vec3f(xz.x, y0, xz.y) + u.sunDir * s;
     if (p.y > CLOUD_TOP || s > 150000.0) { break; }
@@ -22,7 +23,7 @@ fn march(xz: vec2f, y0: f32, jit: f32) -> vec2f {
     // inside the large shapes, and the larger billows on them
     let occ = saturate((120.0 - d) / 380.0);
     if (occ < 0.05) { self_ = false; }
-    if (self_) { tau.x += SIGMA * stp * occ; } else { tau.y += SIGMA * stp * occ; }
+    if (!self_) { tau.y += SIGMA * stp * occ; } else if (s > LIGHT_REACH) { tau.x += SIGMA * stp * occ; }
     if (tau.y > 14.0) { break; }
     s += stp;
   }

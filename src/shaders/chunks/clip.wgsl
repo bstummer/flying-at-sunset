@@ -5,7 +5,8 @@ const INV2R = 0.5 / 6360000.0;
 const SEA_BASE = 520.0;
 const SIGMA = 0.07;         // extinction inside clouds (1/m): cumulus measure 0.05–0.12
 const EDGE_W = 80.0;        // soft boundary thickness (m)
-const LIGHT_REACH = 1404.0; // how far the trace's light march looks toward the sun (lightTauN's steps); the shadow volume takes over from there
+const LIGHT_NEAR = 1404.0;  // how far the trace's light march looks toward the sun through the billows (lightTauN); the shadow volume's other clouds start there
+const LIGHT_REACH = 6323.0; // how far it follows the cloud it is in (the large shapes alone); the shadow volume's own cloud starts there
 fn lvMargin(l: i32) -> f32 { return select(select(750.0, 260.0, l == 1), 80.0, l == 0); }   // interpolation error of each level
 
 fn inLv(xz: vec2f, l: i32) -> bool { let v = u.lvV[l]; return xz.x > v.x && xz.y > v.y && xz.x < v.z && xz.y < v.w; }

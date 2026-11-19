@@ -141,6 +141,22 @@ fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, jit: f32, lod0: f32) -> vec2
     s += ds;
     ds *= 2.4;
   }
+  // then on through the cloud it is in, through the large shapes alone, in three long steps out to
+  // LIGHT_REACH, until it comes out (a tower's far side shades its backlit face in metres, not in
+  // the shadow volume's 768 m texels; the shadows of other clouds stay the shadow volume's)
+  ds = 1200.0;
+  for (var i = 0; i < 3; i++) {
+    let sm = s + ds * (0.25 + 0.5 * jit);
+    let p = vec3f(wp0.x, h0, wp0.z) + u.sunDir * sm;
+    var lf = l;
+    if (lf == 0 && !inLv(p.xz, 0)) { lf = 1; }
+    if (lf == 1 && !inLv(p.xz, 1)) { lf = 2; }
+    let occ = saturate((120.0 - macroAt(p, lf)) / 380.0);
+    if (occ < 0.05) { break; }
+    tau += occ * ds * SIGMA;
+    s += ds;
+    ds *= 1.33;
+  }
   return vec2f(tau, nS);
 }
 fn lightTau(wp0: vec3f, h0: f32, l: i32, C: vec4f, jit: f32, lod0: f32) -> f32 {
