@@ -142,6 +142,26 @@ Worth knowing before tuning again.
 - **Blending the clipmap levels over a handover** instead of the dither: no lattice, but the trace
   12–18% slower in every view (also over 7–10 km alone, also reading the second level only near a
   surface). The dither stays.
+- **Billows of one size on every bubble** (2026-11, the author: "puffs all one size"): the 1280 and
+  640 m octaves grew alike on a 4 km head and on a crown of 400 m, which became a ball of the
+  lobes' size: one stamped texture. Now each tower bubble carries its billow scale and liveliness
+  (world/cells.js), baked beside the distance; lobes and turrets only where they fit. Without the
+  turrets (640 m) a surface reads as smooth dough (`start`'s near sea, `side`): a small bubble
+  gets turrets of half the size instead, and the sea keeps all its octaves. A billow scale for
+  heaps by their height took the heaps' turrets: dough again.
+- **The billow scale in the distance volume** (rg16float): the trace 2–12% slower from the format
+  alone (the empty-space skipping reads it everywhere); a volume of its own, read only where
+  billows are built. Blended over a distance that grew with the level's cell size, the levels
+  disagreed and the handover lattice grew stronger (`side`): the same 250 m in every level.
+- **Rounder heads** (2026-11): weakly stable air pressed almost every stopped head to a flat disc
+  (stacked hats, loaves). Rounder everywhere, the heaps on the sea grew taller and steeper and the
+  slope limit cut them into boxes (`geometry`'s pointed cube): only tower heads are rounder, and
+  the test that makes a pulse a tower is unchanged. Crowns rooted down into the head they burst
+  from (to stop balls perching) became narrow columns: flat-topped battlements (`high2`) and
+  polyhedra in the coarse volume. Pressed very round (stable air at a fifth of now) a head stopped
+  under the ceiling turned a pill with sky beneath it (`seed3`).
+- **The finest domes clustered on the turrets' caps near the camera**: the near sea went doughy
+  (`away`, `side`); they cluster only from ~1.5–5 km on, where they read as a carpet (frogspawn).
 
 ## Known issues and ideas
 
@@ -169,27 +189,27 @@ Worth knowing before tuning again.
 - **Close-up surfaces** of towers can look blotchy in low sun (cast shadows between many lumps).
   Distant towers (~40 km, `seed3`) show stair-stepped tops and blob-shaped patches where the shadow
   volume's 768 m texels decide.
-- **Popcorn far away**: towers on the horizon still read as heads of even bumps ("broccoli", `away`,
-  `sun`, `anvil`), and towers a few km out (`close`) as a pile of even balls: the 640 m turrets,
-  now mostly on the lobes' caps and under the baked 2560 m lobes, still too even. **Gumdrops**: puffs
-  on thin necks remain (`close`): the CPU preview shows small world bubbles perched on heaps
-  (src/world/), not only billow octaves. **Sunlit turret tops in shade** read as floating puffs
-  (`start` beside the bird, `sun`, `tower`): attached (`?dbg=1`), their base melts into the shade.
-- **Flat tops**: a stopped head is pressed to 0.3–0.85 of its radius by how stable the air that
-  stopped it is (thermals.js, settle), and that is near 1 for almost every stopped head: flat discs
-  stacked at the tops (`catalog.js`), flat-topped blocks (`start`'s left tower, `seed3`, `high2`).
-  The baked lobes round some. The cause to change is in the world (and needs the fingerprint).
+- **Popcorn far away**: towers 20–60 km off still read as one grape texture (`start`'s right
+  tower, `high2`, `giant`, `away`'s horizon): their bubbles are big (billow scale over ~800 m), so
+  all carry lobes and turrets alike. A real tower shows 2–4 dominant turrets, smaller domes on
+  their upper, sunward shoulders, older parts smoother. Ideas: more spread in the billow scale per
+  bubble, the liveliness stronger. **Crowns perched on heads** read as knobs (`start`'s middle
+  tower, a "teddy-bear head" in a review; `catalog.js`): small bubbles sitting on big ones with a
+  narrow neck. **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird,
+  `sun`, `tower`): attached (`?dbg=1`), their base melts into the shade.
+- **Tops**: tower heads now keep their domes unless they pushed far into stable air or hit the
+  ceiling; flat crowns remain where they overshot far (`high2`'s left tower), and `seed3`'s cap
+  under the ceiling shows sky beneath its right end. Deep folds between lobes go near black
+  (`tower`, `close`: a navy pit).
 - **Silver linings** are a pixel wide: a backlit tower's edge doesn't blaze (`sun`, `anvil`); a
   fringe outside the surface failed (decisions).
 - **Inside cloud** is a uniform wall (mauve grey, `inside`), even with the exposure adapting to the
   mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays low);
   drifting mist only shows in motion. `under` (an anvil's underside) is dark navy now: right
   for shade at sunset, but judge it against its brief.
-- **`close` no longer meets its brief**: since heaps are wider (2026-11) the first spot clear of
-  them is farther from the tower (presets.js, clearOf), so it shows the tower whole, from a few km,
-  not its flank from below. `stats.js` counts 10% more bubbles in its 120 km box (6,158): more
-  systems reach into it with wider heaps, each counted whole; no tower changed. A faint vertical seam
-  in shaded sea in `close` too.
+- **`close` nearly repeats `tower`**: since the tower heads are rounder (2026-11) the first spot
+  clear of the tower's bubbles (presets.js, clearOf) is near `tower`'s pose, so both frame the same
+  flank; neither looks up a flank from below. A view of its own would need another spot or tower.
 - **Near the camera** the sea into the sun is still soft, glowing mush (`start` lower left, `seed3`),
   and the shaded sea seen from above blotchy (`giant`'s foreground): the light there is diffusion
   and sky light, smooth over tens of metres. **Into the sun** the sea's tops are pale cream: the sky
@@ -199,6 +219,12 @@ Worth knowing before tuning again.
   `seed3`). Lit tower faces sit high on the tone curve with their folds filled by the light inside
   (`tower`'s lit face: luminance SD 36 before, 20 now); one review wants deeper darks, another
   wanted the creases lit: the balance (`facing` in sunScatter, AMB_K) is the lever.
+- **Cost of the billows sized to their bubble** (2026-11, A/B against the commit before, 3 × 200
+  frames, NVIDIA laptop, 960×540 at 0.5): the trace +2–12% (`tower` +2, `away` +5, `sun` +11,
+  `high2` +11, `start` +12, `side` +12), split between the billow volume's reads, the half-size
+  turrets and rounder, taller towers in view; the world's bakes +25–35% (4 slices a pass instead
+  of 8, the billows blended in), so a shift's bakes spread over more frames (`bakeCost`, scaled
+  by that, not measured per pass). Memory +52 MB (the billow volumes, rg16float). Flights identical.
 - **Cost of the 2026-11 rework** (A/B, 200 frames, NVIDIA laptop, 960×540 at 0.5): the trace +5–12%
   (`away` +8, `high2` +12, `sun` +12, `side` +7, `start` +5, `close` −3): the taller fine domes. The
   bake of the largest lobes is within the noise of the world's time. The dive (`flights.js`) levels
@@ -221,8 +247,7 @@ Worth knowing before tuning again.
 - **A lattice at the level handovers** (~7–10 and ~40–55 km: `away`'s middle distance, `anvil`'s far
   towers): pixels dither between two levels' shapes and light; the history averages it at rest,
   12-frame captures show it (blending the levels costs too much, decisions).
-- **Sunlit rims**: with nothing moving 0.02–0.16% of a frame flickers (`close` 0.36%, `geometry`
-  0.46%): the finer domes flicker along tower silhouettes against the sky and backlit rims. The history blends at half the rate where the image holds still. The slower blend may
+- **Sunlit rims**: with nothing moving 0.03–0.17% of a frame flickers (`geometry` 0.39%): the finer domes flicker along tower silhouettes against the sky and backlit rims. The history blends at half the rate where the image holds still. The slower blend may
   lag or smear in slow motion: for the author's eyes. The cloud scale and the TAAU clamp and blend
   rate are the levers.
 - The `skim` view (170 m over the sea's top) shows nothing but haze: the billows rise higher than that

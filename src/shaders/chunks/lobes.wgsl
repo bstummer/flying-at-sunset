@@ -19,6 +19,10 @@ fn octave(d: f32, n0: f32, shell: f32, k: f32) -> f32 {
   return smin(n, d, mix(max(k * 0.8, shell * 1.05), shell * 0.5 + 4.0, 0.7));
 }
 
+// how big the billows on the sea are (m): the bubbles of the towers carry their own (world/cells.js),
+// the bake blends them (shaders/volumes.js) and cloudSDF grows the billows they allow
+const SEA_BS = 2000.0;
+
 // The largest lobes, on towers: a few, each a good share of a tower, so its walls bulge and lean
 // and its top domes (bent spheres on 2560 m cells, fixed to the world: they don't drift). w (0..1):
 // how much they grow at p, where d is the distance to the large shapes so far.

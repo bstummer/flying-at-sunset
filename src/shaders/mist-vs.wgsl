@@ -14,14 +14,14 @@ const CELL = 180.0;
   let wp = u.camPos + rel;
   let h = wp.y;
   let C = colAt(wp.xz, 0);
-  let dm = macroAt(vec3f(wp.x, h, wp.z), 0);
-  var d = dm - shellOf(C.y) - lvMargin(0);
+  let sh = shapeAt(vec3f(wp.x, h, wp.z), 0);
+  var d = sh.x - shellOf(C.y) - lvMargin(0);
   var dens = 0.0;
-  if (d <= 0.0) { d = cloudSDF(wp, h, dm, C, 0.0); dens = densityFromSDF(d, wp, 1.0, 32.0, 1.0); }
+  if (d <= 0.0) { d = cloudSDF(wp, h, sh, C, 0.0); dens = densityFromSDF(d, wp, 1.0, 32.0, 1.0); }
   let alpha = saturate(dens * 1.6) * (1.0 - smoothstep(52.0, 84.0, dist)) * smoothstep(4.0, 12.0, dist) * u.strength;
   var col = vec3f(0.0);
   if (alpha > 0.002) {
-    let tau = lightTau(wp, h, 0, C, 0.0);
+    let tau = lightTau(wp, h, 0, C, sh.yz, 0.0);
     let far = tsvTau(wp, h);
     let ambSky = bAmb.up.rgb;
     let cosT = dot(rel / max(dist, 1e-3), u.sunDir);

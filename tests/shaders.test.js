@@ -47,6 +47,8 @@ test('the volume bake writes NOUT slices a pass, as render/stream.js hands them 
     const code = resolveWgsl(join(SHADERS, ENTRIES[name]));
     assert.match(code, new RegExp(`const NOUT = ${NOUT};`), `${name}: its NOUT`);
     const outputs = [...code.matchAll(/@location\((\d+)\) o\d+: f32/g)].map((m) => Number(m[1]));
-    assert.deepEqual(outputs, Array.from({ length: NOUT }, (_, k) => k), `${name}: its outputs`);
+    assert.deepEqual(outputs, Array.from({ length: NOUT }, (_, k) => k), `${name}: its distance outputs`);
+    const scales = [...code.matchAll(/@location\((\d+)\) b\d+: vec2f/g)].map((m) => Number(m[1]));
+    assert.deepEqual(scales, Array.from({ length: NOUT }, (_, k) => NOUT + k), `${name}: its billow-scale outputs`);
   }
 });

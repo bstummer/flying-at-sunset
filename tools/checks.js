@@ -440,9 +440,13 @@ const readLevels = async () => {
     return btoa(s);
   };
   const out = {};
-  for (const [name, L] of [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]], ['shadow', D.TSVL]]) {
+  const levels = [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]], ['shadow', D.TSVL]];
+  // (a clipmap's billows, their scale and liveliness, are a volume of their own)
+  for (const [name, L] of [...levels]) if (L.bs) levels.push([name + ' billows', { ...L, vol: L.bs, col: null, second: ' lively' }]);
+  for (const [name, L] of levels) {
     const vol = await D.readTexture(L.vol, 0, L.nz); // slice after slice, rows packed, the channels of a texel together
-    // (a channel each: the shadow volume's through the cloud a texel is in, and through those beyond)
+    // (a channel each: the shadow volume's through the cloud a texel is in, and through those beyond;
+    // the billows' scale and liveliness)
     const comps = vol.length / (N * N * L.nz), means = Array.from({ length: comps }, () => new Float64Array(N * N));
     for (let k = 0; k < vol.length; k++) means[k % comps][Math.floor(k / comps) % (N * N)] += vol[k] / L.nz;
     let col = null;
@@ -452,7 +456,7 @@ const readLevels = async () => {
       for (let k = 0; k < bits.length; k++) col[k >> 2] = Math.imul(col[k >> 2] ^ bits[k], 16777619);
     }
     means.forEach((mean, c) => {
-      out[name + (c ? ' beyond' : '')] = { gi: L.gi, gj: L.gj, step: L.step, pending: L.pending, valid: L.valid, mean: base64(mean), col: col && base64(col) };
+      out[name + (c ? L.second ?? ' beyond' : '')] = { gi: L.gi, gj: L.gj, step: L.step, pending: L.pending, valid: L.valid, mean: base64(mean), col: col && base64(col) };
     });
   }
   const b = D.bird;
@@ -460,12 +464,13 @@ const readLevels = async () => {
 };
 
 // Most a level's volume may differ between the flown and the fresh page, as the mean over a texel
-// column: the clipmap levels hold the same (half-float rounding aside); the shadow volume is
+// column: the clipmap levels hold the same (half-float rounding aside; their billow scales, up to
+// 2000 m, round to a metre, their liveliness, 0..1, to a thousandth); the shadow volume is
 // marched through them as they were when it was baked (its channels: through the cloud a texel is
 // in, up to 30, and through the clouds beyond, up to 14). The first flips where the edge of L1's
 // window crosses a texel's march (L1 and L2 disagree there whether the march is still in its cloud):
 // up to ~11 at texels by that edge, 65 km out.
-const VOLUME_TOLERANCE = { L0: 0.5, L1: 0.5, L2: 0.5, shadow: 15, 'shadow beyond': 10 };
+const VOLUME_TOLERANCE = { L0: 0.5, L1: 0.5, L2: 0.5, 'L0 billows': 2, 'L1 billows': 2, 'L2 billows': 2, 'L0 billows lively': 0.01, 'L1 billows lively': 0.01, 'L2 billows lively': 0.01, shadow: 15, 'shadow beyond': 10 };
 
 async function checkStreaming(browser, { fail, note, problems, outDir }) {
   // 2 minutes of flight from the start (about 8 km, every level shifting at least once), then a
@@ -494,7 +499,7 @@ async function checkStreaming(browser, { fail, note, problems, outDir }) {
       continue;
     }
     if (r.columnsDiffer) fail(`${name}: ${r.columnsDiffer} of ${r.compared} texel columns of the column map differ from a fresh start's`);
-    if (r.volumeMax > VOLUME_TOLERANCE[name]) fail(`${name}: the volume differs from a fresh start's by up to ${r.volumeMax.toFixed(2)} (mean over a texel column) at cell ${r.worst.join(', ')}`);
+    if (!(r.volumeMax <= VOLUME_TOLERANCE[name])) fail(`${name}: the volume differs from a fresh start's by up to ${r.volumeMax.toFixed(2)} (mean over a texel column) at cell ${r.worst.join(', ')}`);
     lines.push(`${name} ${r.volumeMax.toFixed(2)}`);
   }
   const d = difference(decodePng(flown.png), decodePng(fresh.png));

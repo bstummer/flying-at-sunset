@@ -9,6 +9,19 @@ fn sunColorAt(h: f32) -> vec3f {
   return mix(u.sunCol[i], u.sunCol[i + 1], f - f32(i));
 }
 
+// the billows on the large shapes nearest p in level l: how big (m) and how lively (0..1). A volume
+// of its own, read only where the billows are built (the empty-space skipping reads the distance)
+fn billowAt(p: vec3f, l: i32) -> vec2f {
+  let a = u.lvA[l];
+  let uvw = vec3f(p.x * a.x + a.y, p.z * a.x + a.z, p.y * a.w);
+  if (l == 0) { return textureSampleLevel(tBs0, sVol, uvw, 0.0).rg; }
+  if (l == 1) { return textureSampleLevel(tBs1, sVol, uvw, 0.0).rg; }
+  if (!inLv(p.xz, 2)) { return vec2f(SEA_BS, 1.0); }
+  return textureSampleLevel(tBs2, sVol, uvw, 0.0).rg;
+}
+// the large shapes in level l: the distance to them, and their billows
+fn shapeAt(p: vec3f, l: i32) -> vec3f { return vec3f(macroAt(p, l), billowAt(p, l)); }
+
 fn shellOf(a: f32) -> f32 { return 400.0 * a + 160.0; }    // highest billows above the large shapes
 // how much of a finer octave grows where the sphere distance of the lobes is n: all of it on the
 // lobes (n < 0), none in the creases and the plain between them (n > w). Cauliflower: small
@@ -21,29 +34,42 @@ fn onDome(b: f32) -> f32 { return 0.4 + 0.6 * smoothstep(0.05, 0.5, b); }
 // is (none past k): domes swell out of the surface, none floats above it
 fn dome(ds: f32, a: f32, k: f32) -> f32 { return ds - a * (1.0 - smoothstep(0.0, k, ds)); }
 
-// Signed distance (m) to the cloud surface: the large shapes (dm, from a clipmap), lobes of bent
-// spheres heaped on them, and domes on those, down to metres. C: column data. lod: 0 = full detail.
-fn cloudSDF(wp: vec3f, h: f32, dm: f32, C: vec4f, lod: f32) -> f32 {
+// Signed distance (m) to the cloud surface: the large shapes (sh.x, from a clipmap), lobes of bent
+// spheres heaped on them, and domes on those, down to metres; the lobes and turrets only where the
+// billows of the nearest bubble are big enough (sh.y, m), all of them lower where those have lost
+// their life (sh.z: old parts and wakes soften). C: column data. lod: 0 = full detail.
+fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
+  let dm = sh.x;
   // squashed lookup: billows are wider than tall (heaps, not balls)
   let s = textureSampleLevel(tShape, sRep, (warpLand(wp) + u.shapeOff) * (vec3f(1.0, 1.35, 1.0) / SHAPE_TILE), 0.0);
   let sf = (s.xy * 2.0 - 1.0) * (1.0 / 1.35);
-  let A = C.y;
+  let A = C.y * mix(0.6, 1.0, sh.z);
   // (the largest lobes are in the large shapes already: the bake grows them on the towers)
-  var ds = octave(dm, sf.x * 1280.0, 300.0 * A, 300.0);
+  // (lobes on bubbles of more than ~2 km, turrets on those of more than ~1 km: a crown a few hundred
+  // metres across boils in small domes, not in lobes bigger than itself)
+  let wL = smoothstep(700.0, 1500.0, sh.y);
+  let wT = smoothstep(350.0, 800.0, sh.y);
+  var ds = octave(dm, sf.x * 1280.0, 300.0 * A * wL, 300.0 * wL + 4.0);
   // (the turrets heap on the lobes' caps: the lobes' flanks and the creases between them stay
   // broad, so the billows come in sizes, not as one bubbly texture)
-  ds = octave(ds, sf.y * 640.0, 160.0 * A * mix(0.3, 1.0, onCap(sf.x * 1280.0, 300.0)), 160.0);
+  ds = octave(ds, sf.y * 640.0, 160.0 * A * wT * mix(0.3, 1.0, onCap(sf.x * 1280.0, 300.0)), 160.0 * wT + 4.0);
+  // (a bubble too small for those boils in turrets half their size)
+  let wS = smoothstep(800.0, 350.0, sh.y);
+  if (wS > 0.01) {
+    let st = textureSampleLevel(tShape, sRep, (warpLand(wp) + u.shapeOff) * (vec3f(2.0, 2.7, 2.0) / SHAPE_TILE) + vec3f(0.43, 0.29, 0.71), 0.0).y;
+    ds = octave(ds, (st * 2.0 - 1.0) * (320.0 / 1.35), 80.0 * A * wS * mix(0.25, 1.0, onCap(sf.y * 640.0, 160.0)), 80.0 * wS + 4.0);
+  }
   // cauliflower everywhere, strongest on the upper parts of the sea and on everything heaped above
   // it: domes pushing the surface out (320 and 160 m cells), more on the lobes' caps and each
   // more on the tops of the one before
-  let topW = mix(0.5, 1.0, saturate((h - min(C.x, C.w + 100.0) + 40.0) / 220.0)) * C.z;
+  let topW = mix(0.5, 1.0, saturate((h - min(C.x, C.w + 100.0) + 40.0) / 220.0)) * C.z * mix(0.75, 1.0, sh.z);
   ds = dome(ds, 64.0 * (1.0 - smoothstep(1.4, 2.8, lod)) * topW * mix(0.4, 1.0, onCap(sf.y * 640.0, 160.0)) * (s.z - 0.3), 96.0);
   ds = dome(ds, 30.0 * (1.0 - smoothstep(0.35, 1.0, lod)) * topW * onDome(s.z) * (s.w - 0.3), 45.0);
   // the finest domes (the detail volume: 128 to 32 m cells, and near the camera 32 to 8 m), only
   // near the surface (they move it by less than 50 m), drifting and rising with the air; a third
   // to half as high as they are wide, so the light shows them up close (flatter ones, the near sea
   // read as smooth dough)
-  let wF = (1.0 - smoothstep(0.35, 0.8, lod)) * topW * onDome(s.w) * (1.0 - smoothstep(80.0, 140.0, ds));
+  let wF = (1.0 - smoothstep(0.35, 0.8, lod)) * topW * onDome(s.w) * mix(mix(0.45, 1.0, onCap(sf.y * 640.0, 160.0)), 1.0, 1.0 - smoothstep(0.1, 0.35, lod)) * (1.0 - smoothstep(80.0, 140.0, ds));
   if (wF > 0.01) {
     let f1 = textureSampleLevel(tDetail, sRep, (wp + u.detailOff) * (1.0 / DETAIL_TILE), 0.0).b;
     ds = dome(ds, 60.0 * wF * (f1 - 0.3), 90.0);
@@ -57,7 +83,7 @@ fn cloudSDF(wp: vec3f, h: f32, dm: f32, C: vec4f, lod: f32) -> f32 {
 }
 // the same, looking up the large shapes and column data of level l
 fn sceneSDF(wp: vec3f, h: f32, l: i32, lod: f32) -> f32 {
-  return cloudSDF(wp, h, macroAt(vec3f(wp.x, h, wp.z), l), colAt(wp.xz, l), lod);
+  return cloudSDF(wp, h, shapeAt(vec3f(wp.x, h, wp.z), l), colAt(wp.xz, l), lod);
 }
 
 // Density (0..1) from the signed distance: real cumulus ends within metres, so the density ramps
@@ -131,9 +157,9 @@ const AMB_K = 1.4;
 // middle), and how much the surface faces the sun (-1..1), from the distance field: nS over the
 // first ~60 m (light that wanders inside spreads over that much: finer creases would turn into dark
 // pits), nL over ~400 m (the side of the bulge or tower it is on), and the distance 5 m toward the
-// sun (the face of the smallest billows: its difference to the point's own). l, C: clipmap level
-// and column data of the starting point. Returns (tau, nS, nL, that distance).
-fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, lod0: f32) -> vec4f {
+// sun (the face of the smallest billows: its difference to the point's own). l, C, bs: clipmap
+// level, column data and billows of the starting point. Returns (tau, nS, nL, that distance).
+fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> vec4f {
   var tau = 0.0;
   var s = 0.0;
   var ds = 10.0;
@@ -149,7 +175,7 @@ fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, lod0: f32) -> vec4f {
     let wp = wp0 + u.sunDir * sm;
     let h = h0 + u.sunDir.y * sm;
     // the first steps keep the detail of the view sample: bulges down to metres shade themselves
-    let d = cloudSDF(wp, h, macroAt(vec3f(wp.x, h, wp.z), l), C, lod0 + f32(max(i - 2, 0)) * 0.6);
+    let d = cloudSDF(wp, h, vec3f(macroAt(vec3f(wp.x, h, wp.z), l), bs), C, lod0 + f32(max(i - 2, 0)) * 0.6);
     if (i == 0) { d0 = d; }
     else if (i == 1) { d1 = d; }
     else if (i == 2) { nS = clamp((d - d0) / 57.8, -1.0, 1.0); }
@@ -179,6 +205,6 @@ fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, lod0: f32) -> vec4f {
   }
   return vec4f(tau, nS, nL, d0);
 }
-fn lightTau(wp0: vec3f, h0: f32, l: i32, C: vec4f, lod0: f32) -> f32 {
-  return lightTauN(wp0, h0, l, C, lod0).x;
+fn lightTau(wp0: vec3f, h0: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> f32 {
+  return lightTauN(wp0, h0, l, C, bs, lod0).x;
 }

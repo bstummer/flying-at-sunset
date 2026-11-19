@@ -83,7 +83,7 @@ export function fillColumns(cell, lod, gi0, gj0, ni, nj, out) {
 }
 // all bubbles near a box, positions relative to (ox, oz), written as the bake shader reads them (12
 // floats each: centre & horizontal radius; radii up / down, stretch, angle; union smoothness,
-// bounding radius, 0, 0). Bubbles smaller than minBR
+// bounding radius, billow scale, billow liveliness). Bubbles smaller than minBR
 // are left out (coarse levels; the coarsest sees small cells without what their bubbles shed).
 export function gatherBubbles(x0, z0, x1, z1, pad, minBR, ox, oz, out, max, coarse = false) {
   let n = 0;
@@ -95,7 +95,7 @@ export function gatherBubbles(x0, z0, x1, z1, pad, minBR, ox, oz, out, max, coar
       const q = n * 12;
       out[q] = b.x - ox; out[q + 1] = b.y; out[q + 2] = b.z - oz; out[q + 3] = b.rh;
       out[q + 4] = b.ryU; out[q + 5] = b.ryD; out[q + 6] = b.an; out[q + 7] = b.ang;
-      out[q + 8] = b.k; out[q + 9] = b.br; out[q + 10] = 0; out[q + 11] = 0;
+      out[q + 8] = b.k; out[q + 9] = b.br; out[q + 10] = b.bs; out[q + 11] = b.act;
       n++;
     }
   }, coarse);

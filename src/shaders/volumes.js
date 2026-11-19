@@ -20,14 +20,15 @@ export const U_TSV = {
 };
 export { default as CS_TSV } from './tsv.wgsl';
 
-// The distance volumes of the clipmaps are baked NOUT slices at a time, as the colour attachments
-// of one pass (WebGPU guarantees 8): each bubble is looked at once for all of them (as compute,
-// one slice an invocation, it was no faster: render/stream.js).
-export const NOUT = 8;
+// The distance volumes of the clipmaps and their billow scales are baked NOUT slices of each at a
+// time, as the colour attachments of one pass (WebGPU guarantees 8): each bubble is looked at once
+// for all of them (as compute, one slice an invocation, it was no faster: render/stream.js).
+export const NOUT = 4;
 // Bakes NOUT slices of a block of one clipmap level: the sea (from the column map: its surface
 // and slope) united with the tower bubbles near the block (ellipsoids; crisp creases between
 // them, a broad fillet where they swell out of the sea), and the largest lobes on the towers
-// (chunks/lobes.wgsl, from the shape volume). Positions are relative to the block, whose corner
+// (chunks/lobes.wgsl, from the shape volume); and the billows' scale and liveliness, each bubble's
+// own (world/cells.js) blended by how near its surface is, the sea's where the sea is nearer. Positions are relative to the block, whose corner
 // is at p0 in render space (the lobes and their warp are the trace's, in render space). Its
 // bubbles: nb of bBub (3 vec4f each, world/columns.js), from the b0th on.
 export const U_BAKE = {

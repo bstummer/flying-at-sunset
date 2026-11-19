@@ -36,7 +36,7 @@ export const P = {
   layers: pipeline('layers', { fs: FS_LAYERS, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
   mip: pipeline('mip', { fs: FS_MIP, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
   tsv: compute('tsv', { cs: CS_TSV, uniforms: U_TSV, writes: ['bTsv'] }),
-  bake: pipeline('bake', { fs: FS_BAKE, uniforms: U_BAKE, targets: Array(NOUT).fill('r16float') }),
+  bake: pipeline('bake', { fs: FS_BAKE, uniforms: U_BAKE, targets: [...Array(NOUT).fill('r16float'), ...Array(NOUT).fill('rg16float')] }),
   trace: pipeline('trace', { fs: FS_TRACE, constants: { DBG: params.dbg ? 1 : 0 }, uniforms: U_TRACE, targets: [F16, 'r16float'] }),
   taau: pipeline('taau', { fs: FS_TAAU, uniforms: U_TAAU, targets: [F16, F16] }),
   probe: compute('probe', { cs: CS_PROBE, uniforms: U_PROBE, writes: ['bProbe'] }),

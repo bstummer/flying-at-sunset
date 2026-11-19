@@ -6,7 +6,9 @@
 // - growCell: a cell sends up pulses through its life, weak as it builds up, strongest in its prime;
 //   no bubble bigger than R_TH (a bigger cell sends more of them). Each pulse is lifted alone first
 //   (thermals.js): if it rises past H_FLAT it is tall and grown in full as 3D bubbles, else its
-//   pieces become 2D domes on the sea.
+//   pieces become 2D domes on the sea. Each 3D bubble carries how big its billows are (bs: a
+//   quarter to two thirds of its radius, drawn per bubble: the shaders grow lobes only on big ones)
+//   and how lively (act: young heads 1, fading with age, sooner in the wake: old parts soften).
 // - subsidenceAt: air sinking around a stronger cell nearby holds weaker ones down (a stronger
 //   inversion, less buoyancy, a lower top), which spaces the towers. A cell's outflow also sets off
 //   younger cells near it, mostly downwind, two generations deep.
@@ -108,11 +110,16 @@ function growCell(c, coarse, out3, out2) {
       }
     } else {
       // (bubbles too small to matter beside the billows are left out whole, wake and all)
-      for (const e of list) if (e.r > 420) settle(c, e, pieces);
+      for (const e of list) if (e.r > 420) settle(c, e, pieces, true);
       for (const p of pieces) {
         if (Math.max(p.rh, p.ryU) < 200 || p.y + p.ryU < zs - 150) continue;
         const rmin = Math.min(p.rh * Math.min(p.an, 1 / p.an), p.ryU, p.ryD);
-        out3.push({ x: p.x, y: p.y, z: p.z, rh: p.rh, ryU: p.ryU, ryD: p.ryD, an: p.an, ang: p.ang, k: p.kf * rmin,
+        // how big the billows on it are: a quarter to two thirds of its radius, each bubble its own
+        // (one boils in small turrets, its neighbour in broad lobes); and how lively they still are:
+        // the eddies die down as a piece ages, sooner in the wake than in a head (old parts soften)
+        const bs = p.rh * lerp(0.25, 0.7, hashU(Math.floor(p.x), Math.floor(p.z), 0xb105) / 4294967296);
+        const act = Math.exp(-p.age / 700) * (p.kind === 0 ? 0.8 : 1);
+        out3.push({ x: p.x, y: p.y, z: p.z, rh: p.rh, ryU: p.ryU, ryD: p.ryD, an: p.an, ang: p.ang, k: p.kf * rmin, bs, act,
           br: Math.max(p.rh * Math.max(p.an, 1 / p.an), p.ryU, p.ryD), cell: c });
       }
     }

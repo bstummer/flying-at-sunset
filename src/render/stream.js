@@ -1,7 +1,8 @@
 // The streamed world volumes: clipmaps around the camera
 //
 // LEVELS: three levels (cells of 128 m, 512 m and 2 km, reaching ±16, ±65 and ±262 km), each a
-// 256×256×nz distance volume of the large shapes and a 256×256 map of column data, centred on the
+// 256×256×nz distance volume of the large shapes, one of their billows (how big and how lively
+// those of the nearest bubble are) and a 256×256 map of column data, centred on the
 // camera and addressed toroidally: once the camera is more than `step` cells off its centre the
 // window shifts, and only the blocks that entered it are made. TSVL, the shadow volume (the optical depth toward the
 // sun, through the cloud a texel sits in and through the clouds beyond it), is marched through the coarser levels and shifts once they are settled. A shifting level
@@ -39,7 +40,10 @@ export const TSVL = { cell: 768, cellV: 360, nz: 40, step: 8, chunk: 32, tsv: tr
 const TU = GPUTextureUsage;
 for (const L of [...LEVELS, TSVL]) {
   L.vol = texture(CLIP_N, CLIP_N, L.tsv ? 'rg16float' : 'r16float', { depth: L.nz, dim: '3d', usage: TU.TEXTURE_BINDING | TU.COPY_SRC | (L.tsv ? TU.COPY_DST : TU.RENDER_ATTACHMENT) });
-  if (!L.tsv) L.col = texture(CLIP_N, CLIP_N, 'rgba16float', { usage: TU.TEXTURE_BINDING | TU.COPY_DST | TU.COPY_SRC });
+  if (!L.tsv) {
+    L.bs = texture(CLIP_N, CLIP_N, 'rg16float', { depth: L.nz, dim: '3d', usage: TU.TEXTURE_BINDING | TU.COPY_SRC | TU.RENDER_ATTACHMENT });
+    L.col = texture(CLIP_N, CLIP_N, 'rgba16float', { usage: TU.TEXTURE_BINDING | TU.COPY_DST | TU.COPY_SRC });
+  }
   L.gi = null; L.gj = 0; L.valid = null; L.pending = 0;
 }
 T.tsv = TSVL.vol;
@@ -107,7 +111,7 @@ function shiftLevel(L, cx, cz) {
 function bakeCost(job) {
   if (job.fill) return 0;
   if (job.L.tsv) return 0.1 + 1.5e-5 * job.ni * job.nj * job.L.nz;
-  return job.L.nz / NOUT * (0.02 + 1.5e-4 * job.req.reply.nb);
+  return job.L.nz / NOUT * (0.013 + 1.0e-4 * job.req.reply.nb);
 }
 function runJob(job, O) {
   const L = job.L, tx = job.gi & CLIP_M, ty = job.gj & CLIP_M;
@@ -138,7 +142,7 @@ function runJob(job, O) {
       p0: [job.gi * L.cell - O[0], job.gj * L.cell - O[2]],
     }, warpPhases(O));
     const viewport = [tx, ty, job.ni, job.nj];
-    for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.bake, slices(L.vol, z, NOUT), vals, { viewport }); }
+    for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.bake, [...slices(L.vol, z, NOUT), ...slices(L.bs, z, NOUT)], vals, { viewport }); }
   }
   worldStats.jobs++;
   if (--L.pending === 0) L.valid = [L.gi, L.gj, L.gi + CLIP_N, L.gj + CLIP_N];
@@ -190,6 +194,7 @@ export function worldUniforms(O) {
   map(TSVL, 0, ta, tv);
   return Object.assign({
     tVol0: LEVELS[0].vol, tVol1: LEVELS[1].vol, tVol2: LEVELS[2].vol, tCol0: LEVELS[0].col, tCol1: LEVELS[1].col, tCol2: LEVELS[2].col,
+    tBs0: LEVELS[0].bs, tBs1: LEVELS[1].bs, tBs2: LEVELS[2].bs,
     lvA: _lvA, lvV: _lvV, tsvA: ta, tsvV: tv,
   }, warpPhases(O));
 }

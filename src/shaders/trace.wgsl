@@ -111,7 +111,8 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
     if (bound > 0.0 && nRef == 0 && !startIn) { tPrev = t; dPrev = bound; t += max(bound * 0.95, minStep * (0.5 + rj)); continue; }
     let lod = t * (1.0 / 15000.0);
     nSdf += 1.0;
-    let d = cloudSDF(wp, h, dm, C, lod);
+    let bs = billowAt(vec3f(wp.x, h, wp.z), lv);
+    let d = cloudSDF(wp, h, vec3f(dm, bs), C, lod);
     // the billowy tops of the sea and everything piled on it have crisp outlines, about a pixel of
     // the trace wide (no wider: it would alias); the deep troughs of the sea are soft far away (near
     // the camera within metres too: any wider looks out of focus)
@@ -150,7 +151,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       nrm = normalize(nrm);
       var c: vec3f;
       if (u.dbgMode == 1) { c = vec3f(0.08) + vec3f(1.0, 0.85, 0.6) * max(dot(nrm, u.sunDir), 0.0) + vec3f(0.1, 0.15, 0.3) * (nrm.y * 0.5 + 0.5); }
-      else if (u.dbgMode == 2) { c = vec3f(exp(-lightTau(wp, h, lv, C, lod + 0.5))); }
+      else if (u.dbgMode == 2) { c = vec3f(exp(-lightTau(wp, h, lv, C, bs, lod + 0.5))); }
       else { let f = tsvTau(wp, h); c = vec3f(exp(-f.x - f.y)); }
       return Out(vec4f(c * 0.12, 0.0), t * 0.001);
     }
@@ -169,7 +170,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       var tau: f32;
       if (reuse) { tau = lastTau + max(-d - lastDepth, 0.0) * SIGMA * 2.0; }
       else {
-        let tn = lightTauN(wp, h, lv, C, lod + 0.05);
+        let tn = lightTauN(wp, h, lv, C, bs, lod + 0.05);
         tau = tn.x;
         lastNS = tn.y;
         lastNL = tn.z;
@@ -185,10 +186,10 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
         // deeper samples keep the last estimate.)
         if (T > 0.45) {
           let S = 22.0 + t * 0.005;
-          lastNUp = clamp((cloudSDF(wp + vec3f(0.0, S, 0.0), h + S, macroAt(vec3f(wp.x, h + S, wp.z), lv), C, lod) - d) / S, -1.0, 1.0);
+          lastNUp = clamp((cloudSDF(wp + vec3f(0.0, S, 0.0), h + S, vec3f(macroAt(vec3f(wp.x, h + S, wp.z), lv), bs), C, lod) - d) / S, -1.0, 1.0);
           let qo = wp + openDir * (2.5 * S);
           let ho = h + openDir.y * 2.5 * S;
-          lastOpen = smoothstep(0.0, 0.8, (cloudSDF(qo, ho, macroAt(vec3f(qo.x, ho, qo.z), lv), C, lod) - d) / (2.5 * S));
+          lastOpen = smoothstep(0.0, 0.8, (cloudSDF(qo, ho, vec3f(macroAt(vec3f(qo.x, ho, qo.z), lv), bs), C, lod) - d) / (2.5 * S));
         }
       }
       lastTau = tau;

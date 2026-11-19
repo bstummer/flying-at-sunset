@@ -10,8 +10,11 @@
 // above its centre (the inversion while below it, the ceiling, CLOUD_TOP).
 // settle: what became of each piece by that moment: it drifted with the wind and evaporates (sooner
 // higher up and in dry air, the small first; ice lingers; dying towers crumble from the top); a
-// stopped head is pressed flat by the air that stopped it, sags, and where stopped hard spreads out
-// beneath that air in lobes: a little under the inversion, far under the ceiling (anvils).
+// stopped head is pressed flat by the air that stopped it (a heap under the inversion; in a tower
+// only where it pushed far into stable air, or into the ceiling: else it keeps its dome), sags, and
+// where stopped hard spreads out beneath that air in lobes: a little under the inversion, far under
+// the ceiling (anvils). Its pieces meet the others in broad fillets, not creases (a ball perched on
+// a ball).
 // placeDome: the pieces of a low pulse become 2D domes raising the sea's surface, standing on what
 // they grew from, their flanks never steeper than ~60°. START_Y, nearStart: the start is kept clear.
 
@@ -88,15 +91,20 @@ export function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
 // how far a piece may bulge above its centre: stable air presses it flat, the inversion while it
 // is still below it, the ceiling (which nothing passes) always
 const roofOf = (A, y, r) => Math.min(Math.max(Math.min(y < A.zs + A.dInv ? A.zs + A.dInv + 150 - y : 1e9, A.ceil + 500 - y), 0.2 * r), CLOUD_TOP - 300 - y);
+// how hard the air that stopped a head presses it flat (0 .. 1). A heap on the sea is pressed under
+// the inversion; in a tower the inversion and the ceiling are thin, strongly stable layers that
+// flatten whatever they stop, but between them the air is only weakly stable, and a head that ran
+// out of strength there keeps its dome unless it pushed far into that air
 const stabOf = e => Math.pow(sat(-e.bu / 0.04), 0.7);
+const stabTall = (A, e) => Math.pow(sat(-e.bu / (e.y < A.zs + A.dInv + 150 ? 0.04 : 0.5)), 0.7);
 export const headUp = (A, e) => Math.min(e.still ? 0.86 * e.r : e.r * lerp(0.85, 0.3, stabOf(e)) * 1.05, roofOf(A, e.y, e.r));
 // What became of a piece of a bubble by the moment the world shows. It drifted with the wind of
 // its height since it was there, and evaporates (ice high up lingers longer), the small parts
 // first. A head that stopped settles into a dome, flattens and sags; where the air above stopped
 // it hard it also spreads out beneath it in lobes, the farther the more stable that air and the
 // harder it pushed: a little under a strong inversion, far under the ceiling.
-// Appends the pieces to `out`; returns the head's (null if it is gone).
-export function settle(c, e, out) {
+// Appends the pieces to `out`; returns the head's (null if it is gone). tall: the pulse grew a tower.
+export function settle(c, e, out, tall = false) {
   const A = c.A, age = Math.max(c.age - e.t, 0), r = e.r, hgt = e.y - A.zs;
   // (the air is moist just above the sea and dry higher up; ice lingers; and what is high up does
   // not outlast the column that holds it up for long: dying towers crumble from the top down)
@@ -116,23 +124,23 @@ export function settle(c, e, out) {
   // the wake: cloudy air keeps spilling out of the rising column, so it widens as it ages
   if (!e.head) {
     const wid = 1 + 0.7 * (1 - Math.exp(-age / (900 * Math.sqrt(r / 1000))));
-    return put(x, e.y, z, 0.7 * r * wid * g, Math.min(0.62 * r, roof) * g, 0.62 * r * g, 1 + 0.25 * (wid - 1), A.turn, 0.12, 0, null);
+    return put(x, e.y, z, 0.7 * r * wid * g, Math.min(0.62 * r, roof) * g, 0.62 * r * g, 1 + 0.25 * (wid - 1), A.turn, 0.35, 0, null);
   }
-  if (e.still) return put(x, e.y, z, r, Math.min(0.86 * r, roof), 0.6 * r, 1, 0, 0.08, 1, null);
+  if (e.still) return put(x, e.y, z, r, Math.min(0.86 * r, roof), 0.6 * r, 1, 0, 0.25, 1, null);
   const rng = mulberry32(e.seed), grow = 1 - Math.exp(-age / (600 * Math.sqrt(r / 1000)));
   // (how far it spreads: by how stable the air that stopped it is, and how hard it was rising)
-  const stab = stabOf(e), S = sat(-e.bu / 0.6) * (0.5 + 3 * Math.pow(sat((e.w - 4) / 22), 1.5));
+  const stab = tall ? stabTall(A, e) : stabOf(e), S = sat(-e.bu / 0.6) * (0.5 + 3 * Math.pow(sat((e.w - 4) / 22), 1.5));
   const sp = 0.3 * grow, yc = e.y - Math.min(0.25 * age, 0.35 * r);
   // pressed flat under the air that stopped it; the underside sags as it ages; old domes soften
-  const hp = put(x, yc, z, r * (1 + sp) * g, Math.min(r * lerp(0.85, 0.3, stab) * lerp(0.85, 1.05, rng()) / (1 + 0.6 * sp), roof) * g,
-    r * (0.6 + 0.45 * grow) * g, lerp(1, 1.35, rng()) * (1 + 0.2 * sp), rng() * PI, 0.1 + 0.15 * sat(age / 1500), 1, null);
+  const hp = put(x, yc, z, r * (1 + sp) * g, Math.min(r * lerp(tall ? 0.95 : 0.85, 0.3, stab) * lerp(0.85, 1.05, rng()) / (1 + 0.6 * sp), roof) * g,
+    r * (0.6 + 0.45 * grow) * g, lerp(1, 1.35, rng()) * (1 + 0.2 * sp), rng() * PI, 0.3 + 0.15 * sat(age / 1500), 1, null);
   if (S > 0.15 && r > 350) {
     const n = Math.min(7, Math.round(1 + 2.5 * S)), a0 = rng() * 2 * PI;
     for (let i = 0; i < n; i++) {
       const a = a0 + (i + 0.6 * rng()) * 2 * PI / n, d = r * (0.4 + S * lerp(0.5, 1, rng())) * grow;
       const rl = r * lerp(0.45, 0.75, rng()) * g;
       put(x + Math.cos(a) * d, yc + r * lerp(-0.2, 0.1, rng()), z + Math.sin(a) * d, rl, Math.min(rl * lerp(0.3, 0.45, rng()), roof),
-        rl * lerp(0.45, 0.65, rng()), lerp(1, 1.4, rng()), rng() * PI, 0.12, 2, hp);
+        rl * lerp(0.45, 0.65, rng()), lerp(1, 1.4, rng()), rng() * PI, 0.3, 2, hp);
     }
   }
   return hp;
