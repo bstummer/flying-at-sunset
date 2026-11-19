@@ -72,6 +72,9 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
   var lastDepth = 0.0;
   var lastNS = 0.0;
   var lastNUp = 1.0;
+  var lastOpen = 1.0;
+  // (up and back toward the camera: the side of a visible surface that is open)
+  let openDir = normalize(vec3f(0.0, 1.0, 0.0) - dir);
   for (var i = 0; i < 360; i++) {
     nIter += 1.0;
     if (t >= tEnd || T < 0.02) { done = true; break; }
@@ -153,11 +156,16 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
         tau = tn.x;
         lastNS = tn.y;
         // which way the surface faces: up from one distance tap above, toward the sun from the
-        // light march. Each bulge then catches its own sky light, even in shadow. (Only near the
-        // visible surface; deeper samples keep the last estimate.)
+        // light march. Each bulge then catches its own sky light, even in shadow. And how open the
+        // sky is over it: the distance to the cloud at a point up and back toward the camera,
+        // short in the folds between bulges and under overhangs. (Only near the visible surface;
+        // deeper samples keep the last estimate.)
         if (T > 0.45) {
           let S = 30.0 + t * 0.004;
           lastNUp = clamp((cloudSDF(wp + vec3f(0.0, S, 0.0), h + S, macroAt(vec3f(wp.x, h + S, wp.z), lv), C, lod) - d) / S, -1.0, 1.0);
+          let qo = wp + openDir * (2.5 * S);
+          let ho = h + openDir.y * 2.5 * S;
+          lastOpen = smoothstep(0.0, 0.8, (cloudSDF(qo, ho, macroAt(vec3f(qo.x, ho, qo.z), lv), C, lod) - d) / (2.5 * S));
         }
       }
       lastTau = tau;
@@ -176,7 +184,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       let up = saturate((h - C.w + 250.0) / 1400.0);
       // sky light only reaches the first few tens of metres (short scale also hides the
       // discontinuous interior of the distance field)
-      let ao = mix(0.5, 1.0, exp(-depthIn / 55.0));
+      let ao = mix(0.5, 1.0, exp(-depthIn / 55.0)) * mix(0.4, 1.0, lastOpen);
       // sky light by orientation: the deep blue zenith on tops, the warm sunlit sea under bellies,
       // the golden sun-side or the cool violet anti-sun sky on the sides (a belly sees only part of
       // the sea below past the bulges around it)
