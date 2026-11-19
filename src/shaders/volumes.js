@@ -4,9 +4,10 @@
 import { U_CLIP } from './cloud.js';
 
 // Shadow volume (camera-centred, streamed like the clipmaps): optical depth toward the sun from
-// each texel, marched through the large shapes of the coarser levels. A compute shader, a texel
-// per invocation (each march is long: the work spreads over the whole GPU); r16float is no storage
-// format in core WebGPU, so it writes them as pairs of half floats into bTsv, rows of TSV_ROW u32
+// each texel, marched through the large shapes of the coarser levels, through the cloud the texel
+// sits in (r) and through the clouds beyond it (g). A compute shader, a texel per invocation (each
+// march is long: the work spreads over the whole GPU); rg16float is no storage format in core
+// WebGPU, so it writes each texel's pair of half floats as a u32 into bTsv, rows of TSV_ROW u32
 // (256 bytes, as a copy into a texture wants them), which render/stream.js copies into the volume.
 export const TSV_ROW = 64;
 export const U_TSV = {

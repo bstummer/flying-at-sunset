@@ -90,23 +90,42 @@ fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f3
   return densityEx(d, wp, detailW, edgeW, nearW, 0.0);
 }
 
-// optical depth toward the sun from the shadow volume (no shadows outside its window)
-fn tsvTau(wp: vec3f, h: f32) -> f32 {
+// optical depth toward the sun from the shadow volume, past the light march's reach: through the
+// cloud the point is in, and through the clouds beyond (no shadows outside its window)
+fn tsvTau(wp: vec3f, h: f32) -> vec2f {
   let v = u.tsvV;
   let w = min(min(wp.x - v.x, v.z - wp.x), min(wp.z - v.y, v.w - wp.z));
-  if (w <= 0.0) { return 0.0; }
-  return textureSampleLevel(tTsv, sVol, vec3f(wp.x * u.tsvA.x + u.tsvA.y, wp.z * u.tsvA.x + u.tsvA.z, h * u.tsvA.w), 0.0).r * saturate(w / 8000.0);
+  if (w <= 0.0) { return vec2f(0.0); }
+  return textureSampleLevel(tTsv, sVol, vec3f(wp.x * u.tsvA.x + u.tsvA.y, wp.z * u.tsvA.x + u.tsvA.z, h * u.tsvA.w), 0.0).rg * saturate(w / 8000.0);
 }
 
 // Multiple scattering approximation (Wrenninge): sum of octaves with reduced extinction & anisotropy
+// (each octave's share falls as fast as its extinction, a = b: no light that was never taken out)
 fn phaseOctaves(c: f32) -> vec4f {
   return vec4f(mix(HG(c, -0.3), HG(c, 0.8), 0.62), mix(HG(c, -0.15), HG(c, 0.4), 0.62),
                mix(HG(c, -0.075), HG(c, 0.2), 0.62), mix(HG(c, -0.0375), HG(c, 0.1), 0.62));
 }
 fn msScatterP(tau: f32, ph: vec4f) -> f32 {
-  let e = exp(-tau * vec4f(1.0, 0.5, 0.25, 0.125));
-  return dot(e * vec4f(1.0, 0.55, 0.3025, 0.166375), ph);
+  let k = vec4f(1.0, 0.5, 0.25, 0.125);
+  return dot(exp(-tau * k) * k, ph);
 }
+// The sun's light scattered at a point in a cloud, per unit of sunlight: the low orders by octaves,
+// and the high ones as diffusion (light that wandered deep into the cloud: about E/π where the sun
+// gets in square to the surface, less where it grazes it (a cloud top at 5° takes in a fraction of
+// what a face turned to the sun does), falling off as a thick cloud's diffuse transmission
+// (two-stream, g ≈ 0.85) with the optical depth toward the sun, and lower within a mean free path
+// or two of the surface, where it leaks out). Neutral: droplets scatter every colour alike.
+// tau: optical depth toward the sun (lightTauN); far: past its reach (tsvTau: through this cloud,
+// through the clouds beyond, whose shadow takes every order alike); pw: the powder term; depthIn:
+// depth below the surface (m); nS: how squarely the surface nearby faces the sun (-1..1, lightTauN).
+const DIFFUSE = 0.3;
+fn sunScatter(tau: f32, far: vec2f, ph: vec4f, pw: f32, depthIn: f32, nS: f32) -> f32 {
+  let facing = 0.35 + 0.65 * saturate(nS);
+  let diffu = DIFFUSE * facing / (1.0 + 0.11 * (tau + far.x)) * (1.0 - 0.55 * exp(-depthIn * SIGMA / 1.5));
+  return (msScatterP(tau + far.x, ph) * pw + diffu) * exp(-far.y);
+}
+// the sky's light on cloud (bAmb holds irradiance / π; a thick cloud returns most of it)
+const AMB_K = 1.0;
 
 // Optical depth toward the sun from a point (short march with growing steps), and nS: how much
 // the surface there faces the sun (-1..1), from the distance field along the first two steps.

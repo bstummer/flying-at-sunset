@@ -4,7 +4,7 @@
 // 256×256×nz distance volume of the large shapes and a 256×256 map of column data, centred on the
 // camera and addressed toroidally: once the camera is more than `step` cells off its centre the
 // window shifts, and only the blocks that entered it are made. TSVL, the shadow volume (the optical depth toward the
-// sun), is marched through the coarser levels and shifts once they are settled. A shifting level
+// sun, through the cloud a texel sits in and through the clouds beyond it), is marched through the coarser levels and shifts once they are settled. A shifting level
 // asks the world's worker (core/world.js) for all its blocks at once; a block's column data goes
 // into the column map, its bubbles into the frame's bubble arena, to be baked (shaders/volumes.js).
 // Until a shift is baked a level is valid only where its old and new windows overlap, and the
@@ -38,7 +38,7 @@ export const LEVELS = [
 export const TSVL = { cell: 768, cellV: 360, nz: 40, step: 8, chunk: 32, tsv: true };
 const TU = GPUTextureUsage;
 for (const L of [...LEVELS, TSVL]) {
-  L.vol = texture(CLIP_N, CLIP_N, 'r16float', { depth: L.nz, dim: '3d', usage: TU.TEXTURE_BINDING | TU.COPY_SRC | (L.tsv ? TU.COPY_DST : TU.RENDER_ATTACHMENT) });
+  L.vol = texture(CLIP_N, CLIP_N, L.tsv ? 'rg16float' : 'r16float', { depth: L.nz, dim: '3d', usage: TU.TEXTURE_BINDING | TU.COPY_SRC | (L.tsv ? TU.COPY_DST : TU.RENDER_ATTACHMENT) });
   if (!L.tsv) L.col = texture(CLIP_N, CLIP_N, 'rgba16float', { usage: TU.TEXTURE_BINDING | TU.COPY_DST | TU.COPY_SRC });
   L.gi = null; L.gj = 0; L.valid = null; L.pending = 0;
 }

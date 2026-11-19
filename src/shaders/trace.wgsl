@@ -42,12 +42,12 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
   // haze colour: the sky just above the horizon for downward rays (no seam at the horizon)
   let hazeDir = normalize(vec3f(dir.x, max(dir.y, 0.004), dir.z));
   let skyHaze = skyLookup(tSky, hazeDir, u.sunDir, h0 * 0.001);
-  let ambUp = bAmb.up.rgb * 1.95;
+  let ambUp = bAmb.up.rgb * AMB_K;
   // light bounced off the sunlit sea of clouds below (Lambertian deck, sun 5 degrees up)
   let seaBounce = u.ambSea * 0.38;
-  let ambSunS = bAmb.sunSide.rgb * 1.95 + seaBounce * 0.4;
+  let ambSunS = bAmb.sunSide.rgb * AMB_K + seaBounce * 0.4;
   // (a touch of violet: the anti-sun sky at dusk; on cloud sides it reads as cool, luminous shade)
-  let ambAnti = bAmb.antiSun.rgb * 1.95 * vec3f(1.06, 0.93, 1.1) + seaBounce * 0.15;
+  let ambAnti = bAmb.antiSun.rgb * AMB_K * vec3f(1.06, 0.93, 1.1) + seaBounce * 0.15;
   let cosT = dot(dir, u.sunDir);
   let phase = phaseOctaves(cosT);
   let powder = 1.0 - 0.28 * saturate(0.5 - 0.5 * cosT);
@@ -133,7 +133,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       var c: vec3f;
       if (u.dbgMode == 1) { c = vec3f(0.08) + vec3f(1.0, 0.85, 0.6) * max(dot(nrm, u.sunDir), 0.0) + vec3f(0.1, 0.15, 0.3) * (nrm.y * 0.5 + 0.5); }
       else if (u.dbgMode == 2) { c = vec3f(exp(-lightTau(wp, h, lv, C, jit2, lod + 0.5))); }
-      else { c = vec3f(exp(-tsvTau(wp, h))); }
+      else { let f = tsvTau(wp, h); c = vec3f(exp(-f.x - f.y)); }
       return Out(vec4f(c * 0.12, 0.0), t * 0.001);
     }
     var dens = densityEx(d, wp, detailW, edgeW, nearW, farW);
@@ -164,24 +164,16 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       }
       lastTau = tau;
       lastDepth = -d;
-      // distant occluders (towers) block all scattering orders: their shadow is a plain multiplier
-      let farT = exp(-tsvTau(wp, h));
+      // past the light march: the rest of this cloud, and the clouds beyond (sunScatter)
+      let far = tsvTau(wp, h);
       let depthIn = -d;
-      let pw = mix(powder, 1.0, 1.0 - exp(-depthIn * 0.035));
-      // diffusion: clouds barely absorb, so light soaks deep inside and glows; weaker right at
-      // the surface where it leaks out (keeps shadowed sides cool)
-      let diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depthIn / 80.0));
-      // light diffusing through the cloud glows golden in thin parts, cooler (blue-violet) where it
-      // has travelled far through the cloud; in the shadow of distant towers only a soft, cool
-      // isotropic fill remains
+      let pw = mix(powder, 1.0, 1.0 - exp(-depthIn * SIGMA));
       let sc = sunColorAt(h);
-      let cool = vec3f(0.78, 0.8, 1.25) * luma(sc);
-      let glow = mix(sc, cool, 0.6 * saturate(tau / 35.0));
-      var sunL = sc * (msScatterP(tau, phase) * pw * farT) + glow * diffu * farT + mix(sc, cool, 0.5) * (0.005 * (1.0 - farT));
+      var sunL = sc * sunScatter(tau, far, phase, pw, depthIn, lastNS);
       if (DBG && u.dbgMode >= 5) {
-        let e = exp(-tau * vec4f(1.0, 0.5, 0.25, 0.125));
-        let ms = dot(e * vec4f(1.0, 0.55, 0.3025, 0.166375), phase) * pw;
-        sunL = sunColorAt(h) * farT * select(select(0.0, diffu, u.dbgMode == 6), ms, u.dbgMode == 5);
+        // (5: the octaves alone, 6: the diffusion alone, 7: no sun)
+        let ms = msScatterP(tau + far.x, phase) * pw * exp(-far.y);
+        sunL = sc * select(select(0.0, sunScatter(tau, far, phase, pw, depthIn, lastNS) - ms, u.dbgMode == 6), ms, u.dbgMode == 5);
       }
       let up = saturate((h - C.w + 250.0) / 1400.0);
       // sky light only reaches the first few tens of metres (short scale also hides the
@@ -193,7 +185,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       let eSide = mix(ambAnti, ambSunS, saturate(0.5 + 0.5 * lastNS));
       var eDir: vec3f;
       if (lastNUp > 0.0) { eDir = mix(eSide, ambUp, lastNUp); } else { eDir = mix(eSide, seaBounce, -0.5 * lastNUp); }
-      var amb = (eDir * mix(0.45, 1.0, up) + u.ambSea * (1.0 - up) * 0.7) * ao;
+      var amb = eDir * mix(0.45, 1.0, up) * ao;
       if (DBG && (u.dbgMode == 5 || u.dbgMode == 6)) { amb *= 0.0; }
       let S = sigma * 0.985 * (sunL + amb);
       let st = exp(-sigma * dt);

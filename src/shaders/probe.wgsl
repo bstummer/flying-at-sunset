@@ -26,7 +26,8 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
     case 0u: {
       var tau = 0.0;
       for (var k = 0; k < 4; k++) { tau += lightTau(bwp, bh, 0, C, (f32(k) + 0.5) / 4.0, 0.0); }
-      tau = tau * 0.25 * 0.6 + tsvTau(bwp, bh);
+      let far = tsvTau(bwp, bh);
+      tau = tau * 0.25 * 0.6 + far.x + far.y;
       let tr = exp(-tau);
       bProbe.sun = vec4f(sunColorAt(bh) * tr, tr);
     }
@@ -49,10 +50,9 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
       let scam = sigmaAt(u.camPos, u.camPos.y);
       let depth = max(-scam.y, 0.0);
       let tau = lightTau(u.camPos, u.camPos.y, 0, colAt(u.camPos.xz, 0), 0.5, 0.0);
-      let farT = exp(-tsvTau(u.camPos, u.camPos.y));
-      let diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depth / 80.0));
-      let sunL = sunColorAt(u.camPos.y) * ((msScatterP(tau, phaseOctaves(0.3)) + diffu) * farT + 0.007 * (1.0 - farT));
-      bProbe.mistL = vec4f(sunL + ambSky * 1.95 * 0.75 * mix(0.5, 1.0, exp(-depth / 55.0)), 1.0);
+      let far = tsvTau(u.camPos, u.camPos.y);
+      let sunL = sunColorAt(u.camPos.y) * sunScatter(tau, far, phaseOctaves(0.3), 1.0, depth, 0.4);
+      bProbe.mistL = vec4f(sunL + ambSky * AMB_K * 0.75 * mix(0.5, 1.0, exp(-depth / 55.0)), 1.0);
     }
     default: {
       // distance to the sea of clouds the bird skims (heaps piled high above it and towers may be

@@ -328,7 +328,7 @@ export async function readBuffer(b, n = b.size / 4) {
   return out;
 }
 // the texels of slices [z, z + nz) of a texture as numbers, rows packed
-const TEXEL = { rgba16float: [8, 4, true], r16float: [2, 1, true], rgba32float: [16, 4, false], r32float: [4, 1, false], rgba8unorm: [4, 4, false] };
+const TEXEL = { rgba16float: [8, 4, true], r16float: [2, 1, true], rg16float: [4, 2, true], rgba32float: [16, 4, false], r32float: [4, 1, false], rgba8unorm: [4, 4, false] };
 export async function readTexture(t, z = 0, nz = 1) {
   const [bytes, comps, isHalf] = TEXEL[t.format];
   const row = Math.ceil(t.w * bytes / 256) * 256;

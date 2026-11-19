@@ -441,16 +441,19 @@ const readLevels = async () => {
   };
   const out = {};
   for (const [name, L] of [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]], ['shadow', D.TSVL]]) {
-    const vol = await D.readTexture(L.vol, 0, L.nz); // slice after slice, rows packed
-    const mean = new Float64Array(N * N);
-    for (let k = 0; k < vol.length; k++) mean[k % (N * N)] += vol[k] / L.nz;
+    const vol = await D.readTexture(L.vol, 0, L.nz); // slice after slice, rows packed, the channels of a texel together
+    // (a channel each: the shadow volume's through the cloud a texel is in, and through those beyond)
+    const comps = vol.length / (N * N * L.nz), means = Array.from({ length: comps }, () => new Float64Array(N * N));
+    for (let k = 0; k < vol.length; k++) means[k % comps][Math.floor(k / comps) % (N * N)] += vol[k] / L.nz;
     let col = null;
     if (L.col) {
       const bits = new Uint32Array((await D.readTexture(L.col)).buffer);
       col = new Uint32Array(N * N).fill(2166136261);
       for (let k = 0; k < bits.length; k++) col[k >> 2] = Math.imul(col[k >> 2] ^ bits[k], 16777619);
     }
-    out[name] = { gi: L.gi, gj: L.gj, step: L.step, pending: L.pending, valid: L.valid, mean: base64(mean), col: col && base64(col) };
+    means.forEach((mean, c) => {
+      out[name + (c ? ' beyond' : '')] = { gi: L.gi, gj: L.gj, step: L.step, pending: L.pending, valid: L.valid, mean: base64(mean), col: col && base64(col) };
+    });
   }
   const b = D.bird;
   return { pose: [...b.pos, b.yaw, b.gamma, b.bank], levels: out };
@@ -458,8 +461,9 @@ const readLevels = async () => {
 
 // Most a level's volume may differ between the flown and the fresh page, as the mean over a texel
 // column: the clipmap levels hold the same (half-float rounding aside); the shadow volume is
-// marched through them as they were when it was baked.
-const VOLUME_TOLERANCE = { L0: 0.5, L1: 0.5, L2: 0.5, shadow: 10 };
+// marched through them as they were when it was baked (its channels: through the cloud a texel is
+// in, up to 30, and through the clouds beyond, up to 14).
+const VOLUME_TOLERANCE = { L0: 0.5, L1: 0.5, L2: 0.5, shadow: 10, 'shadow beyond': 10 };
 
 async function checkStreaming(browser, { fail, note, problems, outDir }) {
   // 2 minutes of flight from the start (about 8 km, every level shifting at least once), then a
@@ -543,11 +547,12 @@ async function checkVolumes(browser, { fail, note, problems }) {
     const res = await page.evaluate(async () => {
       const D = window.__debug, N = 256, out = {};
       for (const [name, L] of [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]], ['shadow', D.TSVL]]) {
-        const v = await D.readTexture(L.vol, 0, L.nz); // one value per texel, slice after slice
+        const v = await D.readTexture(L.vol, 0, L.nz); // the channels of each texel, slice after slice
+        const top = (L.nz - 1) * (v.length / L.nz);
         let nan = 0, topNeg = 0;
         for (let k = 0; k < v.length; k++) {
           if (!Number.isFinite(v[k])) nan++;
-          else if (v[k] < 0 && k >= (L.nz - 1) * N * N) topNeg++;
+          else if (v[k] < 0 && k >= top) topNeg++;
         }
         out[name] = { nan, topNeg };
       }
