@@ -55,6 +55,38 @@ Worth knowing before tuning again.
 - **Tests compare the world's sums, not a hash**: Math.sin, exp and pow round their last bit
   differently between Node versions (the recorded hash was off on Node 24 while every part agreed to
   12 digits).
+- **The light balance** (sun against sky, 2026-11): sky light ×1.95 plus a warm sea fill in every
+  direction made shade nearly as bright as sunlit faces (a milky, flat look; the darkest 1% at sRGB
+  80–105). At a 5° sun the sky gives a sunlit face's light /20–40; the sky now enters at ×1. Deep
+  scattering must scale with how squarely the sun enters the surface (`facing`), or grazing-lit tops
+  glow as brightly as faces turned to the sun (flat lit areas).
+- **The shadow volume as one channel through everything**: counted from the light march's end, the
+  cloud a texel sits in included, it gave backlit towers dark faces, but as a plain e^−τ it blacked
+  out the inside of clouds (light diffuses through one body of cloud, ~1/(1+0.11τ)). Two channels:
+  that cloud, and the clouds beyond. Its own-cloud channel in 768 × 360 m texels banded shaded tower
+  faces: the trace's march now follows its own cloud to 6.3 km through the large shapes. Long point
+  steps can't carry other clouds' shadows (they hit or miss a tower by the jitter: speckled, weak
+  cast shadows); those stay the volume's (200–320 m steps), from 1.4 km on.
+- **Soft rims**: a 30–80 m linear density ramp, erosion as a share of it, σ = 0.035/m: near clouds
+  out of focus (not the trace's resolution: a full-resolution trace looked the same). Now σ 0.07, a
+  ramp about a trace pixel wide on the tops, erosion a fixed depth. A 2-pixel ramp instead of 1.25
+  hardly calms the shimmer and gives the softness back.
+- **Near-camera sphere octaves** (80 and 40 m): with crisp rims each bulge clipped to its shell is a
+  flat round disc that glows evenly (bokeh); taller shells are still discs. Dropped for deeper
+  detail creases near the camera. Fine billows on their parents' caps (onCap) beat popcorn.
+- **Fold occlusion** (one tap up and back toward the camera): a 0.2 floor turns shade into gravel;
+  0.4. A tap straight up can't tell a fold from a wall (it lands on a vertical wall).
+- **TAAU at rest**: a wider clamp box alone barely calms crisp rims; the blend rate is what flickers
+  (a rim pixel swinging ~150 levels × α 0.05). Halving α at rest did it.
+- **Tried, no visible gain, not kept**: the HG + Draine droplet phase (Jendersie & d'Eon 2023) for
+  single scattering (deep scattering and the glare dominate); jitter animated by position (Jimenez;
+  the screen-door is something else, see known issues, and shimmer rose a little); sharper TAAU by
+  the nearest sample (resolution isn't what limits the look; motion smear can't be judged in stills).
+- **Aerial perspective per channel** (the horizon sky × (1 − T) per colour): toward the sun all sank
+  into blue, though that sky is golden because its blue was lost on the long path. The veil's amount
+  is now the transmittance's luminance; the cloud's own light still loses blue first.
+- **Exposure 17, or ACES alone**: washes the glow toward the sun into a milky veil; the tone curve is
+  half hue-preserving in the mid-tones (golden-hour peach), highlights per channel (cream).
 
 ## Known issues and ideas
 
@@ -79,9 +111,24 @@ Worth knowing before tuning again.
   and `catalog.js` show them); the author dislikes thin stems under spreading tops. Causes to look at:
   spreading lobes against column width, the shear drift of tops, column pieces evaporating before heads,
   the pulse spread (0.6·P).
-- **Close-up surfaces** of towers can look blotchy in low sun (cast shadows between many lumps), and
-  shadowed towers show bright sun patches where light comes through gaps between towers (the 768 m
-  shadow volume makes them blob-shaped).
+- **Close-up surfaces** of towers can look blotchy in low sun (cast shadows between many lumps).
+  Distant towers (~40 km, `seed3`) show stair-stepped tops and blob-shaped patches where the shadow
+  volume's 768 m texels decide.
+- **Popcorn far away**: towers on the horizon still read as heads of even bumps ("broccoli", `away`,
+  `sun`, `anvil`); onCap and the size spread act mostly up close. **Gumdrops**: puffs on thin necks
+  remain (`close`): the CPU preview shows small world bubbles perched on heaps (src/world/), not
+  only billow octaves.
+- **Inside cloud** is a uniform dim wall (mauve-brown, `inside`), even with the exposure adapting to
+  the mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays
+  low); drifting mist only shows in motion. `under` (an anvil's underside) is dark navy now: right
+  for shade at sunset, but judge it against its brief.
+- **A straight cliff** in `side` (~4–5 km out, center right) is the world's: the CPU preview
+  (`tools/world/preview.js`, pose `-20,1960,0,90,-4`, sun 5°) shows a sharp crease in the sea's
+  column field there, likely the narrow-valley term (ridged noise to the 6th power, air.js). A faint
+  vertical seam in shaded sea in `close` too.
+- **Cost of the 2026-11 look** (A B B A, 120 frames): the trace −9…−13% in near views (denser
+  cloud ends rays sooner, the near octaves are gone), +9…+19% looking over wide lit areas (`high2`,
+  `down`: the fold tap, the march's long steps); ±0.5 ms at 480×270 on the NVIDIA laptop GPU.
 - **Distant flat tops can look like floating lenses** (their bodies sink into haze and behind the
   curvature); photo 1 shows the same, but watch it.
 - **The cirrus and the two high layers tile** every 32 and 64 km.
@@ -91,15 +138,13 @@ Worth knowing before tuning again.
   of the world is calm air with only the billowy sea and its heaps. The draw doesn't promise towers in
   view for every seed: **seed 5 starts with none** within 50 km (the piece's seed 7 has two above 8 km;
   `tests/world.test.js` holds it to one).
-- Inside thick cloud near the camera surfaces read soft (mist thinning, 14 m rims).
-- **A screen-door pattern** in the shaded parts of the sea seen from straight down (`down`, its
-  `billows` crop): a faint, fine, regular grid. Perhaps the trace's jitter or the temporal upsampling
-  on shaded surfaces seen head-on; not looked into.
-- **Sunlit rims shimmer**: with nothing moving, 0.1–0.5% of a frame changes by 6 levels or more from
-  frame to frame, almost all of it along sunlit cloud edges against the sky, where the jittered
-  low-resolution trace and the temporal upsampling don't settle (`high2` 0.48%, `anvil` 0.46% at
-  960×540; over the 0.5% limit at 640×360). Whether it shows as crawl in motion is for the author's
-  eyes. The cloud scale and the TAAU clamp are the levers.
+- **A fine grid in shade in the captures** (screen-door, `down`, `side` up close): the history after
+  12 frames, short of the 16-frame jitter cycle and slower to blend at rest since 2026-11; gone at
+  `--frames 48`. Judge fine texture at 48 frames.
+- **Sunlit rims**: with nothing moving 0.03–0.22% of a frame flickers (`geometry` 0.6%), below the old
+  values, since the history blends at half the rate where the image holds still. The slower blend may
+  lag or smear in slow motion: for the author's eyes. The cloud scale and the TAAU clamp and blend
+  rate are the levers.
 - The `skim` view (170 m over the sea's top) shows nothing but haze: the billows rise higher than that
   there, so the bird is inside them. Its brief wants billows up close; a pose a few hundred metres
   higher would show them.
