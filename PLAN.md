@@ -72,8 +72,8 @@ Worth knowing before tuning again.
   ramp about a trace pixel wide on the tops, erosion a fixed depth. A 2-pixel ramp instead of 1.25
   hardly calms the shimmer and gives the softness back.
 - **Near-camera sphere octaves** (80 and 40 m): with crisp rims each bulge clipped to its shell is a
-  flat round disc that glows evenly (bokeh); taller shells are still discs. Dropped for deeper
-  detail creases near the camera. Fine billows on their parents' caps (onCap) beat popcorn.
+  flat round disc that glows evenly (bokeh); taller shells are still discs. The domes of the detail
+  volume carry that scale now. Fine billows on their parents' caps (onCap) beat popcorn.
 - **Fold occlusion** (one tap up and back toward the camera): a 0.2 floor turns shade into gravel;
   0.4. A tap straight up can't tell a fold from a wall (it lands on a vertical wall).
 - **TAAU at rest**: a wider clamp box alone barely calms crisp rims; the blend rate is what flickers
@@ -85,8 +85,29 @@ Worth knowing before tuning again.
 - **Aerial perspective per channel** (the horizon sky × (1 − T) per colour): toward the sun all sank
   into blue, though that sky is golden because its blue was lost on the long path. The veil's amount
   is now the transmittance's luminance; the cloud's own light still loses blue first.
-- **Exposure 17, or ACES alone**: washes the glow toward the sun into a milky veil; the tone curve is
-  half hue-preserving in the mid-tones (golden-hour peach), highlights per channel (cream).
+- **Exposure 17, or ACES alone**: washes the glow toward the sun into a milky veil (16.5 too); the
+  tone curve is hue-preserving through the mid-tones (golden-hour peach), the brightest highlights
+  per channel (cream).
+- **Billows of spheres** (2026-11, the author: "a 3D render of foam and clay"): four sphere lattices
+  made every bulge big enough to see a ball with its own highlight (bubble wrap on tower walls,
+  balls hanging under overhangs), and detail only on the caps of the 640 m lobes left the near sea
+  smooth dough. Now the two big lattices are bent out of round in the bake (the turrets sparse, of
+  many sizes) and domes push the surface out below them, down to 8 m; every octave grows everywhere,
+  more on the tops of the one before.
+- **Paraboloid domes** read as gentle hills, without outlines against the dome behind (soft, out of
+  focus); sphere caps give each an edge.
+- **Erosion as form**: 30 m of noise eaten into the edge near the camera (and a 14–30 m ramp) read as
+  out of focus, frozen and at full trace resolution alike, because the light never sees it. Form
+  belongs in the distance field, where the light march (from 10 m now, the view's detail in its
+  first three steps) and the sky-light taps (10 m) see it; erosion only frays the edge.
+- **How squarely a face meets the sun, over 15 m**: every small crease went dark (pumice); over the
+  first ~50 m of the light march (light spreads that far inside cloud). The diffusion floor on faces
+  turned from the sun: 0.35 made shade brown; 0.1.
+- **Fewer billows under bellies and overhangs** (by the large shapes' vertical slope, from the
+  clipmap): the slope steps between the volume's texel layers (flat shelves stacked on tower faces)
+  and big lobes turned smooth boulders; reverted. The balls under overhangs went with the spheres.
+- **Tone curve per channel from the mid-tones up** (2026-11): sunlit orange came out tan, sandstone
+  (lit faces at sRGB 200,165,127, saturation 0.35).
 
 ## Known issues and ideas
 
@@ -115,17 +136,29 @@ Worth knowing before tuning again.
   Distant towers (~40 km, `seed3`) show stair-stepped tops and blob-shaped patches where the shadow
   volume's 768 m texels decide.
 - **Popcorn far away**: towers on the horizon still read as heads of even bumps ("broccoli", `away`,
-  `sun`, `anvil`); onCap and the size spread act mostly up close. **Gumdrops**: puffs on thin necks
+  `sun`, `anvil`), and towers 15–25 km out (`start`, top right) as walls of rounded lobes, a
+  highlight on each: the 640 m turrets, sparser and of more sizes than before, still too even; the
+  finer domes fade out there. **Gumdrops**: puffs on thin necks
   remain (`close`): the CPU preview shows small world bubbles perched on heaps (src/world/), not
   only billow octaves.
 - **Inside cloud** is a uniform dim wall (mauve-brown, `inside`), even with the exposure adapting to
   the mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays
   low); drifting mist only shows in motion. `under` (an anvil's underside) is dark navy now: right
   for shade at sunset, but judge it against its brief.
-- **A straight cliff** in `side` (~4–5 km out, center right) is the world's: the CPU preview
-  (`tools/world/preview.js`, pose `-20,1960,0,90,-4`, sun 5°) shows a sharp crease in the sea's
-  column field there, likely the narrow-valley term (ridged noise to the 6th power, air.js). A faint
-  vertical seam in shaded sea in `close` too.
+- **A box in the sea** in `side` (~4.8 km out, center right: a flat face, a straight vertical
+  corner) is a heap of the column data (x 3804, z 1637: 781 m high, 1011 m across) whose wall runs at
+  the slope limit (2.2 cells a cell) and meets the next heap in a V one cell wide (smax k = 0.12h +
+  25 m). Not the narrow-valley term (rounding its floor changed nothing there), not the slope limiter
+  (switched off: the same), not a level seam (all L0). 40% of heaps within 30 km are steeper than the
+  limit somewhere (h/r median 0.66, p90 1.22). A fix reshapes heaps (wider feet, rounder junctions):
+  a world change to judge across seeds. A faint vertical seam in shaded sea in `close` too.
+- **Near the camera** (under ~200 m) the sea is still smooth: the finest domes are 8 m and weak in
+  the troughs. Shaded heaps read as smooth grey stones: sky light on shade is nearly flat, relief
+  shows at the sunlit rims. **Into the sun** the sea's tops are pale cream: the sky light on faces
+  turned from the sun brightens them (`?dbg=7`); the octaves alone give dark bodies with gold rims.
+- **Cost of the domes** (2026-11): the live page at 2145×1072 (headless, NVIDIA laptop) holds the
+  clouds at 0.49–0.51 of the canvas, 11.2 ms of trace (before: 0.47–0.49): about neutral. The
+  finest domes cost only near surfaces, within a few km.
 - **Cost of the 2026-11 look** (A B B A, 120 frames): the trace −9…−13% in near views (denser
   cloud ends rays sooner, the near octaves are gone), +9…+19% looking over wide lit areas (`high2`,
   `down`: the fold tap, the march's long steps); ±0.5 ms at 480×270 on the NVIDIA laptop GPU.
@@ -141,8 +174,9 @@ Worth knowing before tuning again.
 - **A fine grid in shade in the captures** (screen-door, `down`, `side` up close): the history after
   12 frames, short of the 16-frame jitter cycle and slower to blend at rest since 2026-11; gone at
   `--frames 48`. Judge fine texture at 48 frames.
-- **Sunlit rims**: with nothing moving 0.03–0.22% of a frame flickers (`geometry` 0.6%), below the old
-  values, since the history blends at half the rate where the image holds still. The slower blend may
+- **Sunlit rims**: with nothing moving 0.08–0.32% of a frame flickers (`geometry` 0.52%; before the
+  domes 0.03–0.22%): the finer domes flicker along tower silhouettes against the sky and backlit rims
+  (`start`). The history blends at half the rate where the image holds still. The slower blend may
   lag or smear in slow motion: for the author's eyes. The cloud scale and the TAAU clamp and blend
   rate are the levers.
 - The `skim` view (170 m over the sea's top) shows nothing but haze: the billows rise higher than that
