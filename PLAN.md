@@ -34,6 +34,13 @@ Worth knowing before tuning again.
   without their wakes).
 - **Pyramids and spires on heaps**: 2D domes steeper than the slope limit get raised into cones; domes
   are at most h/r ≈ 0.65.
+- **Heaps at the slope limit** (2026-11): a heap grown on another came down to the sea wherever it
+  reached past its parent (h/r up to 2), and the profile drops most of its height in its outer third
+  (the steepest flank 2.3–3.1 × h/r): 40% of heaps met the volumes' slope limit, which cut them into
+  flat faces with straight corners (a box in `side`). Now a heap is widened, not lowered, until its
+  steepest flank is under 1.8 (none reaches the limit), and heaps blend over 0.25h + 40 m (a saddle,
+  not a V a cell wide). Rounding the narrow valleys' floor changed nothing there; a slope limit over
+  16 directions neither (the limiter wasn't what showed).
 - **The bubble budget**: the bake loops over every gathered bubble per texel; 14 times as many bubbles
   (a first try) would have been a disaster: prune, minimum sizes, one wake lump for small bubbles. Now
   ≈ 5,600 bubbles in a 120 km box around the start, per bake block at most ≈ 1,700 of the 4096 cap.
@@ -145,13 +152,11 @@ Worth knowing before tuning again.
   the mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays
   low); drifting mist only shows in motion. `under` (an anvil's underside) is dark navy now: right
   for shade at sunset, but judge it against its brief.
-- **A box in the sea** in `side` (~4.8 km out, center right: a flat face, a straight vertical
-  corner) is a heap of the column data (x 3804, z 1637: 781 m high, 1011 m across) whose wall runs at
-  the slope limit (2.2 cells a cell) and meets the next heap in a V one cell wide (smax k = 0.12h +
-  25 m). Not the narrow-valley term (rounding its floor changed nothing there), not the slope limiter
-  (switched off: the same), not a level seam (all L0). 40% of heaps within 30 km are steeper than the
-  limit somewhere (h/r median 0.66, p90 1.22). A fix reshapes heaps (wider feet, rounder junctions):
-  a world change to judge across seeds. A faint vertical seam in shaded sea in `close` too.
+- **`close` no longer meets its brief**: since heaps are wider (2026-11) the first spot clear of
+  them is farther from the tower (presets.js, clearOf), so it shows the tower whole, from a few km,
+  not its flank from below. `stats.js` counts 10% more bubbles in its 120 km box (6,158): more
+  systems reach into it with wider heaps, each counted whole; no tower changed. A faint vertical seam
+  in shaded sea in `close` too.
 - **Near the camera** (under ~200 m) the sea is still smooth: the finest domes are 8 m and weak in
   the troughs. Shaded heaps read as smooth grey stones: sky light on shade is nearly flat, relief
   shows at the sunlit rims. **Into the sun** the sea's tops are pale cream: the sky light on faces
@@ -174,7 +179,7 @@ Worth knowing before tuning again.
 - **A fine grid in shade in the captures** (screen-door, `down`, `side` up close): the history after
   12 frames, short of the 16-frame jitter cycle and slower to blend at rest since 2026-11; gone at
   `--frames 48`. Judge fine texture at 48 frames.
-- **Sunlit rims**: with nothing moving 0.08–0.32% of a frame flickers (`geometry` 0.52%; before the
+- **Sunlit rims**: with nothing moving 0.06–0.28% of a frame flickers (`geometry` 0.45%; before the
   domes 0.03–0.22%): the finer domes flicker along tower silhouettes against the sky and backlit rims
   (`start`). The history blends at half the rate where the image holds still. The slower blend may
   lag or smear in slow motion: for the author's eyes. The cloud scale and the TAAU clamp and blend
