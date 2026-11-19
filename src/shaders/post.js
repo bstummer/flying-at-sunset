@@ -3,8 +3,9 @@
 // - Bloom: 7 levels, a Karis-free normalised chain, clamped at 3000 (?bloom, ?bloomw, ?bclamp).
 // - Sun rays: an occlusion mask from the scene's alpha (how much sky shows past the clouds and the
 //   bird), two radial blurs at quarter resolution, only while the sun is near the view (?rays).
-// - Final: exposure 14 (×1.45 inside cloud), a hue-preserving filmic tone curve with contrast
-//   (?con, ?tm), a golden-hour split tone, vignette and grain; ?view=1..5 shows what goes into it.
+// - Final: exposure 14 (×1.45 inside cloud), a filmic tone curve (hue kept in the mid-tones,
+//   highlights to cream) with contrast (?con, ?tm), a golden-hour split tone, vignette and grain;
+//   ?view=1..5 shows what goes into it.
 
 export const U_DOWN = { srcTexel: 'vec2f', clampHi: 'f32' };
 export { default as FS_DOWN } from './bloom-down.wgsl';

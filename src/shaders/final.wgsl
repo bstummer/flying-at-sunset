@@ -1,8 +1,9 @@
 #include "chunks/common.wgsl"
 #include "chunks/nan.wgsl"
 
-// The final image: bloom and sun rays added, exposure and contrast, the tone curve (tm 1:
-// hue-preserving with a golden-hour split tone; 0: ACES), vignette, sRGB and grain, its rows turned
+// The final image: bloom and sun rays added, exposure and contrast, the tone curve (tm 1: filmic,
+// half hue-preserving in the mid-tones, bright faces rolling off to cream as on film, with a
+// golden-hour split tone; 0: ACES), vignette, sRGB and grain, its rows turned
 // top-down for the canvas; view 1..5 shows what goes into it
 
 // ACES fitted (Stephen Hill)
@@ -39,7 +40,9 @@ fn toSRGB(c: vec3f) -> vec3f { return mix(c * 12.92, 1.055 * pow(c, vec3f(1.0 / 
     c = mix(c, c * vec3f(0.95, 0.985, 1.07), 0.35 * (1.0 - saturate(l * 2.0)));
     c = aces(c * 1.05);
   } else {
-    // hue-preserving filmic: tone map luminance, keep chroma; extreme highlights roll off to white
+    // filmic: half of it hue-preserving in the mid-tones (tone map luminance, keep chroma: the
+    // golden-hour peach), the rest and the highlights per channel, so bright sunlit faces go to
+    // cream like light on film instead of staying saturated orange
     let l = max(luma(c), 1e-6);
     let a = aces(c);
     let lt = luma(aces(vec3f(l)));
@@ -47,7 +50,7 @@ fn toSRGB(c: vec3f) -> vec3f { return mix(c * 12.92, 1.055 * pow(c, vec3f(1.0 / 
     // keep saturated highlights in gamut by desaturating toward luminance as needed
     let mx = max(hp.r, max(hp.g, hp.b));
     if (mx > 1.0) { hp = mix(vec3f(lt), hp, (1.0 - lt) / max(mx - lt, 1e-4)); }
-    c = mix(hp, a, smoothstep(0.55, 1.0, lt) * 0.85);
+    c = mix(hp, a, mix(0.5, 0.95, smoothstep(0.25, 0.9, lt)));
     // golden hour split tone: warm highlights, cool violet shadows
     let t = saturate(lt * 1.4);
     c *= mix(vec3f(0.93, 0.95, 1.08), vec3f(1.04, 1.0, 0.93), t);
