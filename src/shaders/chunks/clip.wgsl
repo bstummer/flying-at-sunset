@@ -3,7 +3,7 @@
 // the large shapes, the column data (shaders/cloud.js)
 const INV2R = 0.5 / 6360000.0;
 const SEA_BASE = 520.0;
-const SIGMA = 0.035;        // extinction inside clouds (1/m)
+const SIGMA = 0.07;         // extinction inside clouds (1/m): cumulus measure 0.05–0.12
 const EDGE_W = 80.0;        // soft boundary thickness (m)
 const LIGHT_REACH = 1404.0; // how far the trace's light march looks toward the sun (lightTauN's steps); the shadow volume takes over from there
 fn lvMargin(l: i32) -> f32 { return select(select(750.0, 260.0, l == 1), 80.0, l == 0); }   // interpolation error of each level

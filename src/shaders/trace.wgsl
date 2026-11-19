@@ -92,11 +92,11 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
     let lod = t * (1.0 / 15000.0);
     nSdf += 1.0;
     let d = cloudSDF(wp, h, dm, C, lod);
-    var edgeW = mix(14.0, EDGE_W, smoothstep(120.0, 4000.0, t));   // crisper rims up close
-    // the billowy tops of the sea and everything piled on it have crisp outlines, only widened
-    // enough at range not to alias; the deep troughs of the sea stay soft
+    // the billowy tops of the sea and everything piled on it have crisp outlines, about a pixel of
+    // the trace wide (no wider: it would alias); the deep troughs of the sea stay soft
+    let pix = t * 2.0 * u.tanHalf.y / u.res.y;
     let crisp = smoothstep(-150.0, 250.0, h - C.w);
-    edgeW = mix(edgeW, min(edgeW, max(30.0, t * 0.003)), crisp);
+    let edgeW = mix(max(mix(14.0, EDGE_W, smoothstep(120.0, 4000.0, t)), 2.0 * pix), max(3.0, 1.25 * pix), crisp);
     let dtMin = 3.0 + t * 0.002;
     // Entering a cloud: locate the boundary within the last stride (Illinois regula falsi), then
     // start integrating a jittered fraction of a rim step past it. Starting anywhere within a far
@@ -120,9 +120,6 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
     startIn = false;
     dPrev = -1.0;
     let detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
-    // (only on heaps piled above the sea)
-    var farW = 0.0;
-    if (h > C.w + 300.0) { farW = smoothstep(2500.0, 9000.0, t); }
     let nearW = (1.0 - smoothstep(150.0, 900.0, t)) * max(u.inCloud, 1.0 - smoothstep(40.0, 120.0, -d));
     if (DBG && u.dbgMode > 0 && u.dbgMode < 4) {
       let e = 4.0 + t * 0.002;
@@ -136,7 +133,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       else { let f = tsvTau(wp, h); c = vec3f(exp(-f.x - f.y)); }
       return Out(vec4f(c * 0.12, 0.0), t * 0.001);
     }
-    var dens = densityEx(d, wp, detailW, edgeW, nearW, farW);
+    var dens = densityFromSDF(d, wp, detailW, edgeW, nearW);
     // inside a cloud the air right around the camera is kept thin: drifting mist, not a white wall
     dens *= mix(1.0, mix(0.22, 1.0, smoothstep(12.0, 160.0, t)), u.inCloud);
     // stride: aim for a fixed optical depth per step (larger once little light gets through),

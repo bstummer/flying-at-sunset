@@ -56,38 +56,31 @@ fn sceneSDF(wp: vec3f, h: f32, l: i32, lod: f32) -> f32 {
   return cloudSDF(wp, h, macroAt(vec3f(wp.x, h, wp.z), l), colAt(wp.xz, l), lod);
 }
 
-// density (0..1) from the signed distance with wispy erosion at the soft boundary.
-// edgeW: boundary softness; nearW: weight of extra-fine wisps close to the camera; farW: coarse
-// fraying for distant silhouettes
-fn densityEx(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32, farW: f32) -> f32 {
+// Density (0..1) from the signed distance: real cumulus ends within metres, so the density ramps
+// up over edgeW (about a pixel of the trace where the outline is crisp), at a surface the detail
+// noise eats into by up to ERODE m: creases along the cells of the Worley noise, billowy texture
+// below the billow octaves (detailW fades it out far away), and finer still near the camera
+// (nearW). Inside a cloud near the camera: drifting variations of density, mist streaming past.
+const ERODE = 14.0;
+fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f32 {
   let x = -d;
   if (x <= 0.0) { return 0.0; }
-  var dens = saturate(x / edgeW);
-  var er = 0.0;
-  if (detailW > 0.01 && x < edgeW * 2.5) {
+  let amp = ERODE * detailW;
+  if (x < amp + edgeW) {
     let dn = textureSampleLevel(tDetail, sRep, (wp + u.detailOff) * (1.0 / DETAIL_TILE), 0.0);
-    var e = mix(dn.g, dn.r, saturate(x / (edgeW * 1.5)));
+    var e = saturate((0.8 - dn.r) / 0.45);
     if (nearW > 0.01) {
       let dn2 = textureSampleLevel(tDetail, sRep, (wp + u.detailOff * 2.0) * (4.0 / DETAIL_TILE) + dn.a * 0.35, 0.0);
-      e = mix(e, e * 0.6 + dn2.r * 0.55, nearW);
+      e = mix(e, e * 0.6 + saturate((0.8 - dn2.r) / 0.45) * 0.4, nearW);
     }
-    er = e * 0.36 * detailW;
-  } else if (nearW > 0.01) {
-    // inside a cloud near the camera: drifting density variations so mist visibly streams past
+    return saturate((x - amp * e) / edgeW);
+  }
+  var dens = saturate(x / edgeW);
+  if (nearW > 0.01) {
     let dn = textureSampleLevel(tDetail, sRep, (wp + u.detailOff * 2.0) * (2.0 / DETAIL_TILE), 0.0);
     dens *= mix(1.0, 0.25 + 1.1 * dn.r * dn.r + 0.3 * dn.g, nearW);
   }
-  // far away: coarse erosion of the outermost rim only, so distant silhouettes fray instead of
-  // ending in smooth outlines (the faces themselves stay crisp)
-  if (farW > 0.01 && x < edgeW) {
-    let fz = textureSampleLevel(tDetail, sRep, wp * (1.0 / 4096.0), 0.0);
-    er = max(er, (0.65 * fz.g + 0.35 * fz.r) * 0.3 * farW * (1.0 - x / edgeW));
-  }
-  if (er > 0.0) { dens = saturate((dens - er) / max(1.0 - er, 0.15)); }
   return dens;
-}
-fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f32 {
-  return densityEx(d, wp, detailW, edgeW, nearW, 0.0);
 }
 
 // optical depth toward the sun from the shadow volume, past the light march's reach: through the

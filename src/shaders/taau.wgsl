@@ -128,15 +128,18 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
   var res = cur;
   if (valid > 0.5) {
     let hist = sampleHist(puv);
-    var lo = m1 - 1.25 * sd;
-    var hi = m1 + 1.25 * sd;
+    let motion = length((puv - uv) * u.res);
+    // the clamp box: tight in motion (no ghosts), wider where the image holds still, so the history
+    // settles over the jitter sequence instead of following each frame's crisp rims
+    let gam = mix(2.4, 1.25, saturate(motion * 0.5));
+    var lo = m1 - gam * sd;
+    var hi = m1 + gam * sd;
     lo = min(lo, cur);
     hi = max(hi, cur);
     let hc = clamp(hist, lo, hi);
     let fd = lp - lpr;
     let wcur = exp(-2.2 * dot(fd, fd));
-    let motion = length((puv - uv) * u.res);
-    let alpha = mix(0.07, 0.38, saturate(motion / 18.0)) * (0.55 + 0.45 * wcur);
+    let alpha = mix(0.035, 0.38, saturate(motion / 12.0)) * (0.55 + 0.45 * wcur);
     res = mix(hc, cur, alpha);
   }
   let sky = skyColor(dir);

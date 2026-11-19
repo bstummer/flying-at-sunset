@@ -462,8 +462,10 @@ const readLevels = async () => {
 // Most a level's volume may differ between the flown and the fresh page, as the mean over a texel
 // column: the clipmap levels hold the same (half-float rounding aside); the shadow volume is
 // marched through them as they were when it was baked (its channels: through the cloud a texel is
-// in, up to 30, and through the clouds beyond, up to 14).
-const VOLUME_TOLERANCE = { L0: 0.5, L1: 0.5, L2: 0.5, shadow: 10, 'shadow beyond': 10 };
+// in, up to 30, and through the clouds beyond, up to 14). The first flips where the edge of L1's
+// window crosses a texel's march (L1 and L2 disagree there whether the march is still in its cloud):
+// up to ~11 at texels by that edge, 65 km out.
+const VOLUME_TOLERANCE = { L0: 0.5, L1: 0.5, L2: 0.5, shadow: 15, 'shadow beyond': 10 };
 
 async function checkStreaming(browser, { fail, note, problems, outDir }) {
   // 2 minutes of flight from the start (about 8 km, every level shifting at least once), then a
