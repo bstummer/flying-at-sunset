@@ -1,8 +1,9 @@
 #include "chunks/common.wgsl"
+#include "chunks/lobes.wgsl"
 
 // NOUT slices of a block of a clipmap's distance volume: the sea (from the column map, its distance
-// slope-corrected) united with the block's bubbles, with a broad fillet where they swell out of it
-// (shaders/volumes.js)
+// slope-corrected) united with the block's bubbles, with a broad fillet where they swell out of it,
+// and the largest lobes on the towers (shaders/volumes.js)
 const NOUT = 8;
 struct Slices {
   @location(0) o0: f32,
@@ -29,7 +30,8 @@ fn ellD(q: vec3f, r: vec3f) -> f32 {   // distance to an ellipsoid (good near it
   let y0 = (f32(u.z0) + 0.5) * u.cellV;
   let y1 = y0 + u.cellV * f32(NOUT - 1);
   var acc: array<f32, NOUT>;
-  for (var k = 0; k < NOUT; k++) { acc[k] = u.maxD; }
+  var big: array<f32, NOUT>;   // (the distance to the massive bubbles alone)
+  for (var k = 0; k < NOUT; k++) { acc[k] = u.maxD; big[k] = u.maxD; }
   for (var b = 0; b < u.nb; b++) {
     let i = 3 * (u.b0 + b);
     let A = bBub[i];
@@ -41,15 +43,24 @@ fn ellD(q: vec3f, r: vec3f) -> f32 {   // distance to an ellipsoid (good near it
     let sa = sin(B.w);
     let q = vec2f(dxz.x * ca + dxz.y * sa, -dxz.x * sa + dxz.y * ca);
     let rxz = vec2f(A.w * B.z, A.w / B.z);
+    let massive = E.y >= 700.0;
     for (var k = 0; k < NOUT; k++) {
       let dy = y0 + f32(k) * u.cellV - A.y;
-      acc[k] = smin(acc[k], ellD(vec3f(q.x, dy, q.y), vec3f(rxz.x, select(B.y, B.x, dy > 0.0), rxz.y)), E.x);
+      let e = ellD(vec3f(q.x, dy, q.y), vec3f(rxz.x, select(B.y, B.x, dy > 0.0), rxz.y));
+      acc[k] = smin(acc[k], e, E.x);
+      if (massive) { big[k] = min(big[k], e); }
     }
   }
   var res: array<f32, NOUT>;
   for (var k = 0; k < NOUT; k++) {
     let above = y0 + f32(k) * u.cellV - hs;
-    res[k] = clamp(smin(above * cs, acc[k], mix(700.0, 60.0, smoothstep(0.0, 1800.0, above))), -u.maxD, u.maxD);
+    var r = smin(above * cs, acc[k], mix(700.0, 60.0, smoothstep(0.0, 1800.0, above)));
+    // the largest lobes, on towers only: well above the sea and its heaps (their shell never
+    // reaches down to it), and near massive bubbles (a fragment would swell into a ball floating
+    // in the sky)
+    let w = smoothstep(600.0, 1600.0, above) * (1.0 - smoothstep(500.0, 1200.0, big[k]));
+    if (w > 0.01) { r = bigLobes(r, vec3f(u.p0.x + pl.x, y0 + f32(k) * u.cellV, u.p0.y + pl.y), w); }
+    res[k] = clamp(r, -u.maxD, u.maxD);
   }
   var o: Slices;
   o.o0 = res[0];

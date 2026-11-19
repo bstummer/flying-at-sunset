@@ -174,7 +174,7 @@ export function captureNext(fn) { capture = fn; }
 const EXPOSURE = params.exp ?? 14.0;
 const TONEMAP = params.tm ?? 1, CONTRAST = params.con ?? 1.0;
 const VIEW = params.view ?? 0, DBG_MODE = params.dbg ?? 0;   // what goes into the final image (1..5), the cloud debug views (1..7)
-const HAZE_K = params.haze ?? 2.8e-5;
+const HAZE_K = params.haze ?? 2.6e-5;
 const RAYS_K = params.rays ?? 0.18;
 const BLOOM_UP_W = params.bloomw ?? 0.6;                              // weight of each coarser bloom level
 const BLOOM_NORM = (1 - Math.pow(BLOOM_UP_W, 7)) / (1 - BLOOM_UP_W); // total weight of the 7-level chain

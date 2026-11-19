@@ -115,6 +115,33 @@ Worth knowing before tuning again.
   and big lobes turned smooth boulders; reverted. The balls under overhangs went with the spheres.
 - **Tone curve per channel from the mid-tones up** (2026-11): sunlit orange came out tan, sandstone
   (lit faces at sRGB 200,165,127, saturation 0.35).
+- **The light march's jitter** (2026-11): each step at a random point per pixel flipped in and out of
+  a bulge beside the path from pixel to pixel: the screen-door on near clouds (the IGN pattern; at a
+  5° sun the 60–800 m steps and the 1.2 km steps through the large shapes decide lit or shadowed).
+  Every step now at its middle, the same for every pixel; no contour rings showed. Averaging each
+  step's occupancy (half at the surface) instead darkened the sea's lit tops: the path skims them,
+  and the air just above counted as cloud.
+- **Diffusion by the small-scale facing** (over 60 m) darkened every crease (solid, like dough) and
+  still lit a tower's far side orange (brown shade). Now mostly by the side of the large shape (over
+  400 m); deep inside, neutral.
+- **Saturation in the final pass** turned the golden haze toward the sun into an orange dust band:
+  it is in the clouds' own light now (CLOUD_SAT). Shade tinted ×1.45 blue with ×1.3 saturation was
+  navy at a fifth of the lit side (reviews: luminous lavender grey, 40–50%); now ×1.2 and more sky
+  light (AMB_K 1.4). Lifted further (×1.28, AMB_K 1.55), the shade turned periwinkle and the lit
+  towers lost their folds (`tower`'s lit face: luminance SD 36 → 18).
+- **The in-cloud mist's density variations near every cloud** (its first 120 m, within 900 m of the
+  camera) made near surfaces fog: now only while the camera is in cloud.
+- **Taller 320 and 160 m domes** (×2): bubble wrap on towers a few km off (`close`); only the detail
+  volume's domes are taller. Taller domes without `dome`'s fade grew lit balls floating over the sea.
+- **The largest lobes in cloudSDF** (2560 m cells): their 500 m in the skip bound cost the trace
+  40–80% near towers; grown on the sea they raised new towers before the camera, on fragments balls
+  floating in the sky. Now baked into the clipmaps, well above the sea and near massive bubbles.
+- **A fringe outside the surface for silver linings** (thin cloud 40 m out, lit forward, integrated
+  along the approach strides): rays toward the sun skim the sea's tops through it for kilometres:
+  glowing veils, and capped per ray, sheets with hard edges, like film.
+- **Blending the clipmap levels over a handover** instead of the dither: no lattice, but the trace
+  12–18% slower in every view (also over 7–10 km alone, also reading the second level only near a
+  surface). The dither stays.
 
 ## Known issues and ideas
 
@@ -143,24 +170,39 @@ Worth knowing before tuning again.
   Distant towers (~40 km, `seed3`) show stair-stepped tops and blob-shaped patches where the shadow
   volume's 768 m texels decide.
 - **Popcorn far away**: towers on the horizon still read as heads of even bumps ("broccoli", `away`,
-  `sun`, `anvil`), and towers 15–25 km out (`start`, top right) as walls of rounded lobes, a
-  highlight on each: the 640 m turrets, sparser and of more sizes than before, still too even; the
-  finer domes fade out there. **Gumdrops**: puffs on thin necks
-  remain (`close`): the CPU preview shows small world bubbles perched on heaps (src/world/), not
-  only billow octaves.
-- **Inside cloud** is a uniform dim wall (mauve-brown, `inside`), even with the exposure adapting to
-  the mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays
-  low); drifting mist only shows in motion. `under` (an anvil's underside) is dark navy now: right
+  `sun`, `anvil`), and towers a few km out (`close`) as a pile of even balls: the 640 m turrets,
+  now mostly on the lobes' caps and under the baked 2560 m lobes, still too even. **Gumdrops**: puffs
+  on thin necks remain (`close`): the CPU preview shows small world bubbles perched on heaps
+  (src/world/), not only billow octaves. **Sunlit turret tops in shade** read as floating puffs
+  (`start` beside the bird, `sun`, `tower`): attached (`?dbg=1`), their base melts into the shade.
+- **Flat tops**: a stopped head is pressed to 0.3–0.85 of its radius by how stable the air that
+  stopped it is (thermals.js, settle), and that is near 1 for almost every stopped head: flat discs
+  stacked at the tops (`catalog.js`), flat-topped blocks (`start`'s left tower, `seed3`, `high2`).
+  The baked lobes round some. The cause to change is in the world (and needs the fingerprint).
+- **Silver linings** are a pixel wide: a backlit tower's edge doesn't blaze (`sun`, `anvil`); a
+  fringe outside the surface failed (decisions).
+- **Inside cloud** is a uniform wall (mauve grey, `inside`), even with the exposure adapting to the
+  mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays low);
+  drifting mist only shows in motion. `under` (an anvil's underside) is dark navy now: right
   for shade at sunset, but judge it against its brief.
 - **`close` no longer meets its brief**: since heaps are wider (2026-11) the first spot clear of
   them is farther from the tower (presets.js, clearOf), so it shows the tower whole, from a few km,
   not its flank from below. `stats.js` counts 10% more bubbles in its 120 km box (6,158): more
   systems reach into it with wider heaps, each counted whole; no tower changed. A faint vertical seam
   in shaded sea in `close` too.
-- **Near the camera** (under ~200 m) the sea is still smooth: the finest domes are 8 m and weak in
-  the troughs. Shaded heaps read as smooth grey stones: sky light on shade is nearly flat, relief
-  shows at the sunlit rims. **Into the sun** the sea's tops are pale cream: the sky light on faces
-  turned from the sun brightens them (`?dbg=7`); the octaves alone give dark bodies with gold rims.
+- **Near the camera** the sea into the sun is still soft, glowing mush (`start` lower left, `seed3`),
+  and the shaded sea seen from above blotchy (`giant`'s foreground): the light there is diffusion
+  and sky light, smooth over tens of metres. **Into the sun** the sea's tops are pale cream: the sky
+  light on faces turned from the sun brightens them (`?dbg=7`).
+- **Colour and range** (reviews, 2026-11): lit faces apricot (≈ 238,177,116) where a sunset photo
+  shows orange to salmon; toward the sun the haze is a milky band over the low sea (`high2`,
+  `seed3`). Lit tower faces sit high on the tone curve with their folds filled by the light inside
+  (`tower`'s lit face: luminance SD 36 before, 20 now); one review wants deeper darks, another
+  wanted the creases lit: the balance (`facing` in sunScatter, AMB_K) is the lever.
+- **Cost of the 2026-11 rework** (A/B, 200 frames, NVIDIA laptop, 960×540 at 0.5): the trace +5–12%
+  (`away` +8, `high2` +12, `sun` +12, `side` +7, `start` +5, `close` −3): the taller fine domes. The
+  bake of the largest lobes is within the noise of the world's time. The dive (`flights.js`) levels
+  off ~40 m higher, at 91–93 instead of 95–97 m/s: the fine domes on the cloud tops are taller.
 - **Cost of the domes** (2026-11): the live page at 2145×1072 (headless, NVIDIA laptop) holds the
   clouds at 0.49–0.51 of the canvas, 11.2 ms of trace (before: 0.47–0.49): about neutral. The
   finest domes cost only near surfaces, within a few km.
@@ -176,12 +218,11 @@ Worth knowing before tuning again.
   of the world is calm air with only the billowy sea and its heaps. The draw doesn't promise towers in
   view for every seed: **seed 5 starts with none** within 50 km (the piece's seed 7 has two above 8 km;
   `tests/world.test.js` holds it to one).
-- **A fine grid in shade in the captures** (screen-door, `down`, `side` up close): the history after
-  12 frames, short of the 16-frame jitter cycle and slower to blend at rest since 2026-11; gone at
-  `--frames 48`. Judge fine texture at 48 frames.
-- **Sunlit rims**: with nothing moving 0.06–0.28% of a frame flickers (`geometry` 0.45%; before the
-  domes 0.03–0.22%): the finer domes flicker along tower silhouettes against the sky and backlit rims
-  (`start`). The history blends at half the rate where the image holds still. The slower blend may
+- **A lattice at the level handovers** (~7–10 and ~40–55 km: `away`'s middle distance, `anvil`'s far
+  towers): pixels dither between two levels' shapes and light; the history averages it at rest,
+  12-frame captures show it (blending the levels costs too much, decisions).
+- **Sunlit rims**: with nothing moving 0.02–0.16% of a frame flickers (`close` 0.36%, `geometry`
+  0.46%): the finer domes flicker along tower silhouettes against the sky and backlit rims. The history blends at half the rate where the image holds still. The slower blend may
   lag or smear in slow motion: for the author's eyes. The cloud scale and the TAAU clamp and blend
   rate are the levers.
 - The `skim` view (170 m over the sea's top) shows nothing but haze: the billows rise higher than that

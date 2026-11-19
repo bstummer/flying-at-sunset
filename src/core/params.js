@@ -15,7 +15,7 @@
 //              flight/presets.js
 //   the look   view (0; 1..5: what goes into the final image), dbg (0; 1..7: the cloud debug views,
 //              also render/setup.js), tm (1: hue-preserving filmic, 0: ACES), con (1: contrast), haze
-//              (2.8e-5), exp (14: exposure), rays (0.18), bloom (0.09), bloomw (0.6: each coarser
+//              (2.6e-5), exp (14: exposure), rays (0.18), bloom (0.09), bloomw (0.6: each coarser
 //              level's weight), bclamp (3000): render/frame.js
 //   benchmark  benchSeconds (8), benchWarmup (2): core/benchmark.js
 //   test mode  dt (0.0166), freeze: main.js; frames (24), keep (1), every (1), log, live, script:

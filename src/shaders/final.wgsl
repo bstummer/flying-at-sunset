@@ -50,10 +50,10 @@ fn toSRGB(c: vec3f) -> vec3f { return mix(c * 12.92, 1.055 * pow(c, vec3f(1.0 / 
     // keep saturated highlights in gamut by desaturating toward luminance as needed
     let mx = max(hp.r, max(hp.g, hp.b));
     if (mx > 1.0) { hp = mix(vec3f(lt), hp, (1.0 - lt) / max(mx - lt, 1e-4)); }
-    c = mix(hp, a, mix(0.15, 0.7, smoothstep(0.45, 0.97, lt)));
+    c = mix(hp, a, mix(0.05, 0.6, smoothstep(0.7, 1.0, lt)));
     // golden hour split tone: warm highlights, cool violet shadows
     let t = saturate(lt * 1.4);
-    c *= mix(vec3f(0.93, 0.95, 1.08), vec3f(1.04, 1.0, 0.93), t);
+    c *= mix(vec3f(0.95, 0.96, 1.07), vec3f(1.05, 0.99, 0.9), t);
     c = saturate(c);
   }
   // vignette

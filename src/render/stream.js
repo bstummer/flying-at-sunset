@@ -132,7 +132,11 @@ function runJob(job, O) {
     const b0 = bubUsed;
     if (nb) device.queue.writeBuffer(T.bub.buf, b0 * 48, bub);
     bubUsed += nb;
-    const vals = { tCol: L.col, bBub: T.bub, nb, b0, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0 };
+    // (the largest lobes are baked in render space: the block's corner there, the billow warp)
+    const vals = Object.assign({
+      tCol: L.col, bBub: T.bub, tShape: T.shape, nb, b0, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0,
+      p0: [job.gi * L.cell - O[0], job.gj * L.cell - O[2]],
+    }, warpPhases(O));
     const viewport = [tx, ty, job.ni, job.nj];
     for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.bake, slices(L.vol, z, NOUT), vals, { viewport }); }
   }
@@ -184,12 +188,15 @@ export function worldUniforms(O) {
   LEVELS.forEach((L, k) => map(L, k, _lvA, _lvV));
   const ta = new Float32Array(4), tv = new Float32Array(4);
   map(TSVL, 0, ta, tv);
-  // phases of the billow warp's waves at the origin (computed in double precision)
-  const ph = (kx, kz) => { const a = kx * O[0] + kz * O[2]; return a - 2 * PI * Math.floor(a / (2 * PI)); };
-  return {
+  return Object.assign({
     tVol0: LEVELS[0].vol, tVol1: LEVELS[1].vol, tVol2: LEVELS[2].vol, tCol0: LEVELS[0].col, tCol1: LEVELS[1].col, tCol2: LEVELS[2].col,
     lvA: _lvA, lvV: _lvV, tsvA: ta, tsvV: tv,
-    warpPh: [ph(0, 8.37e-4), ph(3.41e-4, 0), ph(1.49e-4, 2.53e-4), ph(9.29e-4, 0)], warpPh2: [ph(0, 3.97e-4), ph(1.93e-4, -2.91e-4)],
-  };
+  }, warpPhases(O));
+}
+// the phases of the billow warp's waves at the origin (computed in double precision;
+// chunks/lobes.wgsl)
+function warpPhases(O) {
+  const ph = (kx, kz) => { const a = kx * O[0] + kz * O[2]; return a - 2 * PI * Math.floor(a / (2 * PI)); };
+  return { warpPh: [ph(0, 8.37e-4), ph(3.41e-4, 0), ph(1.49e-4, 2.53e-4), ph(9.29e-4, 0)], warpPh2: [ph(0, 3.97e-4), ph(1.93e-4, -2.91e-4)] };
 }
 export const originOf = p => [Math.round(p[0] / ORIGIN_Q) * ORIGIN_Q, 0, Math.round(p[2] / ORIGIN_Q) * ORIGIN_Q];

@@ -1,5 +1,6 @@
 #include "atmo.wgsl"
 #include "clip.wgsl"
+#include "lobes.wgsl"
 
 // The clouds' shape, density and light toward the sun (shaders/cloud.js)
 fn sunColorAt(h: f32) -> vec3f {
@@ -8,29 +9,17 @@ fn sunColorAt(h: f32) -> vec3f {
   return mix(u.sunCol[i], u.sunCol[i + 1], f - f32(i));
 }
 
-fn octave(d: f32, n0: f32, shell: f32, k: f32) -> f32 {
-  // spheres may only bulge out to "shell" beyond the current surface; the clip is wide and soft
-  // so over-sized spheres become rounded swells instead of flat-topped plateaus
-  let n = smax(n0, d - shell, max(k, shell * 1.6));
-  // a tight union: crisp, defined creases between the billows (the clip above keeps every sphere
-  // within the shell, so none floats detached)
-  return smin(n, d, mix(max(k * 0.8, shell * 1.05), shell * 0.5 + 4.0, 0.7));
-}
-fn shellOf(a: f32) -> f32 { return 400.0 * a + 120.0; }    // highest billows above the large shapes
+fn shellOf(a: f32) -> f32 { return 400.0 * a + 160.0; }    // highest billows above the large shapes
 // how much of a finer octave grows where the sphere distance of the lobes is n: all of it on the
 // lobes (n < 0), none in the creases and the plain between them (n > w). Cauliflower: small
 // billows heaped on the caps of bigger ones, the folds between those deep and smooth.
 fn onCap(n: f32, w: f32) -> f32 { return 1.0 - smoothstep(-0.3 * w, w, n); }
 
-// a slow, seamless warp of the billow pattern: waves of unrelated lengths, it never repeats
-fn warpLand(p: vec3f) -> vec3f {
-  let q = p.xz;
-  return p + vec3f(240.0 * sin(q.y * 8.37e-4 + u.warpPh.x + 1.3 * sin(q.x * 3.41e-4 + u.warpPh.y)) + 150.0 * sin(q.y * 2.53e-4 + q.x * 1.49e-4 + u.warpPh.z), 0.0,
-                   240.0 * sin(q.x * 9.29e-4 + u.warpPh.w + 1.3 * sin(q.y * 3.97e-4 + u.warpPh2.x)) + 150.0 * sin(q.x * 1.93e-4 - q.y * 2.91e-4 + u.warpPh2.y));
-}
-
 // where the domes of a field b (0..1) are highest: the next finer ones heap up there
 fn onDome(b: f32) -> f32 { return 0.4 + 0.6 * smoothstep(0.05, 0.5, b); }
+// a field of domes moving the surface ds out by a (in where a < 0), less the farther out it already
+// is (none past k): domes swell out of the surface, none floats above it
+fn dome(ds: f32, a: f32, k: f32) -> f32 { return ds - a * (1.0 - smoothstep(0.0, k, ds)); }
 
 // Signed distance (m) to the cloud surface: the large shapes (dm, from a clipmap), lobes of bent
 // spheres heaped on them, and domes on those, down to metres. C: column data. lod: 0 = full detail.
@@ -39,24 +28,29 @@ fn cloudSDF(wp: vec3f, h: f32, dm: f32, C: vec4f, lod: f32) -> f32 {
   let s = textureSampleLevel(tShape, sRep, (warpLand(wp) + u.shapeOff) * (vec3f(1.0, 1.35, 1.0) / SHAPE_TILE), 0.0);
   let sf = (s.xy * 2.0 - 1.0) * (1.0 / 1.35);
   let A = C.y;
+  // (the largest lobes are in the large shapes already: the bake grows them on the towers)
   var ds = octave(dm, sf.x * 1280.0, 300.0 * A, 300.0);
-  ds = octave(ds, sf.y * 640.0, 160.0 * A, 160.0);
+  // (the turrets heap on the lobes' caps: the lobes' flanks and the creases between them stay
+  // broad, so the billows come in sizes, not as one bubbly texture)
+  ds = octave(ds, sf.y * 640.0, 160.0 * A * mix(0.3, 1.0, onCap(sf.x * 1280.0, 300.0)), 160.0);
   // cauliflower everywhere, strongest on the upper parts of the sea and on everything heaped above
   // it: domes pushing the surface out (320 and 160 m cells), more on the lobes' caps and each
   // more on the tops of the one before
   let topW = mix(0.5, 1.0, saturate((h - min(C.x, C.w + 100.0) + 40.0) / 220.0)) * C.z;
-  ds -= 64.0 * (1.0 - smoothstep(1.4, 2.8, lod)) * topW * mix(0.4, 1.0, onCap(sf.y * 640.0, 160.0)) * (s.z - 0.3);
-  ds -= 30.0 * (1.0 - smoothstep(0.35, 1.0, lod)) * topW * onDome(s.z) * (s.w - 0.3);
+  ds = dome(ds, 64.0 * (1.0 - smoothstep(1.4, 2.8, lod)) * topW * mix(0.4, 1.0, onCap(sf.y * 640.0, 160.0)) * (s.z - 0.3), 96.0);
+  ds = dome(ds, 30.0 * (1.0 - smoothstep(0.35, 1.0, lod)) * topW * onDome(s.z) * (s.w - 0.3), 45.0);
   // the finest domes (the detail volume: 128 to 32 m cells, and near the camera 32 to 8 m), only
-  // near the surface (they move it by less than 25 m), drifting and rising with the air
-  let wF = (1.0 - smoothstep(0.35, 0.8, lod)) * topW * onDome(s.w) * (1.0 - smoothstep(45.0, 80.0, ds));
+  // near the surface (they move it by less than 50 m), drifting and rising with the air; a third
+  // to half as high as they are wide, so the light shows them up close (flatter ones, the near sea
+  // read as smooth dough)
+  let wF = (1.0 - smoothstep(0.35, 0.8, lod)) * topW * onDome(s.w) * (1.0 - smoothstep(80.0, 140.0, ds));
   if (wF > 0.01) {
     let f1 = textureSampleLevel(tDetail, sRep, (wp + u.detailOff) * (1.0 / DETAIL_TILE), 0.0).b;
-    ds -= 30.0 * wF * (f1 - 0.3);
-    let wG = (1.0 - smoothstep(0.12, 0.3, lod)) * topW * onDome(f1) * (1.0 - smoothstep(45.0, 80.0, ds));
+    ds = dome(ds, 60.0 * wF * (f1 - 0.3), 90.0);
+    let wG = (1.0 - smoothstep(0.12, 0.3, lod)) * topW * onDome(f1) * (1.0 - smoothstep(60.0, 100.0, ds));
     if (wG > 0.01) {
       let f2 = textureSampleLevel(tDetail, sRep, (wp + u.detailOff) * (4.0 / DETAIL_TILE) + 0.37, 0.0).b;
-      ds -= 8.0 * wG * (f2 - 0.3);
+      ds = dome(ds, 18.0 * wG * (f2 - 0.3), 27.0);
     }
   }
   return ds;
@@ -123,33 +117,43 @@ fn msScatterP(tau: f32, ph: vec4f) -> f32 {
 // through the clouds beyond, whose shadow takes every order alike); pw: the powder term; depthIn:
 // depth below the surface (m); nS: how squarely the surface nearby faces the sun (-1..1, lightTauN).
 const DIFFUSE = 0.3;
-fn sunScatter(tau: f32, far: vec2f, ph: vec4f, pw: f32, depthIn: f32, nS: f32) -> f32 {
-  let facing = 0.1 + 0.9 * saturate(nS);
+fn sunScatter(tau: f32, far: vec2f, ph: vec4f, pw: f32, depthIn: f32, nS: f32, nL: f32) -> f32 {
+  // (mostly the large shape's side: light soaks from a lit bulge into the creases beside it, but
+  // not around to a tower's far side, which the sky lights; deep inside it comes from all around)
+  let facing = mix(saturate(0.1 + 0.55 * nL + 0.5 * nS), 0.5, smoothstep(30.0, 200.0, depthIn));
   let diffu = DIFFUSE * facing / (1.0 + 0.11 * (tau + far.x)) * (1.0 - 0.55 * exp(-depthIn * SIGMA / 1.5));
   return (msScatterP(tau + far.x, ph) * pw + diffu) * exp(-far.y);
 }
 // the sky's light on cloud (bAmb holds irradiance / π; a thick cloud returns most of it)
-const AMB_K = 1.0;
+const AMB_K = 1.4;
 
-// Optical depth toward the sun from a point (short march with growing steps), and nS: how much
-// the surface there faces the sun (-1..1), from the distance field over the first ~50 m (light
-// that wanders inside spreads over that much: finer creases would turn into dark pits).
-// l, C: clipmap level and column data of the starting point. Returns (tau, nS).
-fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, jit: f32, lod0: f32) -> vec2f {
+// Optical depth toward the sun from a point (short march with growing steps, each sampled at its
+// middle), and how much the surface faces the sun (-1..1), from the distance field: nS over the
+// first ~60 m (light that wanders inside spreads over that much: finer creases would turn into dark
+// pits), nL over ~400 m (the side of the bulge or tower it is on), and the distance 5 m toward the
+// sun (the face of the smallest billows: its difference to the point's own). l, C: clipmap level
+// and column data of the starting point. Returns (tau, nS, nL, that distance).
+fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, lod0: f32) -> vec4f {
   var tau = 0.0;
   var s = 0.0;
   var ds = 10.0;
+  var d0 = 0.0;
   var d1 = 0.0;
-  var s1 = 0.0;
   var nS = 0.0;
+  var nL = 0.0;
   for (var i = 0; i < 6; i++) {
-    let sm = s + ds * (0.25 + 0.5 * jit);
+    // (at the middle of each step, the same for every pixel: a jittered point flips between inside
+    // and outside a bulge beside the path from pixel to pixel, a screen-door the history can't
+    // calm in motion)
+    let sm = s + ds * 0.5;
     let wp = wp0 + u.sunDir * sm;
     let h = h0 + u.sunDir.y * sm;
     // the first steps keep the detail of the view sample: bulges down to metres shade themselves
     let d = cloudSDF(wp, h, macroAt(vec3f(wp.x, h, wp.z), l), C, lod0 + f32(max(i - 2, 0)) * 0.6);
-    if (i == 0) { d1 = d; s1 = sm; }
-    else if (i == 2) { nS = clamp((d - d1) / (sm - s1), -1.0, 1.0); }
+    if (i == 0) { d0 = d; }
+    else if (i == 1) { d1 = d; }
+    else if (i == 2) { nS = clamp((d - d0) / 57.8, -1.0, 1.0); }
+    else if (i == 4) { nL = clamp((d - d1) / 374.0, -1.0, 1.0); }
     // near steps: point density; long far steps: smooth coverage estimate (no contour rings)
     // the density ramp widens with the step length so long steps don't switch abruptly (and is
     // sharp right at the start, so each bulge shades the one beside it)
@@ -162,7 +166,7 @@ fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, jit: f32, lod0: f32) -> vec2
   // the shadow volume's 768 m texels; the shadows of other clouds stay the shadow volume's)
   ds = 1200.0;
   for (var i = 0; i < 3; i++) {
-    let sm = s + ds * (0.25 + 0.5 * jit);
+    let sm = s + ds * 0.5;
     let p = vec3f(wp0.x, h0, wp0.z) + u.sunDir * sm;
     var lf = l;
     if (lf == 0 && !inLv(p.xz, 0)) { lf = 1; }
@@ -173,8 +177,8 @@ fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, jit: f32, lod0: f32) -> vec2
     s += ds;
     ds *= 1.33;
   }
-  return vec2f(tau, nS);
+  return vec4f(tau, nS, nL, d0);
 }
-fn lightTau(wp0: vec3f, h0: f32, l: i32, C: vec4f, jit: f32, lod0: f32) -> f32 {
-  return lightTauN(wp0, h0, l, C, jit, lod0).x;
+fn lightTau(wp0: vec3f, h0: f32, l: i32, C: vec4f, lod0: f32) -> f32 {
+  return lightTauN(wp0, h0, l, C, lod0).x;
 }

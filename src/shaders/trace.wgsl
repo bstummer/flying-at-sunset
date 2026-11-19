@@ -6,12 +6,15 @@
 // The cloud raymarch, at low resolution: the clouds' light and transmittance, and their depth in km
 // (shaders/trace.js)
 override DBG = false;   // the debug views of ?dbg (render/setup.js)
-// The air between the camera and a cloud: a low haze (scale height 2.4 km, ?haze) and the
-// atmosphere's molecules and aerosols (chunks/atmo.wgsl), their optical depth along the ray in
-// closed form (the planet's curvature in the height's slope). Blue fades several times faster than
-// red: distant clouds turn warm. The veil they sink into has the colour of the horizon sky that way
-// (golden toward the sun, blue away from it), as much of it as the air takes of their light.
-const HAZE_H = 2400.0;
+// The air between the camera and a cloud: haze (scale height 6 km, ?haze: it reaches the towers'
+// tops, so the farthest clouds are the haziest, as through the 100–200 km of visibility real air
+// has up there) and the atmosphere's molecules and aerosols (chunks/atmo.wgsl), their optical
+// depth along the ray in closed form (the planet's curvature in the height's slope). Blue fades
+// several times faster than red: distant clouds turn warm. The veil they sink into has the colour
+// of the horizon sky that way (golden toward the sun, blue away from it), as much of it as the air
+// takes of their light.
+const HAZE_H = 6000.0;
+const CLOUD_SAT = 1.35;
 fn layerOD(t: f32, h0: f32, dy: f32, H: f32) -> f32 {
   let e0 = exp(-h0 / H);
   let k = (dy + t * INV2R) / H;
@@ -51,12 +54,15 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
   // haze colour: the sky just above the horizon for downward rays (no seam at the horizon)
   let hazeDir = normalize(vec3f(dir.x, max(dir.y, 0.004), dir.z));
   let skyHaze = skyLookup(tSky, hazeDir, u.sunDir, h0 * 0.001);
-  let ambUp = bAmb.up.rgb * AMB_K;
+  // (shade in the sky's blue: the deep zenith on tops, violet from the anti-sun sky at dusk on the
+  // sides turned from the sun; the golden horizon toward the sun mostly lights faces turned to it,
+  // which the sun outshines. Inside cloud the light has wandered in from everywhere: grey.)
+  let cool = 1.0 - u.inCloud;
+  let ambUp = bAmb.up.rgb * AMB_K * mix(vec3f(1.0), vec3f(0.88, 0.96, 1.2), cool);
   // light bounced off the sunlit sea of clouds below (Lambertian deck, sun 5 degrees up)
   let seaBounce = u.ambSea * 0.38;
   let ambSunS = bAmb.sunSide.rgb * AMB_K + seaBounce * 0.4;
-  // (a touch of violet: the anti-sun sky at dusk; on cloud sides it reads as cool, luminous shade)
-  let ambAnti = bAmb.antiSun.rgb * AMB_K * vec3f(1.06, 0.93, 1.1) + seaBounce * 0.15;
+  let ambAnti = bAmb.antiSun.rgb * AMB_K * mix(vec3f(1.0), vec3f(1.03, 0.92, 1.18), cool) + seaBounce * 0.15;
   let cosT = dot(dir, u.sunDir);
   let phase = phaseOctaves(cosT);
   let powder = 1.0 - 0.28 * saturate(0.5 - 0.5 * cosT);
@@ -80,6 +86,8 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
   var lastTau = 0.0;
   var lastDepth = 0.0;
   var lastNS = 0.0;
+  var lastNL = 0.0;
+  var lastRel = 1.0;
   var lastNUp = 1.0;
   var lastOpen = 1.0;
   // (up and back toward the camera: the side of a visible surface that is open)
@@ -133,7 +141,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
     startIn = false;
     dPrev = -1.0;
     let detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
-    let nearW = (1.0 - smoothstep(150.0, 900.0, t)) * max(u.inCloud, 1.0 - smoothstep(40.0, 120.0, -d));
+    let nearW = (1.0 - smoothstep(150.0, 900.0, t)) * u.inCloud;
     if (DBG && u.dbgMode > 0 && u.dbgMode < 4) {
       let e = 4.0 + t * 0.002;
       var nrm = vec3f(sceneSDF(wp + vec3f(e, 0.0, 0.0), h, lv, lod) - sceneSDF(wp - vec3f(e, 0.0, 0.0), h, lv, lod),
@@ -142,7 +150,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       nrm = normalize(nrm);
       var c: vec3f;
       if (u.dbgMode == 1) { c = vec3f(0.08) + vec3f(1.0, 0.85, 0.6) * max(dot(nrm, u.sunDir), 0.0) + vec3f(0.1, 0.15, 0.3) * (nrm.y * 0.5 + 0.5); }
-      else if (u.dbgMode == 2) { c = vec3f(exp(-lightTau(wp, h, lv, C, jit2, lod + 0.5))); }
+      else if (u.dbgMode == 2) { c = vec3f(exp(-lightTau(wp, h, lv, C, lod + 0.5))); }
       else { let f = tsvTau(wp, h); c = vec3f(exp(-f.x - f.y)); }
       return Out(vec4f(c * 0.12, 0.0), t * 0.001);
     }
@@ -161,16 +169,22 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       var tau: f32;
       if (reuse) { tau = lastTau + max(-d - lastDepth, 0.0) * SIGMA * 2.0; }
       else {
-        let tn = lightTauN(wp, h, lv, C, jit2, lod + 0.05);
+        let tn = lightTauN(wp, h, lv, C, lod + 0.05);
         tau = tn.x;
         lastNS = tn.y;
+        lastNL = tn.z;
+        // the smallest billows' faces, over 5 m toward the sun, against the face around them: each
+        // bulge bright where it turns to the sun, dimmer where it turns away (detail up close, as
+        // in the far towers' lobes); the light inside spreads, so only the surface's first metres
+        let rel = clamp(1.0 + 0.9 * (clamp((tn.w - d) / 5.0, -1.0, 1.0) - tn.y), 0.3, 1.8);
+        lastRel = mix(1.0, rel, (1.0 - smoothstep(1500.0, 6000.0, t)) * exp(-max(-d, 0.0) / 12.0));
         // which way the surface faces: up from one distance tap above, toward the sun from the
         // light march. Each bulge then catches its own sky light, even in shadow. And how open the
         // sky is over it: the distance to the cloud at a point up and back toward the camera,
         // short in the folds between bulges and under overhangs. (Only near the visible surface;
         // deeper samples keep the last estimate.)
         if (T > 0.45) {
-          let S = 10.0 + t * 0.004;
+          let S = 22.0 + t * 0.005;
           lastNUp = clamp((cloudSDF(wp + vec3f(0.0, S, 0.0), h + S, macroAt(vec3f(wp.x, h + S, wp.z), lv), C, lod) - d) / S, -1.0, 1.0);
           let qo = wp + openDir * (2.5 * S);
           let ho = h + openDir.y * 2.5 * S;
@@ -184,16 +198,16 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       let depthIn = -d;
       let pw = mix(powder, 1.0, 1.0 - exp(-depthIn * SIGMA));
       let sc = sunColorAt(h);
-      var sunL = sc * sunScatter(tau, far, phase, pw, depthIn, lastNS);
+      var sunL = sc * sunScatter(tau, far, phase, pw, depthIn, lastNS, lastNL) * lastRel;
       if (DBG && u.dbgMode >= 5) {
         // (5: the octaves alone, 6: the diffusion alone, 7: no sun)
         let ms = msScatterP(tau + far.x, phase) * pw * exp(-far.y);
-        sunL = sc * select(select(0.0, sunScatter(tau, far, phase, pw, depthIn, lastNS) - ms, u.dbgMode == 6), ms, u.dbgMode == 5);
+        sunL = sc * select(select(0.0, sunScatter(tau, far, phase, pw, depthIn, lastNS, lastNL) - ms, u.dbgMode == 6), ms, u.dbgMode == 5);
       }
       let up = saturate((h - C.w + 250.0) / 1400.0);
       // sky light only reaches the first few tens of metres (short scale also hides the
       // discontinuous interior of the distance field)
-      let ao = mix(0.5, 1.0, exp(-depthIn / 55.0)) * mix(0.4, 1.0, lastOpen);
+      let ao = mix(0.5, 1.0, exp(-depthIn / 55.0)) * mix(0.6, 1.0, lastOpen);
       // sky light by orientation: the deep blue zenith on tops, the warm sunlit sea under bellies,
       // the golden sun-side or the cool violet anti-sun sky on the sides (a belly sees only part of
       // the sea below past the bulges around it)
@@ -202,7 +216,10 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       if (lastNUp > 0.0) { eDir = mix(eSide, ambUp, lastNUp); } else { eDir = mix(eSide, seaBounce, -0.5 * lastNUp); }
       var amb = eDir * mix(0.45, 1.0, up) * ao;
       if (DBG && (u.dbgMode == 5 || u.dbgMode == 6)) { amb *= 0.0; }
-      let S = sigma * 0.985 * (sunL + amb);
+      // (the cloud's light with a colour film's saturation: golden-hour orange on the lit faces, the
+      // sky's blue in the shade; the air's veil keeps the sky's own colour)
+      let Lc = sunL + amb;
+      let S = sigma * 0.985 * max(mix(vec3f(luma(Lc)), Lc, mix(1.0, CLOUD_SAT, cool)), vec3f(0.0));
       let st = exp(-sigma * dt);
       let Sint = (S - S * st) / sigma;
       let th = airT(t, h0, dir.y);

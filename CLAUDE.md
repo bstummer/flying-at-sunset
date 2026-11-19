@@ -19,10 +19,11 @@ stuttering breaks the spell.
 - **The clouds are the heart of the piece.** An endless sea of soft, billowing cloud stretching to the
   horizon, broken by enormous towers rising far above the bird: full and three-dimensional, with
   rounded tops, soft wispy edges and a sense of enormous scale.
-- **Golden-hour light.** The sun sits low. Faces toward it glow gold and peach, thin edges shine where
-  sunlight passes through, shaded sides fall into cool blue and violet. The sky fades from deep blue
-  overhead to gold near the sun; haze melts the farthest clouds into the sky. Looking toward the sun
-  is bright and dazzling.
+- **Golden-hour light.** The sun sits low. Faces toward it glow gold, orange and peach, thin edges
+  shine where sunlight passes through, shaded sides fall into a luminous cool blue and violet (lit by
+  the sky and the light inside the cloud, never navy or brown). The sky fades from deep blue
+  overhead to gold near the sun; haze melts the farthest clouds into the sky: the farther, the hazier,
+  paler and bluer. Looking toward the sun is bright and dazzling.
 - **The paper bird.** Slightly off-white paper, crisp creases, a subtle paper texture. Small against
   the landscape; its wings flex; it glows warmly when the sun is behind it.
 - **The flight.** Gliding: diving builds speed, climbing trades it for height, turning banks
@@ -43,15 +44,21 @@ What the author keeps coming back to:
   of one size all over a surface), every cloud having every feature.
 - **Enormous towers**, rising far above the bird (you look up at a near one's top), at least one in view
   from the start, broad at the base where they swell out of the sea: the sea and the towers are one
-  system, the same cloud piled higher. Crisp, sharply sculpted cauliflower domes with deep shadowed
-  folds, dense and solid, never soft pillows; leaning, sheared and torn tops; overhangs and gaps to fly
-  under; lone giants, walls, clusters, open stretches of sea; rare wide flat anvils far away. A
+  system, the same cloud piled higher. Crisp, sharply sculpted cauliflower domes with shadowed folds,
+  never soft pillows, yet never solid like rock or dough: light inside the cloud keeps the folds
+  luminous and glows through thin parts; a few huge lobes carrying smaller ones, carrying smaller
+  ones still; sides that bulge and lean, never carved cliffs; leaning, sheared and torn tops (flat
+  only as an anvil); overhangs and gaps to fly under; lone giants, walls, clusters, open stretches of
+  sea; rare wide flat anvils far away. A
   spreading top needs a massive, broad column, never a thin stem ("like a mushroom").
 - **A billowy sea**: billows at every size (big rolling mounds covered in smaller bulges, covered in
   smaller ones), crisp where sunlight catches them, soft edges, never sharp ridgelines. Not a flat
   blanket, not smooth "sand dunes". Large relief: swells, deep valleys, heaps.
 - Not too much open space around the start. No compact round puffs floating high in the sky, nothing
   that looks broken off.
+- **Like a photograph**: near clouds show more detail than far ones, never less (bulges on
+  bulges down to metres, ragged edges: close clouds as smooth pillows read as cotton wool a few
+  metres across, and the scale is lost); no render noise of any kind (a screen-door, a lattice).
 
 ## 2. Hard rules
 

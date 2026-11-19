@@ -21,12 +21,12 @@ const CELL = 180.0;
   let alpha = saturate(dens * 1.6) * (1.0 - smoothstep(52.0, 84.0, dist)) * smoothstep(4.0, 12.0, dist) * u.strength;
   var col = vec3f(0.0);
   if (alpha > 0.002) {
-    let tau = lightTau(wp, h, 0, C, 0.5, 0.0);
+    let tau = lightTau(wp, h, 0, C, 0.0);
     let far = tsvTau(wp, h);
     let ambSky = bAmb.up.rgb;
     let cosT = dot(rel / max(dist, 1e-3), u.sunDir);
     let di = max(-d, 0.0);
-    col = sunColorAt(h) * sunScatter(tau, far, phaseOctaves(cosT), 1.0, di, 0.4) + ambSky * AMB_K * mix(0.5, 1.0, exp(-di / 55.0));
+    col = sunColorAt(h) * sunScatter(tau, far, phaseOctaves(cosT), 1.0, di, 0.4, 0.4) + ambSky * AMB_K * mix(0.5, 1.0, exp(-di / 55.0));
   }
   let c = vec2f(f32(vi & 1u), f32(vi >> 1u)) * 2.0 - 1.0;
   let size = mix(9.0, 26.0, h4.x);
