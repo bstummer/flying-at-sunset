@@ -168,7 +168,7 @@ Worth knowing before tuning again.
   cloud ends rays sooner, the near octaves are gone), +9…+19% looking over wide lit areas (`high2`,
   `down`: the fold tap, the march's long steps); ±0.5 ms at 480×270 on the NVIDIA laptop GPU.
 - **Distant flat tops can look like floating lenses** (their bodies sink into haze and behind the
-  curvature); photo 1 shows the same, but watch it.
+  curvature); real sunsets seen from an airliner show the same, but watch it.
 - **The cirrus and the two high layers tile** every 32 and 64 km.
 - `dropAdrift` also removes the tops of some dying towers whose columns evaporated (by design: no
   floating fragments), which lowers the count of towers reaching the ceiling by ~30%.

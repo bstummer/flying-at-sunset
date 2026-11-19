@@ -53,24 +53,6 @@ What the author keeps coming back to:
 - Not too much open space around the start. No compact round puffs floating high in the sky, nothing
   that looks broken off.
 
-The inspiration photos (five, sent with the author's requests; not in this repository):
-
-1. **Portrait, from an airliner at sunset.** An orange-gold sky with layered stratiform bands above;
-   below, a deep sea of lumpy cumulus heaps in mauve and violet shade; near the horizon several towers
-   with bright sunlit tops whose bodies sink into haze (the tops seem to float); big billowing masses
-   lit pinkish from the side in front.
-2. **Portrait, into the sun.** A single huge cumulonimbus with a wide, flat anvil spreading far to both
-   sides, almost black against the setting sun just left of it; the anvil's underside dark and level.
-   The sea below in its shadow; at the bottom edge billowy tops catch pink light.
-3. **Portrait, sun on the horizon.** The sun in a narrow band of clear golden sky between a dark
-   overcast deck above and a rugged sea of cumulus heaps below: the heaps dark with brilliant golden
-   rims (backlit); a tall turret on the right glowing along its sunward side.
-4. **Landscape, close up.** Massive cumulus at sunset filling the frame: big rounded lobes covered in
-   smaller bulges and those in smaller ones, peach and pink in the light, blue-lavender in the shade.
-   The reference for "billows at every size".
-5. **Landscape, daylight.** A field of white cumulus heaps with crisp cauliflower bulges at many scales
-   against a blue-grey sky: sharp, bright sunlit edges, soft grey shade between the bulges.
-
 ## 2. Hard rules
 
 - **The output is one file**: `dist/index.html`, with all JS and CSS inlined, working when opened via
