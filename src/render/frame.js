@@ -20,7 +20,7 @@ import { sunColorAt, sunColTable } from './sun.js';
 import { layerColUniform, P, T } from './setup.js';
 import { originOf, streamWorld, worldUniforms } from './stream.js';
 import { bloomLevels, R } from './targets.js';
-import { inCloud, mapProbe, readProbeAsync } from './probe.js';
+import { inCloud, mapProbe, mistLum, readProbeAsync } from './probe.js';
 import { bird_ } from '../flight/flight.js';
 import { cam } from '../flight/camera.js';
 import { gpuTimer, tBegin, tEnd } from './timing.js';
@@ -151,7 +151,7 @@ export function render(time) {
   const out = { view: context.getCurrentTexture().createView(), w, h };
   pass(P.final, [out], {
     tScene: T.scene, tBloom: bloomLevels[0], tRays: T.rayA,
-    exposure: EXPOSURE * (1.0 + 0.45 * inCloud), bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
+    exposure: EXPOSURE * Math.pow(inCloudGain(), inCloud), bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
   });
   tEnd();
   if (gpuTimer) gpuTimer.resolve();
@@ -162,6 +162,10 @@ export function render(time) {
   if (gpuTimer) gpuTimer.map();
   frame++;
 }
+// inside cloud the exposure adapts, as an eye or a camera would: the mist around the camera (the
+// probe's estimate) toward mid-grey, between the normal exposure and eight times it (deep in a
+// tower it is dim)
+function inCloudGain() { return Math.min(Math.max(0.6 / (Math.max(mistLum, 1e-5) * EXPOSURE), 1), 8); }
 // tests: a hook that copies the image out of the canvas texture before it is presented
 let capture = null;
 export function captureNext(fn) { capture = fn; }
