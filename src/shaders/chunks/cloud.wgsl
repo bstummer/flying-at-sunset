@@ -17,6 +17,10 @@ fn octave(d: f32, n0: f32, shell: f32, k: f32) -> f32 {
   return smin(n, d, mix(max(k * 0.8, shell * 1.05), shell * 0.5 + 4.0, 0.7));
 }
 fn shellOf(a: f32) -> f32 { return 400.0 * a + 120.0; }    // highest billows above the large shapes
+// how much of a child octave grows where its parent octave's sphere distance is n: all of it on the
+// parent's bulges (n < 0), none in the creases and the plain between them (n > w). Cauliflower:
+// small billows heaped on the caps of bigger ones, the folds between those deep and smooth.
+fn onCap(n: f32, w: f32) -> f32 { return 1.0 - smoothstep(-0.3 * w, w, n); }
 
 // a slow, seamless warp of the billow pattern: waves of unrelated lengths, it never repeats
 fn warpLand(p: vec3f) -> vec3f {
@@ -39,17 +43,9 @@ fn cloudSDF(wp: vec3f, h: f32, dm: f32, C: vec4f, lod: f32) -> f32 {
   let topW = saturate((h - min(C.x, C.w + 100.0) + 40.0) / 220.0);
   let w3 = (1.0 - smoothstep(0.8, 2.0, lod)) * topW;
   let w4 = (1.0 - smoothstep(0.35, 1.0, lod)) * topW;
-  ds = octave(ds, sf.z * 320.0, 56.0 * w3 * C.z, 90.0);
-  ds = octave(ds, sf.w * 160.0, 26.0 * w4 * C.z, 45.0);
-  var d = ds;
-  // near the camera: an extra pair of small billow octaves (crisp cauliflower texture up close)
-  if (lod < 0.15 && abs(d) < 80.0) {   // only matters right at the surface
-    let wn = 1.0 - smoothstep(0.05, 0.15, lod);
-    let sn = textureSampleLevel(tShape, sRep, (wp + u.shapeOff * 2.0) * (8.0 / SHAPE_TILE), 0.0) * 2.0 - 1.0;
-    d = octave(d, sn.y * 80.0, 20.0 * wn, 16.0);
-    d = octave(d, sn.z * 40.0, 10.0 * wn, 8.0);
-  }
-  return d;
+  // (each on the caps of the one before)
+  ds = octave(ds, sf.z * 320.0, 56.0 * w3 * C.z * onCap(sf.y * 640.0, 160.0), 90.0);
+  return octave(ds, sf.w * 160.0, 26.0 * w4 * C.z * onCap(sf.z * 320.0, 80.0), 45.0);
 }
 // the same, looking up the large shapes and column data of level l
 fn sceneSDF(wp: vec3f, h: f32, l: i32, lod: f32) -> f32 {

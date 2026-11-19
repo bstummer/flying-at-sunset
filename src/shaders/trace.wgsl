@@ -119,7 +119,8 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
     }
     startIn = false;
     dPrev = -1.0;
-    let detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
+    // (the detail creases are the finest texture near the camera: deeper there)
+    let detailW = (1.0 - smoothstep(6000.0, 16000.0, t)) * (1.0 + 1.2 * (1.0 - smoothstep(400.0, 3000.0, t)));
     let nearW = (1.0 - smoothstep(150.0, 900.0, t)) * max(u.inCloud, 1.0 - smoothstep(40.0, 120.0, -d));
     if (DBG && u.dbgMode > 0 && u.dbgMode < 4) {
       let e = 4.0 + t * 0.002;

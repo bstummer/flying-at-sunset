@@ -8,9 +8,11 @@
 //   four lattices, 1280 to 160 m, tiled over 5120 m, looked up through a slow warp that never repeats
 //   and squashed vertically), each clipped to a shell above the surface so far and united with it
 //   (octave: crisp creases). The two fine octaves only above the sea's troughs, fading with
-//   distance; two finer ones within ~2 km. shellOf bounds how high billows rise (empty-space skipping).
-// - densityEx: density from the signed distance with a soft rim, wispy erosion by the detail volume,
-//   frayed far silhouettes, finer wisps near the camera.
+//   distance, each on the caps of the one before (onCap: cauliflower, not popcorn). shellOf bounds
+//   how high billows rise (empty-space skipping).
+// - densityFromSDF: density from the signed distance, ramping up over about a pixel (real cumulus
+//   ends within metres), its surface creased by the detail volume (deeper near the camera, the
+//   finest texture there); drifting mist inside cloud near the camera.
 // - lightTauN: the optical depth toward the sun (5 growing steps) and which way the surface faces
 //   it. The trace's header describes the lighting.
 

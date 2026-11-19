@@ -14,11 +14,12 @@ fn sphereField(p: vec3f, cells: f32, seed: u32) -> f32 {
         let ci = vec3u(c);
         let h = hash33(ci + vec3u(seed * 101u, seed * 211u, seed * 307u));
         let h2 = hash33(ci * 3u + vec3u(seed * 13u + 7u, seed * 5u + 1u, 11u));
-        // (the large billows pack close; the small ones over them a little looser)
+        // (the large billows pack close; the small ones over them a little looser, and of more
+        // different sizes: few large, many small)
         let big = seed <= 2u;
         if (h2.y < select(0.16, 0.1, big)) { continue; }
         let center = o3 + 0.1 + 0.8 * h;
-        let rad = select(mix(0.36, 0.72, h2.x), mix(0.4, 0.78, h2.x), big);
+        let rad = select(mix(0.3, 0.85, pow(h2.x, 1.5)), mix(0.4, 0.78, h2.x), big);
         d = min(d, length(center - f) - rad);
       }
     }
