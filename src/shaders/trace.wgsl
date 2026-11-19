@@ -6,12 +6,21 @@
 // The cloud raymarch, at low resolution: the clouds' light and transmittance, and their depth in km
 // (shaders/trace.js)
 override DBG = false;   // the debug views of ?dbg (render/setup.js)
+// The air between the camera and a cloud: a low haze (scale height 2.4 km, ?haze) and the
+// atmosphere's molecules and aerosols (chunks/atmo.wgsl), their optical depth along the ray in
+// closed form (the planet's curvature in the height's slope). Blue fades several times faster than
+// red: distant clouds turn warm. The veil they sink into has the colour of the horizon sky that way
+// (golden toward the sun, blue away from it), as much of it as the air takes of their light.
 const HAZE_H = 2400.0;
-fn hazeOD(t: f32, h0: f32, dy: f32) -> f32 {
-  let e0 = u.hazeK * exp(-h0 / HAZE_H);
-  let k = (dy + t * INV2R) / HAZE_H;
+fn layerOD(t: f32, h0: f32, dy: f32, H: f32) -> f32 {
+  let e0 = exp(-h0 / H);
+  let k = (dy + t * INV2R) / H;
   if (abs(k) < 1e-7) { return e0 * t; }
   return e0 * (1.0 - exp(-k * t)) / k;
+}
+fn airT(t: f32, h0: f32, dy: f32) -> vec3f {
+  return exp(-(u.hazeK * layerOD(t, h0, dy, HAZE_H) + RAY_S * 1e-3 * layerOD(t, h0, dy, RAY_H * 1000.0)
+               + (MIE_S + MIE_A) * 1e-3 * layerOD(t, h0, dy, MIE_H * 1000.0)));
 }
 
 struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
@@ -196,8 +205,8 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       let S = sigma * 0.985 * (sunL + amb);
       let st = exp(-sigma * dt);
       let Sint = (S - S * st) / sigma;
-      let th = exp(-hazeOD(t, h0, dir.y));
-      L += T * (Sint * th + (1.0 - st) * skyHaze * (1.0 - th));
+      let th = airT(t, h0, dir.y);
+      L += T * (Sint * th + (1.0 - st) * skyHaze * (1.0 - luma(th)));
       let w = T * (1.0 - st);
       zSum += w * t;
       zW += w;
@@ -212,8 +221,8 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
   }
   if (!done && T > 0.02) {
     // ran out of steps while grazing the far cloud sea: let it melt into the haze
-    let th = exp(-hazeOD(t, h0, dir.y));
-    L += T * skyHaze * (1.0 - th * 0.35);
+    let th = airT(t, h0, dir.y);
+    L += T * skyHaze * (1.0 - luma(th) * 0.35);
     zSum += T * t;
     zW += T;
     T = 0.0;
