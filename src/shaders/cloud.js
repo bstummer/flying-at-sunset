@@ -4,17 +4,22 @@
 // - The large shapes (sea relief, heaps, towers) come from the clipmaps (render/stream.js): levelAt
 //   picks a level by distance (dithered handovers at ~7–10 and ~40–55 km; a coarser one outside a
 //   level's valid window), macroAt reads its distance volume, colAt its column data.
-// - cloudSDF heaps billows on them: octaves of signed distances to random spheres (the shape volume:
-//   four lattices, 1280 to 160 m, tiled over 5120 m, looked up through a slow warp that never repeats
-//   and squashed vertically), each clipped to a shell above the surface so far and united with it
-//   (octave: crisp creases). The two fine octaves only above the sea's troughs, fading with
-//   distance, each on the caps of the one before (onCap: cauliflower, not popcorn). shellOf bounds
-//   how high billows rise (empty-space skipping).
-// - densityFromSDF: density from the signed distance, ramping up over about a pixel (real cumulus
-//   ends within metres), its surface creased by the detail volume (deeper near the camera, the
-//   finest texture there); drifting mist inside cloud near the camera.
-// - lightTauN: the optical depth toward the sun (5 growing steps) and which way the surface faces
-//   it. The trace's header describes the lighting.
+// - cloudSDF heaps billows on them, from the shape volume (tiled over 5120 m, looked up through a
+//   slow warp that never repeats and squashed vertically): lobes and turrets, signed distances to
+//   random spheres on two lattices (1280 and 640 m, bent out of round in the bake, the turrets
+//   sparse and of many sizes), each clipped to a shell above the surface so far and united with it
+//   (octave: crisp creases); then domes pushing the surface out (domeField: sphere caps of random
+//   sizes, the highest wins) at 320 and 160 m, and from the detail volume at 128 to 32 m and, near
+//   the camera, 32 to 8 m, the finest only near the surface. Each finer octave grows more on the
+//   tops of the one before (onCap, onDome: cauliflower, not popcorn), less in the sea's troughs, and
+//   fades with distance as it shrinks below a few pixels. shellOf bounds how high billows rise
+//   (empty-space skipping).
+// - densityFromSDF: density from the signed distance, ramping up over a few metres or about a pixel
+//   (real cumulus ends within metres), its surface frayed a few metres deep by the detail volume;
+//   drifting mist inside cloud near the camera.
+// - lightTauN: the optical depth toward the sun (6 growing steps from 10 m, the first three with the
+//   view sample's detail: domes of metres shade themselves) and which way the surface faces it. The
+//   trace's header describes the lighting.
 
 // uniforms of the clipmap lookups (part of the uniforms of every shader that includes them)
 export const U_CLIP = {

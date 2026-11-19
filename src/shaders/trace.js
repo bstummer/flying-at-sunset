@@ -5,12 +5,12 @@
 // is found by a few Illinois regula-falsi steps (else far clouds look dark and speckled); inside,
 // steps aim at a fixed optical depth (σ = 0.07/m) but stay fine in the rim (about a pixel wide on
 // the billowy tops); it ends at T < 0.02.
-// Light (sunScatter, shaders/cloud.js): lightTauN marches 5 growing steps toward the sun with the
-// view sample's detail (bulges shade themselves), the shadow volume carries on from there (through
+// Light (sunScatter, shaders/cloud.js): lightTauN marches 6 growing steps toward the sun, the
+// first with the view sample's detail (domes of metres shade themselves), the shadow volume carries on from there (through
 // the same cloud, and through the clouds beyond: their shadow a plain multiplier); multiple
 // scattering by octaves (Wrenninge) with a two-lobe HG phase (silver linings); diffusion (light
 // soaking deep into the cloud, strongest where the sun enters square to the surface); sky light by
-// which way the surface faces (one SDF tap above and the light march: blue zenith on tops, the warm
+// which way the surface faces (one SDF tap 10 m above and more far away, and the light march: blue zenith on tops, the warm
 // bounce of the sunlit sea under bellies, golden or violet sky on the sides), as strong as the sky
 // view gives it; short-range occlusion; haze by optical depth. ?dbg=1..7 sets DBG: normals, sun
 // visibility, shadow volume, march cost, lighting (5 octaves, 6 diffusion, 7 sky light alone).
