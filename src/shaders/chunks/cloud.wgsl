@@ -132,7 +132,8 @@ fn sunScatter(tau: f32, far: vec2f, ph: vec4f, pw: f32, depthIn: f32, nS: f32) -
 const AMB_K = 1.0;
 
 // Optical depth toward the sun from a point (short march with growing steps), and nS: how much
-// the surface there faces the sun (-1..1), from the distance field along the first two steps.
+// the surface there faces the sun (-1..1), from the distance field over the first ~50 m (light
+// that wanders inside spreads over that much: finer creases would turn into dark pits).
 // l, C: clipmap level and column data of the starting point. Returns (tau, nS).
 fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, jit: f32, lod0: f32) -> vec2f {
   var tau = 0.0;
@@ -148,7 +149,7 @@ fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, jit: f32, lod0: f32) -> vec2
     // the first steps keep the detail of the view sample: bulges down to metres shade themselves
     let d = cloudSDF(wp, h, macroAt(vec3f(wp.x, h, wp.z), l), C, lod0 + f32(max(i - 2, 0)) * 0.6);
     if (i == 0) { d1 = d; s1 = sm; }
-    else if (i == 1) { nS = clamp((d - d1) / (sm - s1), -1.0, 1.0); }
+    else if (i == 2) { nS = clamp((d - d1) / (sm - s1), -1.0, 1.0); }
     // near steps: point density; long far steps: smooth coverage estimate (no contour rings)
     // the density ramp widens with the step length so long steps don't switch abruptly (and is
     // sharp right at the start, so each bulge shades the one beside it)
