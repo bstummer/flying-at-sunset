@@ -89,17 +89,31 @@ decisions on what failed). The author judges after each leg; legs 2 and 5 are mo
    the trace −2 to −4% (`start` −14%, `side`, `close` −4%, `tower` +2%). Shimmer toward the sun up (`start` 0.09 → 0.12%, `sun`, `high2`, `away`),
    elsewhere down. Flights identical.
 
-**Leg 3: the trace and the pixel** (known issue: sunlit rims):
-1. (The light as at a 1 m skin went in with leg 2.) What still moves with the trace's resolution:
-   `start`'s light 0.4–1.6% between scale 0.5 and 0.75 (`view=2`): the sky light's taps and occlusion at
-   the view sample, the entry's tolerance, the steps below.
-2. The approach's minimum step (6 m + 2% of t: ~7 trace pixels at 1 km) hops over billow crests a
-   grazing ray passes within one step, by the jitter: rims and silhouettes flicker. Tie it to the
-   pixel footprint (1–2 pixels) near surfaces. `--profile` on grazing views (`skim`, `start`, `sun`),
-   `shimmer.png`.
-3. Fade by pixel footprint: the 1280 m lobes and 640 m turrets never fade (the broccoli on the
-   horizon), and the domes fade by `lod = t/15000` whatever the resolution. Fade each octave as its
-   relief falls under ~2 pixels.
+**Leg 3, done (2026-11-20)** (`screenshots/l2-end` → `l3-sky`, `l3-P2`, `l3-end`; at 1920×1080
+`bigS-H2` → `bigS-AM3`):
+1. All of a sample's light at the skin's light point: the sky light's falloff with depth (it fell
+   with the ramp's depth, so the coarser the trace, the less sky far clouds and the sea's soft
+   troughs got), its two taps, the shadow volume's lookup. The raw light between scale 0.5 and 0.75
+   (`view=2`, whole frame): `start` 0.89 → 0.48%, `high2` 0.53 → 0.02%, `away` 0.93 → 0.65%; what is
+   left (blocks of a 4×4 grid within 1.3%) sits at the horizon and silhouettes, how much a grazing
+   ray takes from a wider ramp (halving the view's steps changed nothing). The look: the shade 1–2
+   levels lighter, most in the soft troughs (`down`) and far folds (`side`, `high2`).
+2. The approach's floor near a surface: a stride s from distance d to d' can miss a crest up to
+   (s − d − d') / 2 deep, so there it is 2d plus two outline widths (in the empty-space skip,
+   2·bound plus 2.5 pixels): a crest it hops over is grazed at most about an outline deep. Shimmer
+   at rest about halved (`start` 0.112 → 0.054%, `tower` 0.163 → 0.091%, `close` 0.163 → 0.083%,
+   `geometry` 0.40 → 0.27%); the stills change only at rims. Two pixels everywhere, and more
+   refinement at the entry, failed on cost (decisions).
+3. Every octave fades by the pixel's footprint (`lod` = the trace's pixel over 52 m), the lobes,
+   turrets and small turrets too, from 4 to 2 pixels a cell as the domes did: the far towers' grape
+   texture softens past ~40 km (`away`'s horizon; the top edge of `start`'s right tower no longer a
+   sawtooth). A coarser trace (phones, dynamic resolution) fades sooner; a finer one no later than a
+   270-row trace (`pixC`, trace.wgsl), and the approach's floor (2) follows the same pixel: following
+   the finer trace too cost +30% at 1920×1080 (decisions).
+   Cost (leg 2 against leg 3, interleaved A B B A A B, 60 frames, NVIDIA laptop): the trace
+   +12–15% at 960×540 (`start`, `sun`, `side`, `tower`, `high2`, `close`), +10–12% at 1920×1080
+   (all six views). Shimmer at rest down in every view (`start` 0.118 → 0.051%, `close` 0.168 →
+   0.086%, `seed3` 0.081 → 0.031%, `sun` least, 0.112 → 0.097%; at 1920×1080 0.4–0.5× leg 2's). Flights identical.
 
 **Leg 4: the clipmap levels agree** (known issue: the lattice at the handovers; towers popping in at
 40–55 km):
@@ -307,6 +321,15 @@ Worth knowing before tuning again.
   "decals"). A constant slant for light from far off instead: milky, the relief gone. Smooth weights.
 - **Column data per light-march step** (the review's bug 8): +10–13% of the trace (A B B A, column
   data alone as much: the samples take the detail branches more often), the change hard to see.
+- **The approach's floor at two trace pixels everywhere** (leg 3): shimmer at rest less than half,
+  but the trace +27–46% (grazing rays over the sea take every step that small). Only near a surface,
+  by how deep a stride can miss (2d plus two outline widths), nearly as much for +8–10%; with half
+  an outline's margin instead, +17%. **More refinement at the entry** (6 Illinois steps, not 3):
+  shimmer a further 10–20% down for +5% of the trace. **The detail and the strides following a finer
+  trace** (lod and the approach's floor by its own pixel, at 1920×1080): `tower`'s lit face in finer
+  cauliflower and shimmer 0.3× leg 2's rather than 0.45×, but the trace +30% against leg 2 (the
+  domes reaching twice as far +8%, the strides +10%), where capped at a 270-row trace's pixel it
+  costs +11%, as at 960×540. The lever, if the author would trade resolution for it: `pixC`.
 - **CLOUD_SAT 1** (2026-11): lit faces tan (saturation 0.40 → 0.31). **The sky light's tints off**: the
   shade neutral grey (saturation 0.08), on the way to brown. Both stay.
 
@@ -338,7 +361,8 @@ Worth knowing before tuning again.
   volume's 768 m texels decide.
 - **Popcorn far away**: towers 20–60 km off still read as one grape texture (`start`'s right
   tower, `high2`, `giant`, `away`'s horizon): their bubbles are big (billow scale over ~800 m), so
-  all carry lobes and turrets alike. A real tower shows 2–4 dominant turrets, smaller domes on
+  all carry lobes and turrets alike (since leg 3 the turrets fade from ~40 km, sooner on a coarser
+  trace). A real tower shows 2–4 dominant turrets, smaller domes on
   their upper, sunward shoulders, older parts smoother. Ideas: more spread in the billow scale per
   bubble, the liveliness stronger. **Crowns perched on heads** read as knobs (`start`'s middle
   tower, a "teddy-bear head" in a review; `catalog.js`): small bubbles sitting on big ones with a
@@ -405,9 +429,11 @@ Worth knowing before tuning again.
 - **A lattice at the level handovers** (~7–10 and ~40–55 km: `away`'s middle distance, `anvil`'s far
   towers): pixels dither between two levels' shapes and light; the history averages it at rest,
   12-frame captures show it (blending the levels costs too much, decisions).
-- **Sunlit rims**: with nothing moving 0.03–0.17% of a frame flickers (`geometry` 0.39%): the finer domes flicker along tower silhouettes against the sky and backlit rims. The history blends at half the rate where the image holds still. The slower blend may
-  lag or smear in slow motion: for the author's eyes. The cloud scale and the TAAU clamp and blend
-  rate are the levers.
+- **Sunlit rims**: with nothing moving 0.02–0.10% of a frame flickers (`geometry` 0.29%; leg 3 halved
+  it: strides no longer hop over crests by the jitter), along tower silhouettes against the sky and
+  backlit rims, most toward the sun (`sun`). The history blends at half the rate where the image
+  holds still. The slower blend may lag or smear in slow motion: for the author's eyes. The cloud
+  scale, the TAAU clamp and blend rate, and the approach's floor (trace.wgsl) are the levers.
 - The `skim` view (170 m over the sea's top) shows nothing but haze: the billows rise higher than that
   there, so the bird is inside them. Its brief wants billows up close; a pose a few hundred metres
   higher would show them.

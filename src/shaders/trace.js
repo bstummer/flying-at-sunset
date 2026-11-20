@@ -1,12 +1,16 @@
 // The cloud raymarch (low resolution)
 //
 // Up to 360 steps to 250 km or CLOUD_TOP (14 km), on a curved planet. Empty space is skipped by
-// dm − shellOf − margin; near surfaces it sphere-traces with jittered strides; on entry the boundary
+// dm − shellOf − margin; near surfaces it sphere-traces with jittered strides (their floor, close to a
+// surface, two outline widths past twice the distance: a crest a stride hops over is grazed at most
+// about an outline deep, so rims don't flicker with the jitter; no finer than a 270-row trace's, as
+// the detail, which fades with the pixel's footprint); on entry the boundary
 // is found by a few Illinois regula-falsi steps (else far clouds look dark and speckled); inside,
 // steps aim at a fixed optical depth (σ = 0.07/m) but stay fine in the rim (about a pixel wide on
 // the billowy tops); it ends at T < 0.02.
-// Light (sunScatter, shaders/cloud.js, fitted to a Monte Carlo of the medium, tools/light/): taken as
-// at a cloud's edge LIGHT_SKIN thick, whatever the outline's ramp; lightPath marches 6 growing
+// Light (sunScatter, shaders/cloud.js, fitted to a Monte Carlo of the medium, tools/light/): all of
+// it, the sky's too, taken as at a cloud's edge LIGHT_SKIN thick, whatever the outline's ramp (the
+// same at any resolution of the trace); lightPath marches 6 growing
 // steps toward the sun, the first with the view sample's detail (domes of metres shade
 // themselves), the same for every pixel (jittered, they flipped in and out of the bulges beside the
 // path: a screen-door), the shadow volume carries on from there (through the same cloud, and

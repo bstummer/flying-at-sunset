@@ -41,7 +41,8 @@ fn dome(ds: f32, a: f32, k: f32) -> f32 { return ds - a * (1.0 - smoothstep(0.0,
 // Signed distance (m) to the cloud surface: the large shapes (sh.x, from a clipmap), lobes of bent
 // spheres heaped on them, and domes on those, down to metres; the lobes and turrets only where the
 // billows of the nearest bubble are big enough (sh.y, m), all of them lower where those have lost
-// their life (sh.z: old parts and wakes soften). C: column data. lod: 0 = full detail.
+// their life (sh.z: old parts and wakes soften). C: column data. lod: the pixel's footprint over
+// 52 m (0 = full detail): each octave fades as its cells shrink from about 4 pixels to 2.
 fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
   let dm = sh.x;
   // squashed lookup: billows are wider than tall (heaps, not balls)
@@ -51,14 +52,14 @@ fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
   // (the largest lobes are in the large shapes already: the bake grows them on the towers)
   // (lobes on bubbles of more than ~2 km, turrets on those of more than ~1 km: a crown a few hundred
   // metres across boils in small domes, not in lobes bigger than itself)
-  let wL = smoothstep(700.0, 1500.0, sh.y);
-  let wT = smoothstep(350.0, 800.0, sh.y);
+  let wL = smoothstep(700.0, 1500.0, sh.y) * (1.0 - smoothstep(5.6, 11.2, lod));
+  let wT = smoothstep(350.0, 800.0, sh.y) * (1.0 - smoothstep(2.8, 5.6, lod));
   var ds = octave(dm, sf.x * 1280.0, 300.0 * A * wL, 300.0 * wL + 4.0);
   // (the turrets heap on the lobes' caps: the lobes' flanks and the creases between them stay
   // broad, so the billows come in sizes, not as one bubbly texture)
   ds = octave(ds, sf.y * 640.0, 160.0 * A * wT * mix(0.3, 1.0, onCap(sf.x * 1280.0, 300.0)), 160.0 * wT + 4.0);
   // (a bubble too small for those boils in turrets half their size)
-  let wS = smoothstep(800.0, 350.0, sh.y);
+  let wS = smoothstep(800.0, 350.0, sh.y) * (1.0 - smoothstep(1.4, 2.8, lod));
   if (wS > 0.01) {
     let st = textureSampleLevel(tShape, sRep, (warpLand(wp) + u.shapeOff) * (vec3f(2.0, 2.7, 2.0) / SHAPE_TILE) + vec3f(0.43, 0.29, 0.71), 0.0).y;
     ds = octave(ds, (st * 2.0 - 1.0) * (320.0 / 1.35), 80.0 * A * wS * mix(0.25, 1.0, onCap(sf.y * 640.0, 160.0)), 80.0 * wS + 4.0);

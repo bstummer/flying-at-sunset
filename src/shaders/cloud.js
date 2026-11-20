@@ -22,7 +22,9 @@
 //   (flatter, the near sea read as smooth dough), the finest only near the surface. Each finer octave grows more
 //   on the tops of the one before (onCap, onDome: cauliflower, not popcorn; from a few km on the
 //   finest cluster on the turrets' caps, built or not, so no surface is one carpet), less in the sea's
-//   troughs, and fades with distance as it shrinks below a few pixels. shellOf bounds how high
+//   troughs. Every octave, the lobes and turrets too, fades as its cells shrink to a few pixels
+//   (lod: the trace's pixel footprint, never finer than a 270-row trace's: a coarser trace keeps
+//   less). shellOf bounds how high
 //   billows rise (empty-space skipping).
 // - densityFromSDF: density from the signed distance, ramping up over a few metres or about a pixel
 //   (real cumulus ends within metres), its surface frayed a few metres deep by the detail volume;
