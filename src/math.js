@@ -1,5 +1,5 @@
 // The small math kit: scalars, 3-vectors (arrays), random streams (mulberry32), Halton numbers, an
-// implicit spring, float16 bits, and 4×4 matrices (column-major, GL's conventions)
+// implicit spring, float16 bits, 3×3 turns (row-major) and 4×4 matrices (column-major, GL's conventions)
 
 export const PI = Math.PI, DEG = PI / 180;
 export const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
@@ -45,6 +45,14 @@ export function toHalf(src, dst = new Uint16Array(src.length)) {
   for (let k = 0; k < src.length; k++) dst[k] = half(src[k]);
   return dst;
 }
+// a turn by `an` radians about the unit axis `ax` (Rodrigues), as a row-major 3x3, and a 3x3 times a vector
+export function rotation(ax, an) {
+  const [x, y, z] = ax, c = Math.cos(an), s = Math.sin(an), t = 1 - c;
+  return [t * x * x + c, t * x * y - s * z, t * x * z + s * y,
+    t * x * y + s * z, t * y * y + c, t * y * z - s * x,
+    t * x * z - s * y, t * y * z + s * x, t * z * z + c];
+}
+export const mat3Apply = (m, v) => [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]];
 // column-major 4x4 matrices
 export function mat4Mul(a, b) {
   const o = new Float32Array(16);

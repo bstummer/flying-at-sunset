@@ -59,8 +59,8 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
   // which the sun outshines. Inside cloud the light has wandered in from everywhere: grey.)
   let cool = 1.0 - u.inCloud;
   let ambUp = bAmb.up.rgb * AMB_K * mix(vec3f(1.0), vec3f(0.88, 0.96, 1.2), cool);
-  // light bounced off the sunlit sea of clouds below (Lambertian deck, sun 5 degrees up)
-  let seaBounce = u.ambSea * 0.38;
+  // light bounced off the sunlit sea of clouds below (render/frame.js: a Lambertian deck lit at 5°)
+  let seaBounce = u.ambSea;
   let ambSunS = bAmb.sunSide.rgb * AMB_K + seaBounce * 0.4;
   let ambAnti = bAmb.antiSun.rgb * AMB_K * mix(vec3f(1.0), vec3f(1.03, 0.92, 1.18), cool) + seaBounce * 0.15;
   let cosT = dot(dir, u.sunDir);
@@ -170,7 +170,9 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       var tau: f32;
       if (reuse) { tau = lastTau + max(-d - lastDepth, 0.0) * SIGMA * 2.0; }
       else {
-        let tn = lightTauN(wp, h, lv, C, bs, lod + 0.05);
+        // (at the view sample's own detail: rel below compares the two, and where the finest
+        // domes fade with distance a coarser march would see a face on every dome's top)
+        let tn = lightTauN(wp, h, lv, C, bs, lod);
         tau = tn.x;
         lastNS = tn.y;
         lastNL = tn.z;

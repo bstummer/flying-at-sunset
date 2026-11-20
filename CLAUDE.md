@@ -89,7 +89,7 @@ What the author keeps coming back to:
 |---|---|
 | `npm install` | Installs the dev dependencies (Vite, Playwright) and Playwright's headless Chromium, the only browser the tools use. |
 | `npm run dev` | Vite's dev server: the sources as ES modules, reloading on every edit. |
-| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the shaders' includes, the screenshot tool's arguments and compares, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
+| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the shaders' includes, the screenshot tool's arguments and compares, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
 | `npm run build` | `dist/index.html`. Fails on any other output, or a module from outside `src/`. |
 | `npm run check` | `tools/check-build.js`: one self-contained file within the size budget, and the `src/` lint. |
 | `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
@@ -204,7 +204,7 @@ src/
   main.js             the start, the main loop (frameStep), the steering hint, a lost device, window.__debug
   worker.js           the world's worker: src/world/ off the page's thread (column data, bubbles, the domes around
                       the bird, ?preset's place), bundled into the page as a string and started from a blob: URL
-  math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the render origin, the ceiling
+  math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the noise tiles and the detail volume's turn, the render origin, the ceiling
   core/               the page around the piece: every URL parameter (params.js, §7), its elements, the note,
                       refused requests and fullscreen (page.js), steering (input.js), the world's worker from the
                       page's side (world.js), the test mode (capture.js), the readout (readout.js, ?debug), the
@@ -294,7 +294,7 @@ header; outside the test mode one the page can't read is a console warning, and 
   declared in a chunk the shaders that use it include); a pass (`pass`, `dispatch`) hands them over by
   those names, and a missing one throws (`render/gpu.js`'s header). Entry points: `vs`, `fs`, `cs`.
   A value JS and WGSL both use comes from `constants.js` through the pipeline's header (`CLOUD_TOP`,
-  the noise tiles), never as a second literal; a switch is an `override` set by the pipeline's
+  the noise tiles, `DETAIL_ROT`), never as a second literal; a switch is an `override` set by the pipeline's
   `constants` (the trace's `DBG`).
 - **Row order**: every texture keeps GL's, row 0 at the bottom of the view, as when the piece was
   written for WebGL. Fullscreen passes work in pixel coordinates (`@builtin(position)` numbers rows like

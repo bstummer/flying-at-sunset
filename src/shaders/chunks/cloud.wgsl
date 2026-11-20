@@ -28,6 +28,10 @@ fn shellOf(a: f32) -> f32 { return 400.0 * a + 160.0; }    // highest billows ab
 // billows heaped on the caps of bigger ones, the folds between those deep and smooth.
 fn onCap(n: f32, w: f32) -> f32 { return 1.0 - smoothstep(-0.3 * w, w, n); }
 
+// where a point (render space) looks up the detail volume: turned in 3D (DETAIL_ROT, constants.js), so
+// no surface cuts its 512 m tile along the lattice and repeats, and drifting with the air
+fn detailAt(p: vec3f) -> vec3f { return DETAIL_ROT * p + u.detailOff; }
+
 // where the domes of a field b (0..1) are highest: the next finer ones heap up there
 fn onDome(b: f32) -> f32 { return 0.4 + 0.6 * smoothstep(0.05, 0.5, b); }
 // a field of domes moving the surface ds out by a (in where a < 0), less the farther out it already
@@ -71,11 +75,12 @@ fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
   // read as smooth dough)
   let wF = (1.0 - smoothstep(0.35, 0.8, lod)) * topW * onDome(s.w) * mix(mix(0.45, 1.0, onCap(sf.y * 640.0, 160.0)), 1.0, 1.0 - smoothstep(0.1, 0.35, lod)) * (1.0 - smoothstep(80.0, 140.0, ds));
   if (wF > 0.01) {
-    let f1 = textureSampleLevel(tDetail, sRep, (wp + u.detailOff) * (1.0 / DETAIL_TILE), 0.0).b;
+    let q = detailAt(wp);
+    let f1 = textureSampleLevel(tDetail, sRep, q * (1.0 / DETAIL_TILE), 0.0).b;
     ds = dome(ds, 60.0 * wF * (f1 - 0.3), 90.0);
     let wG = (1.0 - smoothstep(0.12, 0.3, lod)) * topW * onDome(f1) * (1.0 - smoothstep(60.0, 100.0, ds));
     if (wG > 0.01) {
-      let f2 = textureSampleLevel(tDetail, sRep, (wp + u.detailOff) * (4.0 / DETAIL_TILE) + 0.37, 0.0).b;
+      let f2 = textureSampleLevel(tDetail, sRep, q * (4.0 / DETAIL_TILE) + 0.37, 0.0).b;
       ds = dome(ds, 18.0 * wG * (f2 - 0.3), 27.0);
     }
   }
@@ -97,18 +102,20 @@ fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f3
   let x = -d;
   if (x <= 0.0) { return 0.0; }
   let amp = ERODE * detailW;
+  // (the mist streams past at twice the drift: detailDrift once more)
   if (x < amp + edgeW) {
-    let dn = textureSampleLevel(tDetail, sRep, (wp + u.detailOff) * (1.0 / DETAIL_TILE), 0.0);
+    let q = detailAt(wp);
+    let dn = textureSampleLevel(tDetail, sRep, q * (1.0 / DETAIL_TILE), 0.0);
     var e = saturate((0.8 - dn.r) / 0.45);
     if (nearW > 0.01) {
-      let dn2 = textureSampleLevel(tDetail, sRep, (wp + u.detailOff * 2.0) * (4.0 / DETAIL_TILE) + dn.a * 0.35, 0.0);
+      let dn2 = textureSampleLevel(tDetail, sRep, (q + u.detailDrift) * (4.0 / DETAIL_TILE) + dn.a * 0.35, 0.0);
       e = mix(e, e * 0.6 + saturate((0.8 - dn2.r) / 0.45) * 0.4, nearW);
     }
     return saturate((x - amp * e) / edgeW);
   }
   var dens = saturate(x / edgeW);
   if (nearW > 0.01) {
-    let dn = textureSampleLevel(tDetail, sRep, (wp + u.detailOff * 2.0) * (2.0 / DETAIL_TILE), 0.0);
+    let dn = textureSampleLevel(tDetail, sRep, (detailAt(wp) + u.detailDrift) * (2.0 / DETAIL_TILE), 0.0);
     dens *= mix(1.0, 0.25 + 1.1 * dn.r * dn.r + 0.3 * dn.g, nearW);
   }
   return dens;

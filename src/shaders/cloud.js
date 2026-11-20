@@ -16,8 +16,9 @@
 //   them, and a smaller bubble boils in turrets of half the size), each clipped to a shell above the surface
 //   so far and united with it (octave: crisp creases); then domes pushing the surface out
 //   (domeField: sphere caps of random sizes, the highest wins; dome: less the farther out the
-//   surface already is, so none floats) at 320 and 160 m, and from the detail volume at 128 to 32 m
-//   and, near the camera, 32 to 8 m, these rising a third to half as high as they are wide
+//   surface already is, so none floats) at 320 and 160 m, and from the detail volume (looked up
+//   turned in 3D, detailAt: it doesn't repeat along a surface) at 128 to 32 m and, near the camera,
+//   32 to 8 m, these rising a third to half as high as they are wide
 //   (flatter, the near sea read as smooth dough), the finest only near the surface. Each finer octave grows more
 //   on the tops of the one before (onCap, onDome: cauliflower, not popcorn; from a few km on the
 //   finest cluster on the turrets' caps, built or not, so no surface is one carpet), less in the sea's
@@ -43,7 +44,8 @@ export const U_CLOUD = {
   warpPh: 'vec4f',      // phases of the billow warp at the render origin
   warpPh2: 'vec2f',
   shapeOff: 'vec3f',    // slow evolution of the sea billows (wrapped)
-  detailOff: 'vec3f',
+  detailOff: 'vec3f',   // the detail volume's lookup: the render origin and the drift, turned and wrapped
+  detailDrift: 'vec3f', // the drift alone, turned and wrapped (the mist inside cloud drifts twice as fast)
   sunDir: 'vec3f',
   sunCol: 'vec3f[16]',
 };

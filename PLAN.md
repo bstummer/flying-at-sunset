@@ -5,6 +5,143 @@ what was tried and failed, and why, and what is still open. Keep it short and cu
 that fails goes in the decisions with why; a fixed issue comes out. How things work belongs in the
 module headers.
 
+## Next: the cloud review of 2026-11-20, in legs
+
+A review against the state of the art (Guerrilla's Nubis³, Hillaire 2016 and 2020, Wrenninge's
+octaves) found the architecture right: a CPU world, distance-field clipmaps and procedural detail are
+Nubis³'s design, generated rather than authored. Don't rebuild it. The recurring complaints trace to
+three things inside it (the light's inputs, a skin a trace pixel wide, balls on lattices) and to ten
+defects. Checked on HEAD (4624d58) the same day; the review had read 9d49653's cloud.wgsl:
+
+- **Holds** (by hand and in Node): 10 m under a flat top the light march finds τ ≈ 2.1 where the
+  sun's path out is τ 8.0 (each step's ramp widens with its length). `facing` gives a flat top at 5°
+  0.19 where the cosine is 0.087, and faces turned from the sun 0, so no light diffuses through a tower
+  to its shade (hence the navy, then AMB_K 1.4, the blue tints, CLOUD_SAT). A heap 500 m toward the
+  sun shades by diffusion (1/(1+0.11τ), ~30% left), the same heap 2 km off by e^−τ (black). All the
+  defects in the legs below hold on HEAD.
+- **Smaller than claimed**: the skin follows the trace's pixel (`edgeW`), so the light does too, but
+  the clouds' raw light (`view=2`) moves 0.4–3% between scale 0.5 and 0.75 (`start`, `high2`, `away`;
+  brighter at the finer), not 8–13%.
+- **Larger than claimed**: the far level (L2, from 40–55 km) takes only the domes that grew from the
+  sea, and no small cells. In a heap field 30 km east of the start it sees 37 of 420 domes: its sea's
+  p50 is 1.7 km where L1's is 3.9 km. 221 of the 359 towers rising over 3 km within 150 km come from
+  small cells (P < 1000) and vanish there, some 6.3 km tall. They are ~2.6 km wide and only 13% of
+  their bubbles reach L2's minBR (900 m): putting the small tier back alone would leave shards.
+- **Partly stale**: billows of one size on every bubble went in 4624d58. The lattices remain (one
+  sphere a cell, 90% of the lobes' cells and 70% of the turrets' filled: noise-shape.wgsl). Tower tops
+  flatter than 0.45 (the top bubble's ryU/rh): 38% (40% before 4624d58). Mushrooms from ice
+  outliving its column (thermals.js `settle`): unmeasured; a count by bubble extents found no top
+  1.4× wider than the 2–4 km below it, so look in `catalog.js` before acting.
+
+Each step: a before/after capture of the views named (CLAUDE.md §4), `--profile` where the trace or a
+bake changes, flights compared where the world changes, then a line here on what held (and in the
+decisions on what failed). The author judges after each leg; legs 2 and 5 are mostly taste.
+
+**Leg 1, done (2026-11-20)**, each step its own capture (`screenshots/before`, `l1-rel`, `l1-detail`,
+`l1-tsv`, `l1-sea`); the trace's cost over all views within the noise:
+1. The light march at the view sample's own lod (it ran at `lod + 0.05`, and `rel` compared the
+   two): real but small, the changed pixels 0.2–0.7 levels darker with 1–2% less fine contrast. It
+   wasn't what makes the "pile of even balls" (`close` hardly changed).
+2. The detail volume looked up turned in 3D (`DETAIL_ROT`, constants.js; `detailAt`), its drift and
+   the render origin turned with it in frame.js. A warp can't do this: it moves copies of the tile
+   around without changing them. A turned 3D tile cuts every surface obliquely: on a level stretch a
+   copy lies ≥ 26 m above or below within 1.5 km (tests/constants.test.js). No repeat was visible
+   before (a 4 km look-down: the sea's relief already cuts the tile at varying heights); the look is
+   unchanged, the fine domes elsewhere. Flights: `skim` differs by up to 5.7 m in height (the probe
+   feels the domes), the rest identical. `inside`'s trace +11% (0.2 ms a frame: every sample near
+   the camera reads the volume, through the turn).
+3. The shadow volume's sun rays rise with the planet's curvature: far clouds' shadows shorten, and
+   much of the near sea in `seed3`, `side`, `down`, `high2` comes out of shadow (changed pixels 6–27
+   levels brighter, `seed3`'s fine contrast doubled: golden tops toward the sun where all was blue).
+4. One sea bounce (`ambSea`, frame.js: albedo 0.89 · sin 5° / π, the clouds' value): the bird's got
+   2.6× less. In sun it hardly shows (the keel a touch less warm); in shade (`giant`) the bird is now
+   a faint blue sliver, where its keel glowed orange. Judge the bird with the shade in leg 2.
+
+**Leg 2: the light's inputs** (known issues: colour and range, the sea into the sun; the navy shade,
+milky flat tops, grazing tops lit like faces):
+1. A reference first: `tools/light/` (Node), a Monte Carlo of the trace's medium (σ 0.07, the octaves'
+   phase or HG 0.85) for a slab lit at 5°, a sphere and a tower-sized body: the light leaving a flat
+   top, a face turned to the sun, the far side of 1.5 km of cloud, at the bird's view angles. These
+   are the numbers to fit `sunScatter` to, instead of the eye, review after review. A GPU path tracer
+   of a real view (`?pt` in the test mode) only if they leave doubt.
+2. The sky's inputs: the aerosol absorption is 4.4e-3/km (×2.2) where Hillaire's extinction is
+   4.44e-3 (absorption 0.44e-3: Bruneton's single-scattering albedo 0.9). Fix it in atmo.wgsl and
+   sun.js together (better: once, in constants.js), then retune the ×2.2 to the look. The haze
+   (`HAZE_K`, HAZE_H) veils the clouds but not the sun's colour (sun.js) or the sky: put it in both.
+   Every colour downstream moves, so this gets its own capture of all views before the rest of the leg.
+3. The light march's depth near a surface: estimate each step's length inside from the distance at
+   its middle and its slope along the ray (from the steps beside it), not from a ramp that widens with
+   the step. Averaging occupancy with half at the surface darkened lit tops because the air above them
+   counted (decisions); the slope tells the two apart. Single scattering on grazed tops drops.
+4. Diffusion by where the light entered. The cosine there is the distance's slope along the sun ray
+   where the march leaves the cloud toward the sun: sin 5° on a flat top; for a tower's shade, its
+   far, sunlit side. No 0.1 floor. The depth for 1/(1 + 0.11τ) is the path's τ times that cosine (the
+   depth below the entry, as in a slab). Shade then gets what diffuses through (~8% through 1.5 km).
+   Facing over 15 m made pumice and a 0.35 floor made the far side brown (decisions); this is neither
+   (large-scale, falling with depth), but judge `side`, `tower`, `close` for both.
+5. One rule for shadows: once the march leaves its cloud, whatever it meets after is another cloud's
+   shadow (e^−τ, as the shadow volume's second channel), at 500 m as at 2 km. Watch for speckle (long
+   steps hit or miss a heap) and the sea's billows shading each other.
+6. The column data along the light march: each step reads its own (colAt, billowAt), not the start's
+   from up to 1.36 km back.
+7. Then retire the compensations one at a time, each kept only if the look holds: CLOUD_SAT → 1,
+   AMB_K → 1, the blue and violet tints on the sky light (trace.wgsl), the exposure last. Judge against
+   the reviews: lit faces orange to salmon (not apricot), shade a luminous lavender grey at 40–50% of
+   the lit side, folds dark but not navy (`tower`'s lit-face luminance SD, the darkest 1%).
+8. The bird in shade against the clouds' shade (`giant`: a faint sliver since leg 1). The shade's
+   light on the clouds carries the compensations above, the bird's doesn't; and the sea bounce
+   assumes a sunlit sea under it (the probe could see whether it is).
+
+**Leg 3: the trace and the pixel** (known issue: sunlit rims):
+1. Light the edge as the surface: the skin stays a pixel wide for the opacity (no aliasing), but the
+   light is taken as at a fixed depth past the entry (the depth past the refined entry scaled by
+   W/edgeW, for depthIn and the light march's start). Check: `view=2` at scale 0.5 against 0.75 goes
+   from 0.4–3% to ~0.
+2. The approach's minimum step (6 m + 2% of t: ~7 trace pixels at 1 km) hops over billow crests a
+   grazing ray passes within one step, by the jitter: rims and silhouettes flicker. Tie it to the
+   pixel footprint (1–2 pixels) near surfaces. `--profile` on grazing views (`skim`, `start`, `sun`),
+   `shimmer.png`.
+3. Fade by pixel footprint: the 1280 m lobes and 640 m turrets never fade (the broccoli on the
+   horizon), and the domes fade by `lod = t/15000` whatever the resolution. Fade each octave as its
+   relief falls under ~2 pixels.
+
+**Leg 4: the clipmap levels agree** (known issue: the lattice at the handovers; towers popping in at
+40–55 km):
+1. A tool first: `tools/world/levels.js`, how far the levels' surfaces and towers disagree over
+   boxes (the numbers above), to steer the rest.
+2. Every level from the same inputs: coarse levels keep every dome, widened and lowered to their cell
+   with the volume kept (as small domes already are), not only the roots ×1.25.
+3. The small cells back in L2 as coarse stand-ins: each tower's bubbles merged into a few of ≥ 900 m
+   with the same volume (leg 6's envelope at its coarsest). Watch the bubble cap and the L2 bake
+   (`bakeCost`). World change: fingerprint, flights.
+4. Then judge the dither at 7–10 and 40–55 km (`away`, `anvil`, 12 frames): once the levels agree it
+   may no longer show; blending stays rejected on cost (decisions).
+
+**Leg 5: a density profile like Nubis³**, after legs 2 and 3 (known issues: silver linings a pixel
+wide, inside cloud a uniform wall). The edge stays crisp (a step to part of the full density, frayed
+by the erosion); the density rises inward over tens of metres (erosion scaled by depth); nothing
+outside the surface. It differs from both failures in the decisions: soft rims were a linear ramp
+from zero (out of focus), the fringe was outside the surface (veils over the sea for kilometres).
+`sun`, `anvil`, `inside`, `close`, `start`'s near sea.
+
+**Leg 6: the shapes** (known issues: popcorn far away, mushroom tops, tops; world changes, so the
+fingerprint and the flights each step):
+1. Buoyancy continuous at the equilibrium level: air.js `buoyAt` jumps from +0.3·bmax to −0.03
+   there, and `stabOf` reads 0.82 just above it. Fewer flat discs (38% of tops under 0.45 now; add
+   that share to stats.js).
+2. Mushrooms: measure first (catalog.js). If ice outlives its column (`settle`: 1700·√(r/1000) s
+   above 8 km against 450–1600·√(r/1000) for the column), tie a top's life to the column under it.
+3. Towers as continuous envelopes along the thermals' paths (widening with height), the bubbles
+   shaping them rather than piled as balls: prototype in preview.js and catalog.js, then the bake.
+4. Billows without a lattice: noise-shape.wgsl's sphereField puts one sphere in most cells, radius
+   0.4–0.78 of it. Sizes from a power law, irregular spacing (sparse, clustered), several sizes per
+   octave: real cumulus edges are fractal (dimension ~1.35), with no one size.
+
+**Leg 7: a sun-space shadow map over ~20 km** (known issue: blotchy close-ups, stair-stepped
+distant tops). At 5° a billow 50 m tall casts a ~575 m shadow; the march has two samples between
+230 m and 1.36 km, and the shadow volume's texels are 768 × 360 m. Neither the sun nor the world
+moves, so bake it per area and stream it like a clipmap. Watch memory and bake time.
+
 ## Decisions: what failed, and why
 
 Worth knowing before tuning again.
@@ -196,7 +333,8 @@ Worth knowing before tuning again.
   bubble, the liveliness stronger. **Crowns perched on heads** read as knobs (`start`'s middle
   tower, a "teddy-bear head" in a review; `catalog.js`): small bubbles sitting on big ones with a
   narrow neck. **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird,
-  `sun`, `tower`): attached (`?dbg=1`), their base melts into the shade.
+  `sun`, `tower`, `away` right of the bird, bigger since the detail volume turned in leg 1):
+  attached (`?dbg=1`), their base melts into the shade.
 - **Tops**: tower heads now keep their domes unless they pushed far into stable air or hit the
   ceiling; flat crowns remain where they overshot far (`high2`'s left tower), and `seed3`'s cap
   under the ceiling shows sky beneath its right end. Deep folds between lobes go near black

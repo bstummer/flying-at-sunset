@@ -17,7 +17,7 @@
 
 import { TEST } from '../core/params.js';
 import { canvas, fail } from '../core/page.js';
-import { CLOUD_TOP, DETAIL_TILE, SHAPE_TILE } from '../constants.js';
+import { CLOUD_TOP, DETAIL_ROT, DETAIL_TILE, SHAPE_TILE } from '../constants.js';
 
 // (without WebGPU the piece cannot run: say why, and stop)
 const NEEDS = 'This piece needs WebGPU. Please open it in a recent version of Chrome, Edge, Safari or Firefox.';
@@ -192,7 +192,10 @@ const FULLSCREEN = /* wgsl */ `
 const fullscreenModule = device.createShaderModule({ label: 'fullscreen', code: FULLSCREEN });
 const pipelines = [], compiling = [];
 // constants JS and WGSL share, declared in front of every shader (f32)
-const SHARED = Object.entries({ CLOUD_TOP, SHAPE_TILE, DETAIL_TILE }).map(([k, v]) => `const ${k} = ${Number.isInteger(v) ? v.toFixed(1) : v};
+// (a 3x3, row-major in JS, goes in by columns: DETAIL_ROT * p in WGSL is the JS one applied to p)
+const wgslOf = v => Array.isArray(v) ? `mat3x3f(${[0, 1, 2].flatMap(c => [0, 1, 2].map(r => wgslOf(v[r * 3 + c]))).join(', ')})`
+  : Number.isInteger(v) ? v.toFixed(1) : `${v}`;
+const SHARED = Object.entries({ CLOUD_TOP, SHAPE_TILE, DETAIL_TILE, DETAIL_ROT }).map(([k, v]) => `const ${k} = ${wgslOf(v)};
 `).join('');
 // What a pipeline's shaders share: the header that declares its uniforms, samplers and the
 // resources its code names, and the bind group layout to match. writes: the storage buffers a

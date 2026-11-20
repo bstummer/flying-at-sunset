@@ -35,7 +35,7 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
       bProbe.ambUp = vec4f(ambSky * 3.14159 * occ, 1.0);
     }
     case 2u: {
-      // light from the sunlit cloud sea below
+      // light from the sunlit cloud sea below: the irradiance of a lower half sky of its radiance
       bProbe.ambDn = vec4f(u.ambSea * 3.14159, 1.0);
     }
     case 3u: {

@@ -12,7 +12,10 @@ fn march(xz: vec2f, y0: f32, jit: f32) -> vec2f {
   var self_ = true;
   var s = LIGHT_NEAR + 320.0 * (jit - 0.5);
   for (var i = 0; i < 320; i++) {
-    let p = vec3f(xz.x, y0, xz.y) + u.sunDir * s;
+    // (heights are above the curved planet, as in the trace: a straight ray rises by the square of
+    // how far it went, ~200 m in 50 km; the light march's 6 km gain 3 m, left out there)
+    var p = vec3f(xz.x, y0, xz.y) + u.sunDir * s;
+    p.y += s * s * (1.0 - u.sunDir.y * u.sunDir.y) * INV2R;
     if (p.y > CLOUD_TOP || s > 150000.0) { break; }
     let l = select(2, 1, inLv(p.xz, 1));
     let d = macroAt(p, l);
