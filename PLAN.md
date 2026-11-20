@@ -57,46 +57,42 @@ decisions on what failed). The author judges after each leg; legs 2 and 5 are mo
    2.6× less. In sun it hardly shows (the keel a touch less warm); in shade (`giant`) the bird is now
    a faint blue sliver, where its keel glowed orange. Judge the bird with the shade in leg 2.
 
-**Leg 2: the light's inputs** (known issues: colour and range, the sea into the sun; the navy shade,
-milky flat tops, grazing tops lit like faces):
-1. A reference first: `tools/light/` (Node), a Monte Carlo of the trace's medium (σ 0.07, the octaves'
-   phase or HG 0.85) for a slab lit at 5°, a sphere and a tower-sized body: the light leaving a flat
-   top, a face turned to the sun, the far side of 1.5 km of cloud, at the bird's view angles. These
-   are the numbers to fit `sunScatter` to, instead of the eye, review after review. A GPU path tracer
-   of a real view (`?pt` in the test mode) only if they leave doubt.
-2. The sky's inputs: the aerosol absorption is 4.4e-3/km (×2.2) where Hillaire's extinction is
-   4.44e-3 (absorption 0.44e-3: Bruneton's single-scattering albedo 0.9). Fix it in atmo.wgsl and
-   sun.js together (better: once, in constants.js), then retune the ×2.2 to the look. The haze
-   (`HAZE_K`, HAZE_H) veils the clouds but not the sun's colour (sun.js) or the sky: put it in both.
-   Every colour downstream moves, so this gets its own capture of all views before the rest of the leg.
-3. The light march's depth near a surface: estimate each step's length inside from the distance at
-   its middle and its slope along the ray (from the steps beside it), not from a ramp that widens with
-   the step. Averaging occupancy with half at the surface darkened lit tops because the air above them
-   counted (decisions); the slope tells the two apart. Single scattering on grazed tops drops.
-4. Diffusion by where the light entered. The cosine there is the distance's slope along the sun ray
-   where the march leaves the cloud toward the sun: sin 5° on a flat top; for a tower's shade, its
-   far, sunlit side. No 0.1 floor. The depth for 1/(1 + 0.11τ) is the path's τ times that cosine (the
-   depth below the entry, as in a slab). Shade then gets what diffuses through (~8% through 1.5 km).
-   Facing over 15 m made pumice and a 0.35 floor made the far side brown (decisions); this is neither
-   (large-scale, falling with depth), but judge `side`, `tower`, `close` for both.
-5. One rule for shadows: once the march leaves its cloud, whatever it meets after is another cloud's
-   shadow (e^−τ, as the shadow volume's second channel), at 500 m as at 2 km. Watch for speckle (long
-   steps hit or miss a heap) and the sea's billows shading each other.
-6. The column data along the light march: each step reads its own (colAt, billowAt), not the start's
-   from up to 1.36 km back.
-7. Then retire the compensations one at a time, each kept only if the look holds: CLOUD_SAT → 1,
-   AMB_K → 1, the blue and violet tints on the sky light (trace.wgsl), the exposure last. Judge against
-   the reviews: lit faces orange to salmon (not apricot), shade a luminous lavender grey at 40–50% of
-   the lit side, folds dark but not navy (`tower`'s lit-face luminance SD, the darkest 1%).
-8. The bird in shade against the clouds' shade (`giant`: a faint sliver since leg 1). The shade's
-   light on the clouds carries the compensations above, the bird's doesn't; and the sea bounce
-   assumes a sunlit sea under it (the probe could see whether it is).
+**Leg 2, done (2026-11-20)** (`screenshots/l1-sea` → `l2-end`; `node tools/light/reference.js`):
+1. The reference, `tools/light/`: a Monte Carlo of the medium (slabs facing any way, balls) under the
+   sun alone, the trace's light beside it (model.js, in step with the shaders; tests/light.test.js
+   holds both). It found flat tops lit at 5° 4–9× too bright (the march's τ 2.1 for 8.0), faces
+   square to the sun 0.73×, and no light in the shade, where a tower passes 3% of its lit side and a
+   1.5 km wall 12% (a 100 m ball glows brighter at its back than its front).
+2. The aerosols' absorption 0.444e-3/km (×2.2), the atmosphere's constants once, in constants.js
+   (FOR_SHADERS, as the planet's radius): 1–2 levels; the ×2.2 stays. The haze in the sun's path
+   and the sky failed (decisions).
+3.–5. The light march and sunScatter rebuilt and fitted (37 views of 13 shapes within ~1.6× rms, the
+   isolated small balls aside): each step's length inside from its slope; the octaves' forward
+   lobe kept from order to order, the back lobe fading; single scattering 0.95 HG(0.85) + 0.05
+   HG(−0.3); diffusion D μ^1.4 / (1 + 0.11 τμ), μ where the light came in (the surface's 60–400 m
+   facing close by, the slope where the path leaves farther in), every choice a smooth weight;
+   clouds past this one take the direct light and the low orders, the diffusion only those past
+   ~100 m, blurred with distance. With τ right, the outline's pixel-wide ramp ate half the glare
+   toward the sun: leg 3's step 1 came here, the light as at a 1 m skin (by equal optical depth along
+   the view) whatever the ramp. The look: crisper, sculpted towers (`tower`, `close`), more relief
+   (`away`, `side`), heap tops seen from above pastel lavender, not orange (`down`), the sea in a
+   tower's shadow lavender, not navy (`tower`), the glare toward the sun about as before (`start`,
+   `sun`). Against the trace's resolution (`view=2`, scale 0.5 against 0.75): `away` 1.5–3.1% →
+   0.7–1.3%, `high2` halved, `start` as before (leg 3).
+6. Column data per light-march step: not kept (decisions).
+7. AMB_K 1.4 → 1: lit faces more orange, the shade lavender grey at 45% of the lit side (39%,
+   navy, before), deeper folds (`side`'s darkest 1% 51 → 42). CLOUD_SAT and the tints stay
+   (decisions).
+8. The bird in shade (`giant`) stays a pale blue-grey silhouette, like the shade around it: a sea
+   bounce that knows whether the sea under it is sunlit would only darken it.
+   Cost (leg 1 against leg 2, interleaved L1 L2 L2 L1 L1 L2, six views, 60 frames, NVIDIA laptop):
+   the trace −2 to −4% (`start` −14%, `side`, `close` −4%, `tower` +2%). Shimmer toward the sun up (`start` 0.09 → 0.12%, `sun`, `high2`, `away`),
+   elsewhere down. Flights identical.
 
 **Leg 3: the trace and the pixel** (known issue: sunlit rims):
-1. Light the edge as the surface: the skin stays a pixel wide for the opacity (no aliasing), but the
-   light is taken as at a fixed depth past the entry (the depth past the refined entry scaled by
-   W/edgeW, for depthIn and the light march's start). Check: `view=2` at scale 0.5 against 0.75 goes
-   from 0.4–3% to ~0.
+1. (The light as at a 1 m skin went in with leg 2.) What still moves with the trace's resolution:
+   `start`'s light 0.4–1.6% between scale 0.5 and 0.75 (`view=2`): the sky light's taps and occlusion at
+   the view sample, the entry's tolerance, the steps below.
 2. The approach's minimum step (6 m + 2% of t: ~7 trace pixels at 1 km) hops over billow crests a
    grazing ray passes within one step, by the jitter: rims and silhouettes flicker. Tie it to the
    pixel footprint (1–2 pixels) near surfaces. `--profile` on grazing views (`skim`, `start`, `sun`),
@@ -263,8 +259,8 @@ Worth knowing before tuning again.
   400 m); deep inside, neutral.
 - **Saturation in the final pass** turned the golden haze toward the sun into an orange dust band:
   it is in the clouds' own light now (CLOUD_SAT). Shade tinted ×1.45 blue with ×1.3 saturation was
-  navy at a fifth of the lit side (reviews: luminous lavender grey, 40–50%); now ×1.2 and more sky
-  light (AMB_K 1.4). Lifted further (×1.28, AMB_K 1.55), the shade turned periwinkle and the lit
+  navy at a fifth of the lit side (reviews: luminous lavender grey, 40–50%); now ×1.2 (AMB_K, 1.4 then,
+  went back to 1 once diffusion lit the shade: leg 2). Lifted further (×1.28, AMB_K 1.55), the shade turned periwinkle and the lit
   towers lost their folds (`tower`'s lit face: luminance SD 36 → 18).
 - **The in-cloud mist's density variations near every cloud** (its first 120 m, within 900 m of the
   camera) made near surfaces fog: now only while the camera is in cloud.
@@ -299,6 +295,20 @@ Worth knowing before tuning again.
   under the ceiling turned a pill with sky beneath it (`seed3`).
 - **The finest domes clustered on the turrets' caps near the camera**: the near sea went doughy
   (`away`, `side`); they cluster only from ~1.5–5 km on, where they read as a carpet (frogspawn).
+- **The haze in the sun's path and the sky** (2026-11: the trace's haze, 2.6e-5/m over 6 km, as
+  aerosol in the atmosphere's tables and the sun's colour): the sun at the sea's height ×0.27,
+  toward the sun a white veil over half the frame, milky everywhere even at ×2–2.5 exposure. The
+  veil stays the trace's alone.
+- **Other clouds' shadow on the diffusion as e^−τ** (one rule for a heap 500 m off and 2 km off):
+  every heap's shadow a hard blot of paint (`side`, `start`); light diffusing under a surface fills a
+  small shadow. Clouds nearby take the direct light; the diffusion only those past ~100 m thin.
+- **An all-or-nothing choice in the diffusion** (which step the path leaves its cloud in, the slope
+  it crosses there, own cloud or another): flat blots with hard edges across the heap tops (`down`,
+  "decals"). A constant slant for light from far off instead: milky, the relief gone. Smooth weights.
+- **Column data per light-march step** (the review's bug 8): +10–13% of the trace (A B B A, column
+  data alone as much: the samples take the detail branches more often), the change hard to see.
+- **CLOUD_SAT 1** (2026-11): lit faces tan (saturation 0.40 → 0.31). **The sky light's tints off**: the
+  shade neutral grey (saturation 0.08), on the way to brown. Both stay.
 
 ## Known issues and ideas
 
@@ -350,13 +360,23 @@ Worth knowing before tuning again.
   flank; neither looks up a flank from below. A view of its own would need another spot or tower.
 - **Near the camera** the sea into the sun is still soft, glowing mush (`start` lower left, `seed3`),
   and the shaded sea seen from above blotchy (`giant`'s foreground): the light there is diffusion
-  and sky light, smooth over tens of metres. **Into the sun** the sea's tops are pale cream: the sky
-  light on faces turned from the sun brightens them (`?dbg=7`).
+  and sky light, smooth over tens of metres. **Into the sun** the sea's tops were pale cream, lit by
+  the sky; since leg 2 they have form, with a soft bluish patch beside the bird in `start`.
+- **The light against its reference** (`node tools/light/reference.js`): an isolated small ball's lit
+  side 5× (the trace can't see how little cloud lies behind a billow; on a real cloud, a whole body),
+  a tower's shade 3.7× a ball's, 0.6× a wall's (real towers lie between), tops seen with the sun
+  behind 1.3–1.8×, faces 0.84×, the glare off tops toward the sun 0.75×.
+- **Lit faces darker since leg 2**: `tower`'s 174 → 152, `away`'s lit sea 146 → 114 (luminance), the
+  exposure kept at 14 (raised, the glare toward the sun goes milky, decisions): for the author.
+- **The bird in shade** (`giant`): a pale blue-grey silhouette, like the shade around it (its keel
+  glowed orange from a sea bounce 2.6× the clouds' until leg 1): for the author.
 - **Colour and range** (reviews, 2026-11): lit faces apricot (≈ 238,177,116) where a sunset photo
   shows orange to salmon; toward the sun the haze is a milky band over the low sea (`high2`,
   `seed3`). Lit tower faces sit high on the tone curve with their folds filled by the light inside
   (`tower`'s lit face: luminance SD 36 before, 20 now); one review wants deeper darks, another
-  wanted the creases lit: the balance (`facing` in sunScatter, AMB_K) is the lever.
+  wanted the creases lit. Since leg 2: lit faces (190,145,108), saturation 0.43, luminance SD 35; the
+  shade (71,67,78) at 45% of them. The levers: sunScatter's DIFFUSE and μ power (fitted to the
+  reference: change model.js with them), CLOUD_SAT, the exposure.
 - **Cost of the billows sized to their bubble** (2026-11, A/B against the commit before, 3 × 200
   frames, NVIDIA laptop, 960×540 at 0.5): the trace +2–12% (`tower` +2, `away` +5, `sun` +11,
   `high2` +11, `start` +12, `side` +12), split between the billow volume's reads, the half-size
@@ -391,8 +411,7 @@ Worth knowing before tuning again.
 - The `skim` view (170 m over the sea's top) shows nothing but haze: the billows rise higher than that
   there, so the bird is inside them. Its brief wants billows up close; a pose a few hundred metres
   higher would show them.
-- Values JS and WGSL both keep as literals of their own: the sun-colour table's 750 m steps, the planet
-  radius, the high layers' heights, the offsets of struct Probe's fields read back (CLAUDE.md §8 wants them from `constants.js`).
+- Values JS and WGSL both keep as literals of their own: the sun-colour table's 750 m steps, the high layers' heights, the offsets of struct Probe's fields read back (CLAUDE.md §8 wants them from `constants.js`).
 - A WebGPU validation error shows no note (left out: a harmless one on a browser never tried would stop
   the piece); the tools hear every one.
 - Nothing publishes until main's first verified build makes the "latest" release; until then every

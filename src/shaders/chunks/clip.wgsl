@@ -1,7 +1,7 @@
 
 // The clipmaps (render/stream.js): the clouds' constants, the level a sample uses, the distance to
 // the large shapes, the column data (shaders/cloud.js)
-const INV2R = 0.5 / 6360000.0;
+const INV2R = 0.5 / (RG * 1000.0);   // a height's rise with distance (m) on the curved planet
 const SEA_BASE = 520.0;
 const SIGMA = 0.07;         // extinction inside clouds (1/m): cumulus measure 0.05–0.12
 const EDGE_W = 80.0;        // soft boundary thickness (m)

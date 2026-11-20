@@ -130,49 +130,69 @@ fn tsvTau(wp: vec3f, h: f32) -> vec2f {
   return textureSampleLevel(tTsv, sVol, vec3f(wp.x * u.tsvA.x + u.tsvA.y, wp.z * u.tsvA.x + u.tsvA.z, h * u.tsvA.w), 0.0).rg * saturate(w / 8000.0);
 }
 
-// Multiple scattering approximation (Wrenninge): sum of octaves with reduced extinction & anisotropy
-// (each octave's share falls as fast as its extinction, a = b: no light that was never taken out)
+// Multiple scattering approximation (Wrenninge): sum of octaves with reduced extinction (each
+// octave's share falls as fast as its extinction, a = b: no light that was never taken out). Their
+// forward lobe keeps its strength from order to order and the back lobe fades: in a real cloud
+// (g ≈ 0.85) the low orders still scatter forward, the glare off the sea toward the sun (fitted to
+// a Monte Carlo of the medium, tools/light/)
 fn phaseOctaves(c: f32) -> vec4f {
-  return vec4f(mix(HG(c, -0.3), HG(c, 0.8), 0.62), mix(HG(c, -0.15), HG(c, 0.4), 0.62),
-               mix(HG(c, -0.075), HG(c, 0.2), 0.62), mix(HG(c, -0.0375), HG(c, 0.1), 0.62));
+  return vec4f(mix(HG(c, -0.3), HG(c, 0.85), 0.95), mix(HG(c, -0.09), HG(c, 0.76), 0.62),
+               mix(HG(c, -0.027), HG(c, 0.722), 0.62), mix(HG(c, -0.0081), HG(c, 0.686), 0.62));
 }
 fn msScatterP(tau: f32, ph: vec4f) -> f32 {
   let k = vec4f(1.0, 0.5, 0.25, 0.125);
   return dot(exp(-tau * k) * k, ph);
 }
-// The sun's light scattered at a point in a cloud, per unit of sunlight: the low orders by octaves,
-// and the high ones as diffusion (light that wandered deep into the cloud: about E/π where the sun
-// gets in square to the surface, less where it grazes it (a cloud top at 5° takes in a fraction of
-// what a face turned to the sun does), falling off as a thick cloud's diffuse transmission
-// (two-stream, g ≈ 0.85) with the optical depth toward the sun, and lower within a mean free path
-// or two of the surface, where it leaks out). Neutral: droplets scatter every colour alike.
-// tau: optical depth toward the sun (lightTauN); far: past its reach (tsvTau: through this cloud,
-// through the clouds beyond, whose shadow takes every order alike); pw: the powder term; depthIn:
-// depth below the surface (m); nS: how squarely the surface nearby faces the sun (-1..1, lightTauN).
-const DIFFUSE = 0.3;
-fn sunScatter(tau: f32, far: vec2f, ph: vec4f, pw: f32, depthIn: f32, nS: f32, nL: f32) -> f32 {
-  // (mostly the large shape's side: light soaks from a lit bulge into the creases beside it, but
-  // not around to a tower's far side, which the sky lights; deep inside it comes from all around)
-  let facing = mix(saturate(0.1 + 0.55 * nL + 0.5 * nS), 0.5, smoothstep(30.0, 200.0, depthIn));
-  let diffu = DIFFUSE * facing / (1.0 + 0.11 * (tau + far.x)) * (1.0 - 0.55 * exp(-depthIn * SIGMA / 1.5));
-  return (msScatterP(tau + far.x, ph) * pw + diffu) * exp(-far.y);
+// The sun's light scattered at a point in a cloud, per unit of sunlight (fitted to a Monte Carlo of
+// the medium, tools/light/): the low orders by octaves, and the high ones as diffusion: light that
+// wandered in where the path toward the sun leaves the cloud, as much as gets in there (mu^1.4: at
+// a grazing angle most of it scatters forward and out again), falling off as a thick cloud's diffuse
+// transmission (two-stream, g ≈ 0.85) with the depth below that entry (own mu), and lower within a
+// mean free path or two of the surface, where it leaks out. Where the light came in close by
+// (lp.near), mu is the surface's own large-scale facing (lp.muN); farther in, where the path leaves
+// (lp.muF: through a tower to its shade, its far, sunlit side; a few % of the lit side get through).
+// Clouds toward the sun past this one (other) take the direct light and the low orders; the
+// diffusion only the farther ones thin (otherD): light diffusing under the surface from the lit
+// cloud around fills a small shadow, and the shadow volume's clouds beyond (far.y, 768 m texels:
+// large shadows) take all of it. Neutral: droplets scatter every colour alike. lp: the path toward
+// the sun (lightPath; past its reach, the shadow volume's far.x through this cloud); pw: the powder
+// term; depthIn: depth below the surface (m).
+const DIFFUSE = 0.42;
+fn sunScatter(lp: LightPath, far: vec2f, ph: vec4f, pw: f32, depthIn: f32) -> f32 {
+  let tau = lp.own + far.x;
+  let mu = max(mix(lp.muF, lp.muN, lp.near), 1e-4);
+  let diffu = DIFFUSE * pow(mu, 1.4) / (1.0 + 0.11 * (tau * mu + lp.otherD)) * (1.0 - 0.55 * exp(-depthIn * SIGMA / 1.5));
+  return (msScatterP(tau + lp.other, ph) * pw + diffu) * exp(-far.y);
 }
-// the sky's light on cloud (bAmb holds irradiance / π; a thick cloud returns most of it)
-const AMB_K = 1.4;
+// the sky's light on cloud (bAmb holds irradiance / π; a thick cloud returns nearly all of it: as the
+// sky gives it, now that diffusion lights the shade; more made the shade milky and the lit side flat)
+const AMB_K = 1.0;
 
-// Optical depth toward the sun from a point (short march with growing steps, each sampled at its
-// middle), and how much the surface faces the sun (-1..1), from the distance field: nS over the
-// first ~60 m (light that wanders inside spreads over that much: finer creases would turn into dark
-// pits), nL over ~400 m (the side of the bulge or tower it is on), and the distance 5 m toward the
-// sun (the face of the smallest billows: its difference to the point's own). l, C, bs: clipmap
-// level, column data and billows of the starting point. Returns (tau, nS, nL, that distance).
-fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> vec4f {
-  var tau = 0.0;
+// The light's path toward the sun from a point (a short march with growing steps, each sampled at
+// its middle), from the distance field: the optical depth through the cloud the point is in (own)
+// and through the clouds it meets after leaving it (other: their shadow; otherD: as the diffusion
+// sees them, those past ~100 m, their edges blurred with distance: light diffusing under a surface
+// fills smaller shadows and softens the rest); whether the light came in close by (near: the path
+// is out of its cloud within ~60 m); how squarely it came in there (muN: how much the surface faces
+// the sun over 60 and 400 m, the scale diffusing light spreads over; the slope of each small dome
+// turned creases into dark pits) and farther in (muF: the distance's slope along the path where it
+// leaves its cloud; 0.5 if it doesn't within the march). Each of these is a smooth weight, never a
+// choice: how surely the path is still in its own cloud (inside) falls from step to step as each
+// step's length inside does, and every choice of a step cut the diffusion into flat blots. nS: how
+// much the surface faces the sun over the first ~60 m (-1..1); d0: the distance 5 m toward the sun
+// (the face of the smallest billows, against the point's own). dView: the point's own distance; l,
+// C, bs: clipmap level, column data and billows of the start.
+struct LightPath { own: f32, other: f32, otherD: f32, nS: f32, muN: f32, muF: f32, near: f32, d0: f32 }
+fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> LightPath {
+  var lp = LightPath(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
   var s = 0.0;
   var ds = 10.0;
-  var d0 = 0.0;
+  var dPrev = dView;
+  var sPrev = 0.0;
+  var inside = 1.0;
+  var wOut = 0.0;     // how surely the path has left its cloud, and the slopes where, by that weight
+  var gOut = 0.0;
   var d1 = 0.0;
-  var nS = 0.0;
   var nL = 0.0;
   for (var i = 0; i < 6; i++) {
     // (at the middle of each step, the same for every pixel: a jittered point flips between inside
@@ -182,21 +202,33 @@ fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> vec
     let wp = wp0 + u.sunDir * sm;
     let h = h0 + u.sunDir.y * sm;
     // the first steps keep the detail of the view sample: bulges down to metres shade themselves
+    // (all with the start's column data and billows: each step's own cost the trace 10-13%)
     let d = cloudSDF(wp, h, vec3f(macroAt(vec3f(wp.x, h, wp.z), l), bs), C, lod0 + f32(max(i - 2, 0)) * 0.6);
-    if (i == 0) { d0 = d; }
+    if (i == 0) { lp.d0 = d; }
     else if (i == 1) { d1 = d; }
-    else if (i == 2) { nS = clamp((d - d0) / 57.8, -1.0, 1.0); }
+    else if (i == 2) { lp.nS = clamp((d - lp.d0) / 57.8, -1.0, 1.0); }
     else if (i == 4) { nL = clamp((d - d1) / 374.0, -1.0, 1.0); }
-    // near steps: point density; long far steps: smooth coverage estimate (no contour rings)
-    // the density ramp widens with the step length so long steps don't switch abruptly (and is
-    // sharp right at the start, so each bulge shades the one beside it)
-    tau += saturate(-d / (mix(6.0, EDGE_W, saturate(s / 300.0)) + ds * 0.3)) * ds * SIGMA;
+    // the step's length inside: where the distance, running on at its slope from the sample before,
+    // crosses zero (a grazed top is inside for a whole long step though its middle is metres deep;
+    // the air just above it is outside), blurred over 3 m (cloud edges are not hard)
+    let g = (d - dPrev) / (sm - sPrev);
+    let f = saturate(0.5 - d / max(abs(g) * ds, 3.0));
+    lp.own += f * inside * ds * SIGMA;
+    lp.other += f * (1.0 - inside) * ds * SIGMA;
+    lp.otherD += saturate(0.5 - d / max(abs(g) * ds, 0.15 * sm)) * (1.0 - inside) * ds * SIGMA * smoothstep(60.0, 300.0, sm);
+    let w = max(inside - f, 0.0);
+    wOut += w;
+    gOut += w * saturate(g);
+    inside = min(inside, f);
+    if (i == 2) { lp.near = 1.0 - inside; }
+    dPrev = d;
+    sPrev = sm;
     s += ds;
     ds *= 2.4;
   }
-  // then on through the cloud it is in, through the large shapes alone, in three long steps out to
-  // LIGHT_REACH, until it comes out (a tower's far side shades its backlit face in metres, not in
-  // the shadow volume's 768 m texels; the shadows of other clouds stay the shadow volume's)
+  // then on, through the large shapes alone, in three long steps out to LIGHT_REACH, until it comes
+  // out (a tower's far side shades its backlit face in metres, not in the shadow volume's 768 m
+  // texels; the shadows of clouds beyond stay the shadow volume's)
   ds = 1200.0;
   for (var i = 0; i < 3; i++) {
     let sm = s + ds * 0.5;
@@ -204,14 +236,27 @@ fn lightTauN(wp0: vec3f, h0: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> vec
     var lf = l;
     if (lf == 0 && !inLv(p.xz, 0)) { lf = 1; }
     if (lf == 1 && !inLv(p.xz, 1)) { lf = 2; }
-    let occ = saturate((120.0 - macroAt(p, lf)) / 380.0);
-    if (occ < 0.05) { break; }
-    tau += occ * ds * SIGMA;
+    let d = macroAt(p, lf);
+    let f = saturate((120.0 - d) / 380.0);
+    lp.own += f * inside * ds * SIGMA;
+    lp.other += f * (1.0 - inside) * ds * SIGMA;
+    lp.otherD += f * (1.0 - inside) * ds * SIGMA;
+    let w = max(inside - f, 0.0);
+    wOut += w;
+    gOut += w * saturate((d - dPrev) / (sm - sPrev));
+    inside = min(inside, f);
+    if (f < 0.05) { break; }
+    dPrev = d;
+    sPrev = sm;
     s += ds;
     ds *= 1.33;
   }
-  return vec4f(tau, nS, nL, d0);
+  lp.muN = saturate(0.5 * lp.nS + 0.5 * nL);
+  lp.muF = (gOut + 0.01) / (wOut + 0.02);
+  return lp;
 }
-fn lightTau(wp0: vec3f, h0: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> f32 {
-  return lightTauN(wp0, h0, l, C, bs, lod0).x;
+// the optical depth toward the sun the march sees, through every cloud
+fn lightTau(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> f32 {
+  let lp = lightPath(wp0, h0, dView, l, C, bs, lod0);
+  return lp.own + lp.other;
 }

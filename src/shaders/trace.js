@@ -5,14 +5,16 @@
 // is found by a few Illinois regula-falsi steps (else far clouds look dark and speckled); inside,
 // steps aim at a fixed optical depth (σ = 0.07/m) but stay fine in the rim (about a pixel wide on
 // the billowy tops); it ends at T < 0.02.
-// Light (sunScatter, shaders/cloud.js): lightTauN marches 6 growing steps toward the sun, the
-// first with the view sample's detail (domes of metres shade themselves), the same for every pixel
-// (jittered, they flipped in and out of the bulges beside the path: a screen-door), the shadow
-// volume carries on from there (through the same cloud, and through the clouds beyond: their
-// shadow a plain multiplier); multiple scattering by octaves (Wrenninge) with a two-lobe HG phase
-// (silver linings); diffusion (light soaking deep into the cloud, strongest where the sun enters
-// square to the side of the bulge or tower: it fills the creases of a lit side, not a tower's far
-// side, and comes from all around deep inside); the smallest billows' own faces toward the sun,
+// Light (sunScatter, shaders/cloud.js, fitted to a Monte Carlo of the medium, tools/light/): taken as
+// at a cloud's edge LIGHT_SKIN thick, whatever the outline's ramp; lightPath marches 6 growing
+// steps toward the sun, the first with the view sample's detail (domes of metres shade
+// themselves), the same for every pixel (jittered, they flipped in and out of the bulges beside the
+// path: a screen-door), the shadow volume carries on from there (through the same cloud, and
+// through the clouds beyond: their shadow a plain multiplier); multiple scattering by octaves
+// (Wrenninge) with a two-lobe HG phase (silver linings, the glare off the tops toward the sun);
+// diffusion (light soaking into the cloud where the path toward the sun leaves it, as squarely as
+// it came in there: a lit side's creases fill, a tower's shade gets a few % of its lit side); the
+// smallest billows' own faces toward the sun,
 // over 5 m, near the camera; sky light by which way the surface faces (one SDF tap 22 m above and
 // more far away, and the light march: blue zenith on tops, the warm bounce of the sunlit sea under
 // bellies, golden or violet sky on the sides; shade takes the sky's blue, grey inside cloud), as

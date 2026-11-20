@@ -3,12 +3,9 @@
 // sunCol), and sunColorAt(h) between them
 
 import { clamp, mix3, scl } from '../math.js';
-import { SUN_DIR } from '../constants.js';
+import { MIE_A, MIE_H, MIE_S, OZO_A, RAY_H, RAY_S, RG, RT, SUN_DIR } from '../constants.js';
 
-const ATM = {
-  RG: 6360, RT: 6460, rayS: [5.802e-3, 13.558e-3, 33.1e-3], rayH: 8.0,
-  mieS: 3.996e-3 * 2.2, mieA: 4.4e-3 * 2.2, mieH: 1.2, ozo: [0.650e-3, 1.881e-3, 0.085e-3],
-};
+const ATM = { RG, RT, rayS: RAY_S, rayH: RAY_H, mieS: MIE_S, mieA: MIE_A, mieH: MIE_H, ozo: OZO_A };
 function atmTransmittance(hKm, mu) {
   const r = ATM.RG + hKm;
   const disc = r * r * (mu * mu - 1) + ATM.RT * ATM.RT;

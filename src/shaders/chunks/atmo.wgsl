@@ -1,14 +1,7 @@
 
-// The atmosphere (Rayleigh, Mie, ozone; lengths in km), phase functions, and lookups into the
-// transmittance and sky-view tables (shaders/sky.js)
-const RG = 6360.0;
-const RT = 6460.0;
-const RAY_S = vec3f(5.802e-3, 13.558e-3, 33.1e-3);
-const RAY_H = 8.0;
-const MIE_S = 3.996e-3 * 2.2;
-const MIE_A = 4.4e-3 * 2.2;
-const MIE_H = 1.2;
-const OZO_A = vec3f(0.650e-3, 1.881e-3, 0.085e-3);
+// The atmosphere (Rayleigh, Mie, ozone; lengths in km: RG … OZO_A from constants.js, as the sun's
+// colour has them), phase functions, and lookups into the transmittance and sky-view tables
+// (shaders/sky.js)
 const TRANS_SIZE = vec2f(256.0, 64.0);
 const SKY_SIZE = vec2f(192.0, 108.0);
 

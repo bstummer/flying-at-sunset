@@ -57,7 +57,7 @@ fn skyColor(dir: vec3f) -> vec3f {
 
 // --- thin high layers, drawn as sheets at fixed heights (they are thin next to the distances they
 // are seen from) and sorted against the clouds by depth
-const LAYER_INV2R = 0.5 / 6360000.0;
+const LAYER_INV2R = 0.5 / (RG * 1000.0);
 // distance along dir to height H over the curved planet (parabolic approximation), -1 if none
 fn distToHeight(h0: f32, dy: f32, H: f32) -> f32 {
   let c = h0 - H;

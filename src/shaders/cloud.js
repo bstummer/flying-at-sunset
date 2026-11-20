@@ -27,10 +27,12 @@
 // - densityFromSDF: density from the signed distance, ramping up over a few metres or about a pixel
 //   (real cumulus ends within metres), its surface frayed a few metres deep by the detail volume;
 //   drifting mist inside cloud near the camera, while the camera is in cloud.
-// - lightTauN: the optical depth toward the sun (6 growing steps from 10 m, each sampled at its
-//   middle, the first three with the view sample's detail: domes of metres shade themselves) and
-//   which way the surface faces it, over ~60 m and ~400 m. The trace's header describes the
-//   lighting.
+// - lightPath: the light's path toward the sun (6 growing steps from 10 m, each sampled at its
+//   middle, the first three with the view sample's detail: domes of metres shade themselves; then
+//   three long steps through the large shapes): the optical depth through the point's own cloud and
+//   through clouds beyond it, whether the light came in close by and how squarely, all smooth
+//   weights. sunScatter: the octaves and the diffusion, fitted to a Monte Carlo of the medium
+//   (tools/light/). The trace's header describes the lighting.
 
 // uniforms of the clipmap lookups (part of the uniforms of every shader that includes them)
 export const U_CLIP = {

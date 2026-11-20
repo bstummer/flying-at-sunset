@@ -89,7 +89,7 @@ What the author keeps coming back to:
 |---|---|
 | `npm install` | Installs the dev dependencies (Vite, Playwright) and Playwright's headless Chromium, the only browser the tools use. |
 | `npm run dev` | Vite's dev server: the sources as ES modules, reloading on every edit. |
-| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the shaders' includes, the screenshot tool's arguments and compares, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
+| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the light's reference and the trace's light against it, the shaders' includes, the screenshot tool's arguments and compares, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
 | `npm run build` | `dist/index.html`. Fails on any other output, or a module from outside `src/`. |
 | `npm run check` | `tools/check-build.js`: one self-contained file within the size budget, and the `src/` lint. |
 | `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
@@ -100,6 +100,7 @@ What the author keeps coming back to:
 | `node tools/flights.js [--label L]`, `--compare A B` | The scripted flights' logs (15 s each, from the start and diving into the cloud tops) into `screenshots/flights/<label>.json`; compare says per flight "identical" or where they part and by how much. |
 | `npm run map` | `tools/world/map.js`: a top-down map of the world (restlessness, towers by height), without rendering. |
 | `node tools/world/fingerprint.js [--write]` | Whether the CPU world is the one recorded in `tests/fixtures/world-fingerprint.json`; `--write` records it after a deliberate change. |
+| `node tools/light/reference.js [--cases top,face] [--fresh]` | The trace's light against a Monte Carlo of the medium (`tools/light/`): per shape (tops, slopes, faces, walls lit from behind, balls) and view, the radiance a real cloud sends and the trace's (its model, `tools/light/model.js`). The Monte Carlo's numbers are kept in `screenshots/light/` (minutes to make again). |
 | `node tools/linux.js <command>` | Runs a command in a Linux container like CI's runner (Docker): SwiftShader captures on Windows and macOS (§4). |
 
 The tools test `dist/index.html` as built, and refuse one older than its sources: `npm run build` first
@@ -184,6 +185,11 @@ For every change that can affect pixels:
   it to its promises (top speed, the floor under the sea, the ceiling, climbs trading speed for height,
   stability at a coarse time step). The flights in the page are `tools/flights.js`'s and the flight
   check's.
+- The light has a reference: `tests/light.test.js` holds the Monte Carlo (`tools/light/mc.js`) to
+  closed forms, and the trace's light within a factor two of it and independent of the outline's
+  width. The trace's light is `tools/light/model.js`, a copy of the shaders' (`sunScatter`,
+  `lightPath`, the skin): a change to those formulas changes it too, and `reference.js` says how far
+  it then is from a real cloud.
 - The checks test the piece, and the tools themselves: the streaming check compares the streamed
   volumes with a fresh start's texel by texel, and the errors check proves the tools hear a WebGPU
   validation error and a lost device.
@@ -204,7 +210,7 @@ src/
   main.js             the start, the main loop (frameStep), the steering hint, a lost device, window.__debug
   worker.js           the world's worker: src/world/ off the page's thread (column data, bubbles, the domes around
                       the bird, ?preset's place), bundled into the page as a string and started from a blob: URL
-  math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the noise tiles and the detail volume's turn, the render origin, the ceiling
+  math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the noise tiles and the detail volume's turn, the render origin, the ceiling, the atmosphere
   core/               the page around the piece: every URL parameter (params.js, §7), its elements, the note,
                       refused requests and fullscreen (page.js), steering (input.js), the world's worker from the
                       page's side (world.js), the test mode (capture.js), the readout (readout.js, ?debug), the
@@ -218,7 +224,7 @@ src/
   shaders/            WGSL: a .wgsl file per shader, chunks/ they include; per family (sky, textures, cloud, volumes,
                       trace, taau, probe, mist, bird, post) a .js module with the uniforms and the shaders
   style.css
-tools/                screenshots, measurements (measure.js, image.js) and compares, behaviour checks, the build check, the world in Node, the Linux container, the site's folders
+tools/                screenshots, measurements (measure.js, image.js) and compares, behaviour checks, the build check, the world in Node, the light's reference (light/), the Linux container, the site's folders
 tests/                node:test suites and their fixtures
 ```
 
@@ -293,8 +299,8 @@ header; outside the test mode one the page can't read is a console warning, and 
   buffers `bX` (registered in `render/gpu.js`; a name in a comment doesn't count; a buffer's struct is
   declared in a chunk the shaders that use it include); a pass (`pass`, `dispatch`) hands them over by
   those names, and a missing one throws (`render/gpu.js`'s header). Entry points: `vs`, `fs`, `cs`.
-  A value JS and WGSL both use comes from `constants.js` through the pipeline's header (`CLOUD_TOP`,
-  the noise tiles, `DETAIL_ROT`), never as a second literal; a switch is an `override` set by the pipeline's
+  A value JS and WGSL both use comes from `constants.js` through the pipeline's header (its
+  `FOR_SHADERS`: the ceiling, the noise tiles, `DETAIL_ROT`, the atmosphere), never as a second literal; a switch is an `override` set by the pipeline's
   `constants` (the trace's `DBG`).
 - **Row order**: every texture keeps GL's, row 0 at the bottom of the view, as when the piece was
   written for WebGL. Fullscreen passes work in pixel coordinates (`@builtin(position)` numbers rows like

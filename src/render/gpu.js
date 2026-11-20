@@ -1,8 +1,8 @@
 // WebGPU: the device and the canvas; textures, buffers, samplers, uniforms, pipelines, passes
 //
 // pipeline() (render) and compute() put a header in front of each shader (a .wgsl file with its
-// chunks, tools/wgsl.js): the constants JS and WGSL share (SHARED: CLOUD_TOP and the noise tiles,
-// from constants.js), its uniform struct U (bound as u, laid out by WGSL's rules from the shader
+// chunks, tools/wgsl.js): the constants JS and WGSL share (SHARED: constants.js's FOR_SHADERS, the
+// ceiling, the noise tiles, the atmosphere), its uniform struct U (bound as u, laid out by WGSL's rules from the shader
 // module's U_... fields), the samplers (sLin, sNear, sRep, sVol, sMip, sShadow) and every resource
 // its code names outside comments, all registered here: textures tX, storage textures oX (a compute
 // shader's output) and storage buffers bX (a struct one holds is declared in a chunk its shaders
@@ -17,7 +17,7 @@
 
 import { TEST } from '../core/params.js';
 import { canvas, fail } from '../core/page.js';
-import { CLOUD_TOP, DETAIL_ROT, DETAIL_TILE, SHAPE_TILE } from '../constants.js';
+import { FOR_SHADERS } from '../constants.js';
 
 // (without WebGPU the piece cannot run: say why, and stop)
 const NEEDS = 'This piece needs WebGPU. Please open it in a recent version of Chrome, Edge, Safari or Firefox.';
@@ -192,10 +192,12 @@ const FULLSCREEN = /* wgsl */ `
 const fullscreenModule = device.createShaderModule({ label: 'fullscreen', code: FULLSCREEN });
 const pipelines = [], compiling = [];
 // constants JS and WGSL share, declared in front of every shader (f32)
-// (a 3x3, row-major in JS, goes in by columns: DETAIL_ROT * p in WGSL is the JS one applied to p)
-const wgslOf = v => Array.isArray(v) ? `mat3x3f(${[0, 1, 2].flatMap(c => [0, 1, 2].map(r => wgslOf(v[r * 3 + c]))).join(', ')})`
-  : Number.isInteger(v) ? v.toFixed(1) : `${v}`;
-const SHARED = Object.entries({ CLOUD_TOP, SHAPE_TILE, DETAIL_TILE, DETAIL_ROT }).map(([k, v]) => `const ${k} = ${wgslOf(v)};
+// (a 3-array goes in as a vec3f; a 3x3, row-major in JS, by columns: DETAIL_ROT * p in WGSL is the JS
+// one applied to p)
+const wgslOf = v => !Array.isArray(v) ? (Number.isInteger(v) ? v.toFixed(1) : `${v}`)
+  : v.length === 3 ? `vec3f(${v.map(wgslOf).join(', ')})`
+    : `mat3x3f(${[0, 1, 2].flatMap(c => [0, 1, 2].map(r => wgslOf(v[r * 3 + c]))).join(', ')})`;
+const SHARED = Object.entries(FOR_SHADERS).map(([k, v]) => `const ${k} = ${wgslOf(v)};
 `).join('');
 // What a pipeline's shaders share: the header that declares its uniforms, samplers and the
 // resources its code names, and the bind group layout to match. writes: the storage buffers a
