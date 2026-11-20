@@ -115,17 +115,35 @@ decisions on what failed). The author judges after each leg; legs 2 and 5 are mo
    (all six views). Shimmer at rest down in every view (`start` 0.118 → 0.051%, `close` 0.168 →
    0.086%, `seed3` 0.081 → 0.031%, `sun` least, 0.112 → 0.097%; at 1920×1080 0.4–0.5× leg 2's). Flights identical.
 
-**Leg 4: the clipmap levels agree** (known issue: the lattice at the handovers; towers popping in at
-40–55 km):
-1. A tool first: `tools/world/levels.js`, how far the levels' surfaces and towers disagree over
-   boxes (the numbers above), to steer the rest.
-2. Every level from the same inputs: coarse levels keep every dome, widened and lowered to their cell
-   with the volume kept (as small domes already are), not only the roots ×1.25.
-3. The small cells back in L2 as coarse stand-ins: each tower's bubbles merged into a few of ≥ 900 m
-   with the same volume (leg 6's envelope at its coarsest). Watch the bubble cap and the L2 bake
-   (`bakeCost`). World change: fingerprint, flights.
-4. Then judge the dither at 7–10 and 40–55 km (`away`, `anvil`, 12 frames): once the levels agree it
-   may no longer show; blending stays rejected on cost (decisions).
+**Leg 4, done (2026-11-21)** (`screenshots/l3-end` → `l4-levels`; `node tools/world/levels.js`):
+1. `tools/world/levels.js`: each level's large shapes over boxes, baked on the CPU as the GPU bakes
+   them and read trilinear, compared column by column (the top, the heaps, the towers' peaks). L0
+   and L1 agree (the top's |Δ| p90 44–66 m). L2 held a third less cloud than L1 over three 80 km
+   boxes (its heaps 0.3×; the top −300 to −600 m on average, |Δ| p90 1–2 km), and half the small
+   cells' towers standing alone came out under half their height.
+2. The coarsest level from the same inputs: its cells grown as the others' but without the pieces
+   under 600 m (it took the low pulses' roots alone, ×1.25, and no small cells), and every dome,
+   widened and lowered to its cell with the volume kept. L2 against L1: the cloud −4 to −5%, the
+   top −70 to −120 m on average (|Δ| p90 0.4–0.5 km), the small cells' towers at 0.7–0.9 of their
+   height, none under half (tests/world.test.js holds the heaps). Growing them takes the worker
+   about a second more, so it now grows the start's cells while the shaders compile, and a pulse's
+   second lift is a replay of the first's log (the same world to the bit): the canvas at 3.5–3.9 s
+   (leg 3: 4.1–4.3 s; the player check, interleaved). The fingerprint: L2's columns and bubbles
+   alone. Flights identical.
+3. Stand-ins for the small bubbles in L2: not kept (decisions). Since step 2 the small cells' towers
+   stand there with their heads (≥ 900 m).
+4. The dither: at 40–55 km fainter (`anvil`'s far sea between the towers), not gone: L2's 2 km
+   columns can't hold a 1 km head or a 300 m dome. At 7–10 km unchanged (`away`'s middle
+   distance): across a hard switch from L0 to L1 the depth differs on 1% of the pixels, the raw
+   light on 5.6% (L1's light gives the domes less relief). Widening L1's domes less, and the light
+   from the finer level, didn't help (decisions; known issues).
+   The look: the far sea fuller and higher toward the horizon (`anvil`, `sun`), the backlit far
+   towers a shade darker (`sun`, `away`: more cloud beyond them in the shadow volume), a faint
+   shaft in the haze (`high2`). Cost (leg 3 against leg 4, interleaved A B B A A B, 200 frames,
+   NVIDIA laptop): the trace +4% in `start` and `high2` (rays grazing the far sea meet its heaps),
+   `away` −2%, `side` 0; the first bake within the noise; L2's bubbles a block at the start mean
+   348 → 388, max 1661 → 1805 (its shifts spread over a few more frames: `bakeCost`). With 60
+   frames the same builds came out −25% to +21%: time this laptop over a few hundred frames.
 
 **Leg 5: a density profile like Nubis³**, after legs 2 and 3 (known issues: silver linings a pixel
 wide, inside cloud a uniform wall). The edge stays crisp (a step to part of the full density, frayed
@@ -190,7 +208,7 @@ Worth knowing before tuning again.
   16 directions neither (the limiter wasn't what showed).
 - **The bubble budget**: the bake loops over every gathered bubble per texel; 14 times as many bubbles
   (a first try) would have been a disaster: prune, minimum sizes, one wake lump for small bubbles. Now
-  ≈ 5,600 bubbles in a 120 km box around the start, per bake block at most ≈ 1,700 of the 4096 cap.
+  ≈ 5,600 bubbles in a 120 km box around the start, per bake block at most ≈ 1,800 of the 4096 cap.
 - **The coarse level** must take bubbles from coarse cells (`gatherBubbles(..., coarse)`), or the first
   frame grows everything in full across 524 km.
 - **The distance-volume bakes as compute shaders** (a slice an invocation, also with each workgroup
@@ -330,6 +348,17 @@ Worth knowing before tuning again.
   cauliflower and shimmer 0.3× leg 2's rather than 0.45×, but the trace +30% against leg 2 (the
   domes reaching twice as far +8%, the strides +10%), where capped at a 270-row trace's pixel it
   costs +11%, as at 960×540. The lever, if the author would trade resolution for it: `pixC`.
+- **Stand-ins for a tower's small bubbles in the coarsest level** (leg 4: those under its 900 m
+  merged into a few ellipsoids over what they reach, as wide as the volume they fill allows): their
+  towers in L2 at 0.69–0.79 of their height in L1 instead of 0.68–0.73, the cloud +0.3–0.6%, but
+  L2's bubbles a block +12–30% (wider still, at least 1.1 km, about the same). Each tower's head
+  (≥ 900 m) already stands there; what is left is L2's 2 km columns shaving a 1 km head.
+- **Small domes widened to 0.6 of a cell in the coarse levels** (L0's share, not 0.9): L0 against L1
+  |Δ| p90 66 → 48 m, but across a hard switch the render barely changed (`away` 5.6 → 5.4% of the
+  pixels differ by more than 2 levels), and coarser cells hold narrower domes as facets.
+- **The light from the finer level across a handover** (the light march and the sky taps in L0
+  where the dither gave the sample L1): the grain at 7–10 km as strong or stronger: the light point
+  lies on the coarser level's surface, a little inside or outside the finer one.
 - **CLOUD_SAT 1** (2026-11): lit faces tan (saturation 0.40 → 0.31). **The sky light's tints off**: the
   shade neutral grey (saturation 0.08), on the way to brown. Both stay.
 
@@ -343,9 +372,10 @@ Worth knowing before tuning again.
 - **The world grows in a worker** (src/worker.js), so new areas no longer stall frames; the page
   applies what it sends within budgets (render/stream.js). The budget's GPU estimate (`bakeCost`) is
   calibrated on one NVIDIA laptop GPU: on a weaker one a shift's bakes still spread over frames, but
-  each frame's share takes longer. Startup still waits for the whole first bake (canvas at ≈ 2.9 s
-  on that machine), and the generator allocates many small objects (`makeDome` and `lift` dominate
-  profiles). If the bird outran the worker's patch of domes (core/world.js: asked for ≥ 30 s ahead
+  each frame's share takes longer. Startup still waits for the whole first bake; the worker grows
+  the start's cells while the shaders compile (the coarsest level's across 524 km take ~2 s in
+  Node), and the canvas comes at 3.5–3.9 s in the player check (headless, that machine). The
+  generator allocates many small objects (`makeDome` and `lift` dominate profiles). If the bird outran the worker's patch of domes (core/world.js: asked for ≥ 30 s ahead
   at top speed), the page would grow the cells under it itself: a stall. Only Chrome has run the
   worker; it carries its own copy of the world's code (the page ≈ 19 KB larger).
 - Textures and buffers created once at start (`T.trans` … `T.shadow`, the world volumes, the bubble
@@ -427,8 +457,12 @@ Worth knowing before tuning again.
   view for every seed: **seed 5 starts with none** within 50 km (the piece's seed 7 has two above 8 km;
   `tests/world.test.js` holds it to one).
 - **A lattice at the level handovers** (~7–10 and ~40–55 km: `away`'s middle distance, `anvil`'s far
-  towers): pixels dither between two levels' shapes and light; the history averages it at rest,
-  12-frame captures show it (blending the levels costs too much, decisions).
+  sea): pixels dither between two levels; the history averages it at rest, 12-frame captures show
+  it. At 40–55 km fainter since leg 4: the levels' shapes agree to ~0.1 km (p50), and what is left
+  is L2's 2 km columns. At 7–10 km the shapes agree (across a hard switch the depth differs on 1% of
+  the pixels) but the light doesn't (5.6%): L1's gives the domes less relief. Levers: blending
+  (+12–18%, decisions), the handover farther out (L0's window reaches ~14 km), what in the light
+  follows the level (the light march's first steps and the billows read the level's distance).
 - **Sunlit rims**: with nothing moving 0.02–0.10% of a frame flickers (`geometry` 0.29%; leg 3 halved
   it: strides no longer hop over crests by the jitter), along tower silhouettes against the sky and
   backlit rims, most toward the sun (`sun`). The history blends at half the rate where the image

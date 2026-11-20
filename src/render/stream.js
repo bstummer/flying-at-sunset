@@ -17,7 +17,7 @@
 // origin snapped to ORIGIN_Q (originOf), so floats keep their precision on endless flights.
 
 import { PI } from '../math.js';
-import { ORIGIN_Q, SUN_DIR } from '../constants.js';
+import { CLIP_LEVELS, ORIGIN_Q, SUN_DIR } from '../constants.js';
 import { COARSE } from '../core/page.js';
 import { forgetFar, request } from '../core/world.js';
 import { buffer, device, dispatch, enc, flush, pass, slices, texture } from './gpu.js';
@@ -31,11 +31,8 @@ import { P, T } from './setup.js';
 // only where the old and new windows overlap (the shaders fall back to a coarser level).
 // Render space = world minus an origin snapped to ORIGIN_Q (keeps float precision on endless flights).
 const CLIP_N = 256, CLIP_M = CLIP_N - 1;
-export const LEVELS = [
-  { cell: 128, cellV: 128, nz: 112, maxD: 1200, minBR: 0, lod: 0, step: 16, chunk: 32 },
-  { cell: 512, cellV: 256, nz: 56, maxD: 4000, minBR: 200, lod: 1, step: 8, chunk: 32 },
-  { cell: 2048, cellV: 512, nz: 32, maxD: 12000, minBR: 900, lod: 2, step: 4, chunk: 16 },
-];
+// (the grids: constants.js; step: how far the camera may wander off the centre, chunk: a block)
+export const LEVELS = CLIP_LEVELS.map((L, k) => ({ ...L, step: [16, 8, 4][k], chunk: [32, 32, 16][k] }));
 export const TSVL = { cell: 768, cellV: 360, nz: 40, step: 8, chunk: 32, tsv: true };
 const TU = GPUTextureUsage;
 for (const L of [...LEVELS, TSVL]) {

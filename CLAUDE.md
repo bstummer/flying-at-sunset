@@ -122,8 +122,9 @@ the published page (`https://bstummer.github.io/flying-at-sunset/?bench`) and pa
 The world in Node (`tools/world/`, no browser; `QS="seed=3"` for another world, `WSRC=dir` for another
 checkout's `src/world`): `stats.js` (the sea, towers by size, the bubble load), `map.js`, `preview.js`
 (a CPU sphere-traced view of the large shapes in seconds), `catalog.js` (side views of the biggest
-towers, for silhouettes), `pose.js` (a camera pose looking at a point, for `?pose=`). Images go to
-`screenshots/world/`.
+towers, for silhouettes), `pose.js` (a camera pose looking at a point, for `?pose=`), `levels.js` (how far
+the clipmap levels' large shapes disagree over boxes: the top surface, the heaps, the towers' peaks; each
+level baked on the CPU as the GPU bakes it). Images go to `screenshots/world/`.
 
 **Cloud sessions** run in Linux with no GPU and no display: run `npm ci`, then once per machine
 `npx playwright install-deps chromium` (needs root). Captures fall back to SwiftShader: slow (a 320×180
@@ -210,7 +211,7 @@ src/
   main.js             the start, the main loop (frameStep), the steering hint, a lost device, window.__debug
   worker.js           the world's worker: src/world/ off the page's thread (column data, bubbles, the domes around
                       the bird, ?preset's place), bundled into the page as a string and started from a blob: URL
-  math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the noise tiles and the detail volume's turn, the render origin, the ceiling, the atmosphere
+  math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the noise tiles and the detail volume's turn, the render origin, the ceiling, the clipmap levels' grids, the atmosphere
   core/               the page around the piece: every URL parameter (params.js, §7), its elements, the note,
                       refused requests and fullscreen (page.js), steering (input.js), the world's worker from the
                       page's side (world.js), the test mode (capture.js), the readout (readout.js, ?debug), the

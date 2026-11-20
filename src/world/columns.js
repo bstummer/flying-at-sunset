@@ -1,11 +1,11 @@
 // The world for the GPU: the column data and the bubbles of a block of a clipmap level
 // (render/stream.js asks for them through the world's worker)
 //
-// fillColumns: RGBA per column: R the sea's surface with its domes (a smooth max; domes small for
-// the cells are widened and lowered so their volume stays, the coarsest level takes only those that
-// grew from the sea; then slope-limited to 2.2 cells of rise per cell, which the volumes can hold), G
-// the billow strength (raised under and around big bubbles, where air rises vigorously), B the small
-// billows' strength, A the sea's level without heaps.
+// fillColumns: RGBA per column: R the sea's surface with its domes (a smooth max; every dome, those
+// small for the cells widened and lowered so their volume stays; then slope-limited to 2.2 cells
+// of rise per cell, which the volumes can hold), G the billow strength (raised under and around
+// big bubbles, where air rises vigorously), B the small billows' strength, A the sea's level
+// without heaps.
 // gatherBubbles: a block's bubbles as the bake reads them, 12 floats each (none smaller than minBR).
 
 import { smoothstep } from '../math.js';
@@ -29,11 +29,11 @@ export function fillColumns(cell, lod, gi0, gj0, ni, nj, out) {
     if (ci >= 0 && cj >= 0 && ci < ni && cj < nj) { const p = (cj * ni + ci) * 4; out[p + 1] = _fc.amp; out[p + 2] = _fc.fine; out[p + 3] = _fc.hb; }
   }
   const x0 = g0i * cell, z0 = g0j * cell, x1 = (g0i + mi) * cell, z1 = (g0j + mj) * cell;
-  // heaps: on coarse cells small domes are widened and lowered (their volume stays)
-  const minR = lod ? 0.25 * cell : 0, rootsOnly = lod >= 2;
+  // heaps: on coarse cells small domes are widened and lowered (their volume stays; the coarsest
+  // level's come from the cells grown for it)
+  const coarse = lod >= 2;
   forEachDome(x0, z0, x1, z1, d => {
-    if (d.r < minR) return;
-    let r = d.r, h = d.h * (rootsOnly ? 1.25 : 1);   // (the roots stand in for whole heaps)
+    let r = d.r, h = d.h;
     const pf = (lod ? 0.9 : 0.6) * cell;
     if (r < 2.5 * pf) { const r2 = Math.sqrt(r * r + pf * pf); h *= (r * r) / (r2 * r2); r = r2; }
     const rr = r * d.ex, k = domeBlend(h);
@@ -51,7 +51,7 @@ export function fillColumns(cell, lod, gi0, gj0, ni, nj, out) {
         hs[p] = smaxJS(hs[p], base + h * domeProfile(d.prof, u2), k);
       }
     }
-  }, rootsOnly);
+  }, coarse);
   // no cliffs steeper than the volumes can hold: raise the low side (heaps get skirts, not walls)
   const st = 2.2 * cell, sd = st * 1.414;
   for (let it = 0; it < 2; it++) {
@@ -78,13 +78,13 @@ export function fillColumns(cell, lod, gi0, gj0, ni, nj, out) {
         if (d < R) { const p = (j * ni + i) * 4 + 1; out[p] = Math.max(out[p], 1.45 * (1 - smoothstep(0.9 * b.rh, R, d))); }
       }
     }
-  }, rootsOnly);
+  }, coarse);
   for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) out[(j * ni + i) * 4] = Math.max(hs[(j + A) * mi + i + A], 650);
 }
 // all bubbles near a box, positions relative to (ox, oz), written as the bake shader reads them (12
 // floats each: centre & horizontal radius; radii up / down, stretch, angle; union smoothness,
 // bounding radius, billow scale, billow liveliness). Bubbles smaller than minBR
-// are left out (coarse levels; the coarsest sees small cells without what their bubbles shed).
+// are left out (coarse levels; the coarsest takes them from the cells grown for it).
 export function gatherBubbles(x0, z0, x1, z1, pad, minBR, ox, oz, out, max, coarse = false) {
   let n = 0;
   forEachSys(x0 - pad, z0 - pad, x1 + pad, z1 + pad, c => {

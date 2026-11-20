@@ -2,7 +2,9 @@
 // cells of the world never stalls a frame. It answers the page's requests (core/world.js) in the
 // order they came, each reply with its request's id:
 //
-//   start           { sea0: the sea's top at the start, pose: ?preset's pose (flight/presets.js) }
+//   start           { sea0: the sea's top at the start, pose: ?preset's pose (flight/presets.js) };
+//                   then, while the page's shaders compile, it grows the cells the first frame's
+//                   volumes will ask for around the bird (warm), so those requests find them grown
 //   fill (a block)  { col: its column data (world/columns.js), RGBA half floats per column }
 //   gather (a box)  { nb, bub: the bubbles near a block, 12 floats each (world/columns.js) }
 //   patch (a box)   { domes: every dome over it, in the order the world's queries meet them }
@@ -13,7 +15,8 @@
 
 import { params } from './core/params.js';
 import { toHalf } from './math.js';
-import { forEachDome, worldGC } from './world/cells.js';
+import { CLIP_LEVELS } from './constants.js';
+import { forEachDome, forEachSys, worldGC } from './world/cells.js';
 import { fillColumns, gatherBubbles } from './world/columns.js';
 import { seaTopAt } from './world/queries.js';
 import { presetPose } from './flight/presets.js';
@@ -38,4 +41,16 @@ self.onmessage = ({ data: m }) => {
     reply = { domes };
   } else throw new Error('the world\'s worker has no request "' + m.kind + '"');
   self.postMessage({ id: m.id, ...reply }, moved);
+  if (m.kind === 'start') {
+    const p = params.pose ? { x: params.pose[0], z: params.pose[2] } : reply.pose && !reply.pose.refused ? reply.pose : {};
+    warm(p.x || 0, p.z || 0);
+  }
 };
+// the cells every level's window around (x, z) asks for (half 128 cells, the bird a few off its
+// centre, and the bubbles' pad), the coarsest level's first (across its 524 km they take seconds)
+function warm(x, z) {
+  for (let l = CLIP_LEVELS.length - 1; l >= 0; l--) {
+    const L = CLIP_LEVELS[l], h = 132 * L.cell + L.maxD + 300;
+    forEachSys(x - h, z - h, x + h, z + h, () => {}, l === CLIP_LEVELS.length - 1);
+  }
+}

@@ -29,8 +29,8 @@ export const domeSteepness = prof => profileTable(prof).steep;
 // saddle (narrower, two heaps met in a crease a cell wide, a box's corner from afar)
 export const domeBlend = h => 0.25 * h + 40;
 export const domeProfile = (t, u2) => { const f = u2 * 256, i = f | 0; return t[i] + (t[i + 1] - t[i]) * (f - i); };
-export function makeDome(x, z, r, h, base, prof, ex, ang, sea, root) {
-  return { x, z, r, h, base, top: base + h, prof: profileTable(prof), ex, ang, ca: Math.cos(ang), sa: Math.sin(ang), reach: r * ex, sea, root };
+export function makeDome(x, z, r, h, base, prof, ex, ang, sea) {
+  return { x, z, r, h, base, top: base + h, prof: profileTable(prof), ex, ang, ca: Math.cos(ang), sa: Math.sin(ang), reach: r * ex, sea };
 }
 export function domeHeightAt(d, x, z) {   // its surface above (x, z), or -1e9 outside
   const dx = x - d.x, dz = z - d.z;

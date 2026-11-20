@@ -6,8 +6,10 @@
 // air; drag slows it; it stops when its speed runs out, or is still rising at the moment the world
 // shows. On the way it swells, drifts with the wind of its height, is pushed aside by earlier heads,
 // leaves a wake of lumps and sheds smaller bubbles; at the top it boils into a few crowns, which
-// rise in turn (C.depth levels deep, none smaller than C.minR). roofOf: how far a piece may bulge
-// above its centre (the inversion while below it, the ceiling, CLOUD_TOP).
+// rise in turn (C.depth levels deep, none smaller than C.minR). Lifted alone first (C.log), its
+// path decides what a pulse becomes; replay then grows what it shed, without lifting it again.
+// roofOf: how far a piece may bulge above its centre (the inversion while below it, the ceiling,
+// CLOUD_TOP).
 // settle: what became of each piece by that moment: it drifted with the wind and evaporates (sooner
 // higher up and in dry air, the small first; ice lingers; dying towers crumble from the top); a
 // stopped head is pressed flat by the air that stopped it (a heap under the inversion; in a tower
@@ -29,10 +31,12 @@ import { domeHeightAt, domeSteepness, makeDome } from './shapes.js';
 // it, so small bubbles soon stall. It drifts with the wind of its height, and outward at (vx, vz)
 // if a larger one shed it; it swells as it rises and sheds smaller bubbles in turn. When its
 // strength runs out it stops; if the moment the world shows comes first, it is still rising. Its
-// wake and everything it shed go to `out`; returns its head.
+// wake and everything it shed go to `out`; returns its head. With C.log (an array) it sheds nothing
+// yet: its wake and what it would shed (as lift's arguments) go to the log, in order, for replay
+// (its path never depends on what it sheds).
 export const MIX = 0.6, DRAG = 0.35, SWELL = 0.04, SHED = 0.8, ICE_Y = 8000, H_FLAT = 2200, R_TH = 3500;
 export function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
-  const A = C.A, hd = { head: true, x, y, z, r, t, w, depth, parent, still: false, bu: 0, seed: 0 };
+  const A = C.A, hd = { head: true, x, y, z, r, t, w, depth, parent, still: false, bu: 0, seed: 0 }, log = depth === C.depth ? C.log : null;
   let w2 = w * w, wPeak = w, trailY = y + 0.3 * r;
   for (let s = 0; s < 200; s++) {
     // (short steps through the thin inversion, or a big bubble would hop over it)
@@ -64,7 +68,7 @@ export function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
       // the wake it leaves behind: turbulent lumps of cloud around its path
       for (let q = r > 700 ? 2 : 1; q > 0; q--) {
         const ja = rng() * 2 * PI, jr = r * lerp(0.15, 0.45, rng()), jy = r * (rng() - 0.5) * 0.3, rr = r * lerp(0.62, 0.85, rng());
-        if (C.trails) out.push({ head: false, x: x + Math.cos(ja) * jr, y: y + jy, z: z + Math.sin(ja) * jr, r: rr, t, depth });
+        if (log || C.trails) (log || out).push({ head: false, x: x + Math.cos(ja) * jr, y: y + jy, z: z + Math.sin(ja) * jr, r: rr, t, depth });
       }
       trailY = y + 0.55 * r;
     }
@@ -73,7 +77,8 @@ export function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
       const a = rng() * 2 * PI, d = r * lerp(0.35, 0.8, rng()), rc = r * lerp(0.3, 0.62, rng());
       const wc = ws * lerp(0.5, 1.05, rng()), fc = f * lerp(0.7, 1.02, rng()), vo = ws * lerp(0.04, 0.2, rng());
       const yc = y + r * lerp(-0.25, 0.35, rng()), seed = (rng() * 4294967296) >>> 0;
-      if (!C.rootsOnly && rc > C.minR) lift(C, x + Math.cos(a) * d, yc, z + Math.sin(a) * d, rc, wc, fc, t, vx + Math.cos(a) * vo, vz + Math.sin(a) * vo, depth - 1, mulberry32(seed), out, hd);
+      const e = [x + Math.cos(a) * d, yc, z + Math.sin(a) * d, rc, wc, fc, t, vx + Math.cos(a) * vo, vz + Math.sin(a) * vo, depth - 1, seed];
+      if (log) log.push(e); else shed(C, e, out, hd);
     }
   }
   hd.x = x; hd.y = y; hd.z = z; hd.r = r; hd.t = t; hd.w = wPeak; hd.bu = buoyAt(A, y + 60);
@@ -83,10 +88,19 @@ export function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
   for (let i = 0; i < nb; i++) {
     const a = rng() * 2 * PI, el = lerp(0.1, 1.3, rng()), rc = r * lerp(0.18, 0.5, Math.pow(rng(), 1.3)), wc = wPeak * lerp(0.15, 0.4, rng()), seed = (rng() * 4294967296) >>> 0;
     const up = Math.min(0.75 * r, 0.9 * roofOf(A, y, r));     // (on its surface, pressed as flat as it is)
-    if (!C.rootsOnly && rc > C.minR) lift(C, x + Math.cos(a) * Math.cos(el) * 0.92 * r, y + Math.sin(el) * up, z + Math.sin(a) * Math.cos(el) * 0.92 * r, rc, wc, 0.3, t, vx, vz, depth - 1, mulberry32(seed), out, hd);
+    const e = [x + Math.cos(a) * Math.cos(el) * 0.92 * r, y + Math.sin(el) * up, z + Math.sin(a) * Math.cos(el) * 0.92 * r, rc, wc, 0.3, t, vx, vz, depth - 1, seed];
+    if (log) log.push(e); else shed(C, e, out, hd);
   }
   out.push(hd);
   return hd;
+}
+// a smaller bubble breaking away from hd, lifted if it is bigger than C.minR
+const shed = (C, e, out, hd) => { if (e[3] > C.minR) lift(C, e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9], mulberry32(e[10]), out, hd); };
+// what a bubble lifted alone (with C.log) left, grown: its wake (if C.trails) and what it sheds
+// bigger than C.minR, in lift's order, then its head hd
+export function replay(C, log, hd, out) {
+  for (const e of log) if (Array.isArray(e)) shed(C, e, out, hd); else if (C.trails) out.push(e);
+  out.push(hd);
 }
 // how far a piece may bulge above its centre: stable air presses it flat, the inversion while it
 // is still below it, the ceiling (which nothing passes) always
@@ -176,7 +190,7 @@ export function placeDome(p, sea, out) {
   r = Math.max(r, h * domeSteepness(prof) / MAX_FLANK);
   if (top > START_Y - 350 && nearStart(p.x, p.z, 1.2 * r * p.an)) return;
   const seaHere = sea[0] + sea[1] * (p.x - sea[3]) + sea[2] * (p.z - sea[4]);
-  const d = makeDome(p.x, p.z, r, h, base, prof, p.an, p.ang, seaHere, !p.parent);
+  const d = makeDome(p.x, p.z, r, h, base, prof, p.an, p.ang, seaHere);
   p.dome = d;
   out.push(d);
 }
