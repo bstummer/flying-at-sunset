@@ -68,7 +68,7 @@ export function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
       // the wake it leaves behind: turbulent lumps of cloud around its path
       for (let q = r > 700 ? 2 : 1; q > 0; q--) {
         const ja = rng() * 2 * PI, jr = r * lerp(0.15, 0.45, rng()), jy = r * (rng() - 0.5) * 0.3, rr = r * lerp(0.62, 0.85, rng());
-        if (log || C.trails) (log || out).push({ head: false, x: x + Math.cos(ja) * jr, y: y + jy, z: z + Math.sin(ja) * jr, r: rr, t, depth });
+        if (log || C.trails) (log || out).push({ head: false, x: x + Math.cos(ja) * jr, y: y + jy, z: z + Math.sin(ja) * jr, r: rr, t, depth, of: hd });
       }
       trailY = y + 0.55 * r;
     }
@@ -110,8 +110,18 @@ const roofOf = (A, y, r) => Math.min(Math.max(Math.min(y < A.zs + A.dInv ? A.zs 
 // flatten whatever they stop, but between them the air is only weakly stable, and a head that ran
 // out of strength there keeps its dome unless it pushed far into that air
 const stabOf = e => Math.pow(sat(-e.bu / 0.04), 0.7);
-const stabTall = (A, e) => Math.pow(sat(-e.bu / (e.y < A.zs + A.dInv + 150 ? 0.04 : 0.5)), 0.7);
+const stabTall = (A, e) => Math.pow(sat(-e.bu / (e.y < A.zs + A.dInv + 150 ? 0.04 : 1.0)), 0.7);
 export const headUp = (A, e) => Math.min(e.still ? 0.86 * e.r : e.r * lerp(0.85, 0.3, stabOf(e)) * 1.05, roofOf(A, e.y, e.r));
+// How long a piece lasts (s) once it is left behind: the air is moist just above the sea and dry
+// higher up; the bigger, the longer; ice lingers; and what is high up does not outlast the column
+// that holds it up for long (dying towers crumble from the top down)
+export function lifeOf(c, e) {
+  const A = c.A, hgt = e.y - A.zs, sq = Math.sqrt(e.r / 1000), col = lerp(450, 1600, A.moist) * sq;
+  // (while the cell still sends air up, its column stays saturated)
+  let life = (e.y > ICE_Y ? 1700 * sq : col * (1 + 2.5 * smoothstep(2500, 0, hgt))) * (e.head ? 1 : c.age < c.life ? 1.5 : 0.8);
+  if (e.head && hgt > 2500) life = Math.min(life, 0.75 * col);
+  return life;
+}
 // What became of a piece of a bubble by the moment the world shows. It drifted with the wind of
 // its height since it was there, and evaporates (ice high up lingers longer), the small parts
 // first. A head that stopped settles into a dome, flattens and sags; where the air above stopped
@@ -120,13 +130,8 @@ export const headUp = (A, e) => Math.min(e.still ? 0.86 * e.r : e.r * lerp(0.85,
 // Appends the pieces to `out`; returns the head's (null if it is gone). tall: the pulse grew a tower.
 export function settle(c, e, out, tall = false) {
   const A = c.A, age = Math.max(c.age - e.t, 0), r = e.r, hgt = e.y - A.zs;
-  // (the air is moist just above the sea and dry higher up; ice lingers; and what is high up does
-  // not outlast the column that holds it up for long: dying towers crumble from the top down)
-  const sq = Math.sqrt(r / 1000), col = lerp(450, 1600, A.moist) * sq;
-  // (while the cell still sends air up, its column stays saturated)
-  let life = (e.y > ICE_Y ? 1700 * sq : col * (1 + 2.5 * smoothstep(2500, 0, hgt))) * (e.head ? 1 : c.age < c.life ? 1.5 : 0.8);
-  if (e.head && hgt > 2500) life = Math.min(life, 0.75 * col);
-  const ev = age / life;
+  // (a head no less far than the column under it, e.colEv: growCell)
+  const ev = Math.max(age / lifeOf(c, e), e.colEv ?? 0);
   if (ev >= 1) return null;
   const g = Math.sqrt(1 - ev * ev), x = e.x + A.ux * hgt * age, z = e.z + A.uz * hgt * age;
   const roof = roofOf(A, e.y, r);
@@ -144,7 +149,7 @@ export function settle(c, e, out, tall = false) {
   const rng = mulberry32(e.seed), grow = 1 - Math.exp(-age / (600 * Math.sqrt(r / 1000)));
   // (how far it spreads: by how stable the air that stopped it is, and how hard it was rising)
   const stab = tall ? stabTall(A, e) : stabOf(e), S = sat(-e.bu / 0.6) * (0.5 + 3 * Math.pow(sat((e.w - 4) / 22), 1.5));
-  const sp = 0.3 * grow, yc = e.y - Math.min(0.25 * age, 0.35 * r);
+  const sp = 0.3 * grow * (0.35 + 0.65 * stab), yc = e.y - Math.min(0.25 * age, 0.35 * r);
   // pressed flat under the air that stopped it; the underside sags as it ages; old domes soften
   const hp = put(x, yc, z, r * (1 + sp) * g, Math.min(r * lerp(tall ? 0.95 : 0.85, 0.3, stab) * lerp(0.85, 1.05, rng()) / (1 + 0.6 * sp), roof) * g,
     r * (0.6 + 0.45 * grow) * g, lerp(1, 1.35, rng()) * (1 + 0.2 * sp), rng() * PI, 0.3 + 0.15 * sat(age / 1500), 1, null);

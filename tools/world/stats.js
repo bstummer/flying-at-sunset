@@ -40,6 +40,18 @@ const ts = W.towersNear(cx, cz, R);
     const s = ts.filter(t => Math.hypot(t.x - cx, t.z - cz) < r);
     console.log(`  within ${r / 1000} km: ${s.length} towers, tops > 6 km ${s.filter(t => t.top > 6000).length}, > 9 km ${s.filter(t => t.top > 9000).length}, > 11 km ${s.filter(t => t.top > 11000).length}`);
   }
+  // how flat the tops are: the highest bubble's height over its radius, and where it stopped (at the
+  // ceiling, or how far past the level el where the air stops buoying it up)
+  const own = new Map();
+  W.forEachSys(cx - R, cz - R, cx + R, cz + R, c => { for (const b of c.bub) { const l = own.get(b.cell); if (l) l.push(b); else own.set(b.cell, [b]); } });
+  const tops = [];
+  for (const t of ts) {
+    let b = null;
+    for (const o of own.get(t.cell) || []) if (!b || o.y + o.ryU > b.y + b.ryU) b = o;
+    if (b) tops.push({ f: b.ryU / b.rh, ceil: b.y + b.ryU > t.cell.A.ceil - 300, over: b.y - t.cell.A.el, rise: t.top - t.y0 });
+  }
+  const flat = s => `${(s.filter(o => o.f < 0.45).length / Math.max(s.length, 1) * 100).toFixed(0)}% of ${s.length}`;
+  console.log(`  tops flatter than 0.45 (the top bubble's ryU/rh): ${flat(tops)} | at the ceiling ${flat(tops.filter(o => o.ceil))}, past el by over 1 km ${flat(tops.filter(o => !o.ceil && o.over > 1000))}, under 1 km ${flat(tops.filter(o => !o.ceil && o.over > 0 && o.over <= 1000))}, below el ${flat(tops.filter(o => !o.ceil && o.over <= 0))} | rising over 6 km ${flat(tops.filter(o => o.rise > 6000))}`);
   console.log('  nearest with tops above 5 km (bearing 0 = toward the sun, + = right):');
   for (const t of ts.filter(t => t.top > 5000).sort((a, b) => Math.hypot(a.x - cx, a.z - cz) - Math.hypot(b.x - cx, b.z - cz)).slice(0, 10)) {
     const c = t.cell;

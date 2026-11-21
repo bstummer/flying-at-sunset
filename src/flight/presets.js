@@ -61,9 +61,10 @@ export function presetPose(pre) {
   const big = ts.filter(t => t.top > 8000 && Math.hypot(t.x, t.z) < 70000);
   const bt = big.find(sunlit) || big[0] || ts[0];
   if (bt) { const v = clearOf(bt, sideDir, null, 2500, 9000); if (v) presets.tower = Object.assign(v, { gamma: 0.12 }); }
-  if (big.length) {
-    const g = big.reduce((a, b) => b.top > a.top ? b : a), v = clearOf(g, sideDir, null, 25000);
-    if (v) presets.giant = Object.assign(v, { gamma: 0.06 });
+  // (the tallest that can be seen clear of the others: in a crowd, the next tallest)
+  for (const g of [...big].sort((a, b) => b.top - a.top)) {
+    const v = clearOf(g, sideDir, null, 25000);
+    if (v) { presets.giant = Object.assign(v, { gamma: 0.06 }); break; }
   }
   // (an anvil is nothing the world makes on purpose: a tower that hit the ceiling and spread wide)
   const isAnvil = t => t.top > t.ceil - 700 && t.wide > Math.max(2.5 * t.R0, 9000);

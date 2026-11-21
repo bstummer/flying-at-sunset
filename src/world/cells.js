@@ -29,7 +29,7 @@ import { clamp, lerp, mulberry32, PI, sat } from '../math.js';
 import { cellRng, gauss, hashU, poisson } from './noise.js';
 import { airAt, REST_O, restAt, seaLevelAt, setRestOffset } from './air.js';
 import { ellDist } from './shapes.js';
-import { H_FLAT, headUp, lift, nearStart, placeDome, R_TH, replay, settle, START_Y } from './thermals.js';
+import { H_FLAT, headUp, lifeOf, lift, nearStart, placeDome, R_TH, replay, settle, START_Y } from './thermals.js';
 
 // A cell is a place where bubbles keep rising for a while. Its potential P (m) is the size of the
 // strongest bubbles it can send up: small cells are common, big ones rare (a power law), a little
@@ -105,6 +105,21 @@ function growCell(c, coarse, out3, out2) {
       }
     } else {
       // (bubbles too small to matter beside the billows are left out whole, wake and all)
+      // a head evaporates no slower than the column under it: as far as the middle of the wake it
+      // left, above the lowest third of its rise (near the sea the moist air keeps the column); a
+      // crown without a wake of its own, as its parent (a wide top on a stem the dry air has eaten
+      // would be a mushroom)
+      const stem = new Map();
+      for (const e of list) {
+        if (e.head || e.r <= 420 || e.y < zs + (e.of.y - zs) / 3) continue;
+        const l = stem.get(e.of), ev = (c.age - e.t) / lifeOf(c, e);
+        if (l) l.push(ev); else stem.set(e.of, [ev]);
+      }
+      for (const e of list.filter(e => e.head).sort((p, q) => q.depth - p.depth)) {
+        const l = stem.get(e);
+        if (l) e.colEv = l.sort((p, q) => p - q)[l.length >> 1];
+        else if (e.parent && e.parent.colEv !== undefined) e.colEv = e.parent.colEv;
+      }
       for (const e of list) if (e.r > 420) settle(c, e, pieces, true);
       for (const p of pieces) {
         if (Math.max(p.rh, p.ryU) < 200 || p.y + p.ryU < zs - 150) continue;
