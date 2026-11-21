@@ -120,7 +120,7 @@ copy it. It is how numbers from real computers and phones reach a session: ask t
 the published page (`https://bstummer.github.io/flying-at-sunset/?bench`) and paste the summary.
 
 The world in Node (`tools/world/`, no browser; `QS="seed=3"` for another world, `WSRC=dir` for another
-checkout's `src/world`): `stats.js` (the sea, towers by size, the bubble load), `map.js`, `preview.js`
+checkout's `src/world`): `stats.js` (the sea, towers by size and how flat their tops, the bubble load), `map.js`, `preview.js`
 (a CPU sphere-traced view of the large shapes in seconds), `catalog.js` (side views of the biggest
 towers, for silhouettes), `pose.js` (a camera pose looking at a point, for `?pose=`), `levels.js` (how far
 the clipmap levels' large shapes disagree over boxes: the top surface, the heaps, the towers' peaks; each

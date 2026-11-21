@@ -175,18 +175,36 @@ decisions on what failed). The author judges after each leg; legs 2 and 5 are mo
    −5 to +2% (`start` −4, `sun` −2, `side` +2, `tower` −3, `high2` −5, `close` −2); the bakes
    unchanged. The canvas at 3.6–3.7 s (the player check).
 
-**Leg 6: the shapes** (known issues: popcorn far away, mushroom tops, tops; world changes, so the
-fingerprint and the flights each step):
-1. Buoyancy continuous at the equilibrium level: air.js `buoyAt` jumps from +0.3·bmax to −0.03
-   there, and `stabOf` reads 0.82 just above it. Fewer flat discs (38% of tops under 0.45 now; add
-   that share to stats.js).
-2. Mushrooms: measure first (catalog.js). If ice outlives its column (`settle`: 1700·√(r/1000) s
-   above 8 km against 450–1600·√(r/1000) for the column), tie a top's life to the column under it.
-3. Towers as continuous envelopes along the thermals' paths (widening with height), the bubbles
-   shaping them rather than piled as balls: prototype in preview.js and catalog.js, then the bake.
-4. Billows without a lattice: noise-shape.wgsl's sphereField puts one sphere in most cells, radius
-   0.4–0.78 of it. Sizes from a power law, irregular spacing (sparse, clustered), several sizes per
-   octave: real cumulus edges are fractal (dimension ~1.35), with no one size.
+**Leg 6, done (2026-11-21)** (`screenshots/l5-after` → `l6-s12`, `l6-s3`, `l6-after`; `node
+tools/world/stats.js`, `catalog.js`):
+1. Flat tops: stats.js counts them (the top bubble's ryU/rh under 0.45): 15% of the towers within
+   150 km, but 86% of the heads that stopped over 1 km past `el` and 92% at the ceiling; within 1 km
+   of `el` none (a tower's head there is pressed by `stabTall`, which hardly feels the jump). So a
+   continuous buoyancy at `el` changed nothing (decisions). The overshooting heads were pressed by
+   stable air normalised to 0.5 m/s² and spread with age whatever stopped them: now 1.0, and a head
+   spreads as far as the air that stopped it is stable. Flat tops 15 → 8% (past `el` by over 1 km
+   86 → 25%, the ceiling's anvils 77%); towers a little taller (tops over 9 km 65 → 68, over 6 km 181 → 177). `start`'s
+   main tower has a domed top where it was a slab, `seed3`'s great lens broke into domed masses (one
+   flat lens left at its right end, against the haze), `close` frames a whole cauliflower tower.
+2. Mushrooms, measured by cross-sections (a tower's widest section in its upper third against its
+   narrowest in the middle third): half the towers over 5 km had a top 1.6× their column's area, 15
+   over 4× (one 52 km² on 4 km²). Not ice (most sit under 8 km): a head is the youngest and biggest
+   piece of a pulse, the column under it a chain of older, smaller wake lumps that evaporate first.
+   Each wake lump now knows its head, and a head evaporates at least as far as the middle of its
+   column (the lumps above its lowest third; a crown as its parent): tops over 4× their column 15 →
+   1, over 2× 95 → 78 (the ratio p90 3.1 → 2.7). Tying ice's life to the column alone changed nothing.
+3. Envelopes without a new primitive: the bake already blends each bubble by its own radius, so a
+   tower's wake lumps now blend by 0.9 of their size (0.35), into one widening trunk, and crowns into
+   the heads they burst from by 0.7 (0.3–0.45): the side views (catalog.js) lose most of the
+   clusters of small balls, the levels agree a little better (L0 against L1 |Δ| p99 276 → 209 m),
+   the cloud +3%. What still reads as balls: the biggest heads, and small crowns on them. Flights
+   identical (the fillets touch only towers' bubbles).
+4. Billows without a lattice: not kept (decisions).
+   Flights (all four steps): `dive` and `skim` up to 1.4 m (the sea's heaps spread less), the rest
+   within 0.1 m. Cost (leg 5 against leg 6, interleaved A B B A A B, 200 frames, NVIDIA
+   laptop): the trace −7 to +8% (`start` −1, `sun` +1, `side` +8, `tower` −3, `high2` −7, `close` +8:
+   a whole tower in view now, `giant` −5), as the scenes changed; the bakes within their noise (the
+   same bubbles, 6,030 → 6,027 in the 120 km box).
 
 **Leg 7: a sun-space shadow map over ~20 km** (known issue: blotchy close-ups, stair-stepped
 distant tops). At 5° a billow 50 m tall casts a ~575 m shadow; the march has two samples between
@@ -388,6 +406,20 @@ Worth knowing before tuning again.
   kept the domes and hardly lit the rims; 50% over 20 m, the rims less than over 40 m for the same
   softening. The edge's thinness and the domes' crispness are one lever: only the author can set it
   (CLOUD_EDGE0, CLOUD_EDGE_W).
+- **A continuous buoyancy at the equilibrium level** (leg 6, the review's step: it jumped from
+  +0.3·bmax to −0.03 there): tops flatter than 0.45 15 → 13–14% however it was shaped, since no
+  tower's head near `el` was flat; but the big pulses (3.5 km bubbles) overshot further and settled
+  into heads of 4 km radius, a 13–15 km slab over `start`, or (with less energy below `el`) 10%
+  fewer towers over 6 km. Not kept: the flat heads were those pressed by the air far past `el`.
+  **Ice tied to the column's life** (the review's suspect for mushrooms): no change, the wide tops
+  sit under 8 km.
+- **Billows without a lattice** (leg 6): spheres of power-law sizes (many small, few large), a few
+  candidates a cell kept by a slow field (sparse, clustered), as much surface covered as the
+  lattice's: the near sea turned smooth swells with lone small balls on them (`start`, `down`'s
+  bare heaps). Milder (one a cell but anywhere in it, power-law sizes over a floor, half of them
+  with a smaller one on its upper side): the near sea still smoother, the small ones floating over
+  heaps as compact puffs (`giant`), the far towers' grape texture unchanged (`high2`). The lattice,
+  bent by the warp, stays; the octaves already put small on big (onCap).
 - **CLOUD_SAT 1** (2026-11): lit faces tan (saturation 0.40 → 0.31). **The sky light's tints off**: the
   shade neutral grey (saturation 0.08), on the way to brown. Both stay.
 
@@ -411,10 +443,12 @@ Worth knowing before tuning again.
   arena) have no out-of-memory fallback: if one fails, the frames draw nothing (only the
   size-dependent targets retry smaller; the bird's are now only as big as its box can get, about a
   third of the canvas, instead of three canvas-sized ones).
-- **Mushroom tops**: some towers have a wide spreading top over a narrower body (`tools/world/preview.js`
-  and `catalog.js` show them); the author dislikes thin stems under spreading tops. Causes to look at:
-  spreading lobes against column width, the shear drift of tops, column pieces evaporating before heads,
-  the pulse spread (0.6·P).
+- **Mushroom tops**: fewer since leg 6 (a head evaporates as far as its column), but a live cell's
+  top still spreads to twice its column's width in places (a tower 140 km from the start:
+  30 km² over 7–10 km²): its pulses' heads drift apart with the wind's shear while their columns
+  stay narrow (wake lumps 0.43–0.6 of the bubble's radius). Leg 6 measured it with a scratch
+  script (each tower's widest section in its upper third against its narrowest in the middle
+  third): worth a place in stats.js if this is worked on again.
 - **Close-up surfaces** of towers can look blotchy in low sun (cast shadows between many lumps).
   Distant towers (~40 km, `seed3`) show stair-stepped tops and blob-shaped patches where the shadow
   volume's 768 m texels decide.
@@ -423,14 +457,15 @@ Worth knowing before tuning again.
   all carry lobes and turrets alike (since leg 3 the turrets fade from ~40 km, sooner on a coarser
   trace). A real tower shows 2–4 dominant turrets, smaller domes on
   their upper, sunward shoulders, older parts smoother. Ideas: more spread in the billow scale per
-  bubble, the liveliness stronger. **Crowns perched on heads** read as knobs (`start`'s middle
-  tower, a "teddy-bear head" in a review; `catalog.js`): small bubbles sitting on big ones with a
-  narrow neck. **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird,
+  bubble, the liveliness stronger (the lattice's spheres at power-law sizes failed, decisions).
+  **Crowns perched on heads** read as knobs (`start`'s middle tower, a "teddy-bear head" in a
+  review; `catalog.js`): small bubbles sitting on big ones; since leg 6 joined by a fillet their
+  own size, the smallest still knobs. **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird,
   `sun`, `tower`, `away` right of the bird, bigger since the detail volume turned in leg 1):
   attached (`?dbg=1`), their base melts into the shade.
-- **Tops**: tower heads now keep their domes unless they pushed far into stable air or hit the
-  ceiling; flat crowns remain where they overshot far (`high2`'s left tower), and `seed3`'s cap
-  under the ceiling shows sky beneath its right end. Deep folds between lobes go near black
+- **Tops**: tower heads keep their domes unless they hit the ceiling (since leg 6 also those that
+  overshot far: tops flatter than 0.45 on 8% of the towers, most of them anvils); `seed3`'s great
+  cap broke into domed masses, one flat lens left against the haze at its right end. Deep folds between lobes go near black
   (`tower`, `close`: a navy pit).
 - **Silver linings** of far towers are a pixel wide: a backlit tower's edge 10–20 km off doesn't
   blaze (`sun`'s right tower, `anvil`). Since leg 5 the near sea's rims toward the sun glow; a far

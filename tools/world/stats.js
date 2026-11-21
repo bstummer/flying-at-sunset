@@ -1,4 +1,5 @@
-// Numbers about the generated world around a point: the sea, the towers, the bubble load.
+// Numbers about the generated world around a point: the sea, the towers (how high, how wide, how
+// flat their tops), the bubble load.
 //
 //   node tools/world/stats.js [cx cz] [R]      (metres; default the start, R = 150 km)
 //   QS="seed=3" node tools/world/stats.js      another world

@@ -140,19 +140,21 @@ export function settle(c, e, out, tall = false) {
     out.push(p);
     return p;
   };
-  // the wake: cloudy air keeps spilling out of the rising column, so it widens as it ages
+  // the wake: cloudy air keeps spilling out of the rising column, so it widens as it ages; its lumps
+  // blend into each other by about their size (one trunk widening with height, not a string of beads)
   if (!e.head) {
     const wid = 1 + 0.7 * (1 - Math.exp(-age / (900 * Math.sqrt(r / 1000))));
-    return put(x, e.y, z, 0.7 * r * wid * g, Math.min(0.62 * r, roof) * g, 0.62 * r * g, 1 + 0.25 * (wid - 1), A.turn, 0.35, 0, null);
+    return put(x, e.y, z, 0.7 * r * wid * g, Math.min(0.62 * r, roof) * g, 0.62 * r * g, 1 + 0.25 * (wid - 1), A.turn, 0.9, 0, null);
   }
   if (e.still) return put(x, e.y, z, r, Math.min(0.86 * r, roof), 0.6 * r, 1, 0, 0.25, 1, null);
   const rng = mulberry32(e.seed), grow = 1 - Math.exp(-age / (600 * Math.sqrt(r / 1000)));
   // (how far it spreads: by how stable the air that stopped it is, and how hard it was rising)
   const stab = tall ? stabTall(A, e) : stabOf(e), S = sat(-e.bu / 0.6) * (0.5 + 3 * Math.pow(sat((e.w - 4) / 22), 1.5));
   const sp = 0.3 * grow * (0.35 + 0.65 * stab), yc = e.y - Math.min(0.25 * age, 0.35 * r);
-  // pressed flat under the air that stopped it; the underside sags as it ages; old domes soften
+  // pressed flat under the air that stopped it; the underside sags as it ages; old domes soften; a
+  // crown blends into the head it burst from by a fillet its own size (a bulge, not a ball on a ball)
   const hp = put(x, yc, z, r * (1 + sp) * g, Math.min(r * lerp(tall ? 0.95 : 0.85, 0.3, stab) * lerp(0.85, 1.05, rng()) / (1 + 0.6 * sp), roof) * g,
-    r * (0.6 + 0.45 * grow) * g, lerp(1, 1.35, rng()) * (1 + 0.2 * sp), rng() * PI, 0.3 + 0.15 * sat(age / 1500), 1, null);
+    r * (0.6 + 0.45 * grow) * g, lerp(1, 1.35, rng()) * (1 + 0.2 * sp), rng() * PI, e.parent ? 0.7 : 0.3 + 0.15 * sat(age / 1500), 1, null);
   if (S > 0.15 && r > 350) {
     const n = Math.min(7, Math.round(1 + 2.5 * S)), a0 = rng() * 2 * PI;
     for (let i = 0; i < n; i++) {
