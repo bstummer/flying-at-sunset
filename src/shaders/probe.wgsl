@@ -50,7 +50,7 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
       let lp = lightPath(u.camPos, u.camPos.y, scam.y, 0, colAt(u.camPos.xz, 0), billowAt(u.camPos, 0), 0.0);
       let far = tsvTau(u.camPos, u.camPos.y);
       let sunL = sunColorAt(u.camPos.y) * sunScatter(lp, far, phaseOctaves(0.3), 1.0, depth);
-      bProbe.mistL = vec4f(sunL + ambSky * AMB_K * 0.75 * mix(0.5, 1.0, exp(-depth / 55.0)), 1.0);
+      bProbe.mistL = vec4f(sunL + ambSky * AMB_K * 0.75 * mix(0.5, 1.0, exp(-profileDepth(depth) / 55.0)), 1.0);
     }
     default: {
       // distance to the sea of clouds the bird skims (heaps piled high above it and towers may be

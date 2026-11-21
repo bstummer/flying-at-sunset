@@ -20,11 +20,28 @@ const CLOUD_SAT = 1.35;
 // toward the sun lost half their glare (and their light changed with the trace's resolution)
 const LIGHT_SKIN = 1.0;
 // the depth in a skin LIGHT_SKIN thick that the view has seen as much cloud by as at depth z in the
-// outline's ramp E wide (the light at it is then weighted as a crisp edge's, whatever the ramp)
+// outline's ramp E wide, both times the medium's profile (the light at it is then weighted as a
+// crisp edge's, whatever the ramp): as much cloud as the depth of full density q
 fn lightDepth(z: f32, E: f32) -> f32 {
   let W = LIGHT_SKIN;
-  if (z < sqrt(E * W)) { return z * sqrt(W / E); }
-  return select(z - (E - W) * 0.5, z * z / (2.0 * E) + W * 0.5, z < E);
+  let q = select(profileDepth(z) - profileDepth(E) + profileMoment(E) / E, profileMoment(z) / E, z < E);
+  let qW = profileMoment(W) / W;
+  if (q < qW) { return min(sqrt(2.0 * W * q / CLOUD_EDGE0), W); }
+  return profileInv(q + profileDepth(W) - qW);
+}
+// ∫ x ρ(x) dx from the surface to depth z (ρ: the profile), and the depth with as much cloud above
+// it as the depth of full density q (profileDepth's inverse)
+fn profileMoment(z: f32) -> f32 {
+  let w = CLOUD_EDGE_W;
+  let k = (1.0 - CLOUD_EDGE0) / w;
+  let a = min(z, w);
+  return CLOUD_EDGE0 * a * a * 0.5 + k * a * a * a / 3.0 + (z * z - a * a) * 0.5;
+}
+fn profileInv(q: f32) -> f32 {
+  let w = CLOUD_EDGE_W;
+  let k = (1.0 - CLOUD_EDGE0) / w;
+  if (q > w * (1.0 + CLOUD_EDGE0) * 0.5) { return q + w * (1.0 - CLOUD_EDGE0) * 0.5; }
+  return 2.0 * q / (CLOUD_EDGE0 + sqrt(CLOUD_EDGE0 * CLOUD_EDGE0 + 2.0 * k * q));
 }
 fn layerOD(t: f32, h0: f32, dy: f32, H: f32) -> f32 {
   let e0 = exp(-h0 / H);
@@ -180,10 +197,13 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
     // inside a cloud the air right around the camera is kept thin: drifting mist, not a white wall
     dens *= mix(1.0, mix(0.22, 1.0, smoothstep(12.0, 160.0, t)), u.inCloud);
     // stride: aim for a fixed optical depth per step (larger once little light gets through),
-    // but stay fine inside the soft rim where most of the visible light is scattered
+    // but stay fine inside the soft rim where most of the visible light is scattered: steps growing
+    // with the depth of full density (as fine in the medium's thin edge as in a uniform one, and no
+    // finer: by its depth in metres, the thin edge took a third more steps, each lit afresh)
     let sigma = dens * SIGMA;
     var dt = clamp((0.45 + 1.6 * (1.0 - T)) / max(sigma, 0.004), dtMin, 8.0 + t * 0.016);
-    dt = min(dt, max(edgeW * 0.55, -d * 0.6 + dtMin)) * (0.75 + 0.5 * jit2);
+    let xd = -d;
+    dt = min(dt, max(edgeW * 0.55, (0.6 * (profileDepth(xd) + min(xd, 0.0)) + dtMin) / profile(xd))) * (0.75 + 0.5 * jit2);
     if (dens > 0.003) {
       nIn += 1.0;
       // once little light gets through, deeper samples reuse the light of the previous one (the path
@@ -195,7 +215,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       let relL = dir * (tEntry + (t - tEntry) * depthL / max(depthIn, 1e-3));
       var wpL = u.camPos + relL;
       wpL.y = h0 + relL.y + dot(relL.xz, relL.xz) * INV2R;
-      if (reuse) { lastLp.own += max(depthL - lastDepth, 0.0) * SIGMA / max(mix(lastLp.muF, lastLp.muN, lastLp.near), 0.1); }
+      if (reuse) { lastLp.own += max(profileDepth(depthL) - profileDepth(lastDepth), 0.0) * SIGMA / max(mix(lastLp.muF, lastLp.muN, lastLp.near), 0.1); }
       else {
         // (at the view sample's own detail: rel below compares the two, and where the finest domes
         // fade with distance a coarser march would see a face on every dome's top)
@@ -204,7 +224,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
         // bulge bright where it turns to the sun, dimmer where it turns away (detail up close, as
         // in the far towers' lobes); the light inside spreads, so only the surface's first metres
         let rel = clamp(1.0 + 0.9 * (clamp((lastLp.d0 + depthL) / 5.0, -1.0, 1.0) - lastLp.nS), 0.3, 1.8);
-        lastRel = mix(1.0, rel, (1.0 - smoothstep(1500.0, 6000.0, t)) * exp(-depthL / 12.0));
+        lastRel = mix(1.0, rel, (1.0 - smoothstep(1500.0, 6000.0, t)) * exp(-profileDepth(depthL) / 12.0));
         // which way the surface faces: up from one distance tap above, toward the sun from the
         // light march. Each bulge then catches its own sky light, even in shadow. And how open the
         // sky is over it: the distance to the cloud at a point up and back toward the camera,
@@ -220,7 +240,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       lastDepth = depthL;
       // past the light march: the rest of this cloud, and the clouds beyond (sunScatter)
       let far = tsvTau(wpL, wpL.y);
-      let pw = mix(powder, 1.0, 1.0 - exp(-depthL * SIGMA));
+      let pw = mix(powder, 1.0, 1.0 - exp(-profileDepth(depthL) * SIGMA));
       let sc = sunColorAt(h);
       var sunL = sc * sunScatter(lastLp, far, phase, pw, depthL) * lastRel;
       if (DBG && u.dbgMode >= 5) {
@@ -231,7 +251,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       let up = saturate((h - C.w + 250.0) / 1400.0);
       // sky light only reaches the first few tens of metres (short scale also hides the
       // discontinuous interior of the distance field)
-      let ao = mix(0.5, 1.0, exp(-depthL / 55.0)) * mix(0.6, 1.0, lastOpen);
+      let ao = mix(0.5, 1.0, exp(-profileDepth(depthL) / 55.0)) * mix(0.6, 1.0, lastOpen);
       // sky light by orientation: the deep blue zenith on tops, the warm sunlit sea under bellies,
       // the golden sun-side or the cool violet anti-sun sky on the sides (a belly sees only part of
       // the sea below past the bulges around it)

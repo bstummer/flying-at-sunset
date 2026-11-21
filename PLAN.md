@@ -145,12 +145,35 @@ decisions on what failed). The author judges after each leg; legs 2 and 5 are mo
    348 → 388, max 1661 → 1805 (its shifts spread over a few more frames: `bakeCost`). With 60
    frames the same builds came out −25% to +21%: time this laptop over a few hundred frames.
 
-**Leg 5: a density profile like Nubis³**, after legs 2 and 3 (known issues: silver linings a pixel
-wide, inside cloud a uniform wall). The edge stays crisp (a step to part of the full density, frayed
-by the erosion); the density rises inward over tens of metres (erosion scaled by depth); nothing
-outside the surface. It differs from both failures in the decisions: soft rims were a linear ramp
-from zero (out of focus), the fringe was outside the surface (veils over the sea for kilometres).
-`sun`, `anvil`, `inside`, `close`, `start`'s near sea.
+**Leg 5, done (2026-11-21)** (`screenshots/l5-before` → `l5-after`, the variants `l5-p30w60`,
+`l5-p50w20`, `l5-p65w30`; `node tools/light/reference.js`):
+1. The medium in constants.js (σ, and its profile, shared by the shaders and the reference): a step
+   at the surface to half the full density, rising to all of it 40 m in; the outline's ramp and
+   the erosion's 6 m as before, nothing outside the surface. Every depth the light takes is a depth
+   of full density (`profileDepth`): the light march's steps by the profile's mean over them, the
+   diffusion's leak, the powder, the sky light's falloff, the smallest billows' faces, and the
+   skin's mapping from the outline's ramp, now exact for a ramp of any width (it drifted 5% at
+   16 m: tests/light.test.js holds 1–64 m). So a flat face or a slope looks as in a uniform medium
+   (model.js within 0.4%); only shapes the size of the profile change. Tops lit at 5° come out
+   +5–12% (the light march's fixed 10 m first step and 3 m blur meet the light point deeper). The
+   trace's strides inside cloud grow with the depth of full density too: by the depth in metres,
+   the thin edge took more steps, each lit afresh (the trace +7–15%).
+2. The reference's Monte Carlo through the profile (delta tracking; the sun's optical depth in
+   closed form, tests/light.test.js). Against the uniform medium: slabs the same (as theory says), a
+   tower's edge +12%, a 150 m wall lit from behind +15%, a 100 m ball's lit side −13% and shaded
+   side +15%. The trace follows it as before (rms 1.54× over the views, the isolated small ball
+   aside): tops toward the sun 0.73–0.89 → 0.83–0.95, a tower's edge 0.77 → 0.85, a small ball's
+   edge 1.53 → 1.75.
+3. The look: the near sea's rims toward the sun glow broader and brighter (`sun`, `start`'s near
+   sea), the folds lighter (`tower`'s lit face: darkest 1% 67 → 79, luminance SD 39 → 36; `close`
+   42 → 40), side-lit heaps' domes a little softer (`start` right of the bird). A far backlit tower's
+   rim a shade warmer (`seed3`), but at 20 km a trace pixel is 60–80 m: the profile can't widen its
+   silver lining (`sun`'s right tower, `anvil` hardly change). `inside` unchanged: the camera sits
+   hundreds of metres deep. Shimmer at rest down in every view but `skim` (0.019 → 0.052%, inside
+   the billows' haze). Flights identical but `skim` (the bird's in-cloud test reads the density:
+   0.2 m). Cost (leg 4 against leg 5, interleaved A B B A A B, 200 frames, NVIDIA laptop): the trace
+   −5 to +2% (`start` −4, `sun` −2, `side` +2, `tower` −3, `high2` −5, `close` −2); the bakes
+   unchanged. The canvas at 3.6–3.7 s (the player check).
 
 **Leg 6: the shapes** (known issues: popcorn far away, mushroom tops, tops; world changes, so the
 fingerprint and the flights each step):
@@ -359,6 +382,12 @@ Worth knowing before tuning again.
 - **The light from the finer level across a handover** (the light march and the sky taps in L0
   where the dither gave the sample L1): the grain at 7–10 km as strong or stronger: the light point
   lies on the coarser level's surface, a little inside or outside the finer one.
+- **A thinner edge** (leg 5: 30% of the density at the surface, full 60 m in): the near rims glowed
+  most, but side-lit heaps turned soft pillows (their domes' shading flat, `start` right of the
+  bird) and `close`'s domes washed out: a dome of 20–60 m lets the light through it. 65% over 30 m
+  kept the domes and hardly lit the rims; 50% over 20 m, the rims less than over 40 m for the same
+  softening. The edge's thinness and the domes' crispness are one lever: only the author can set it
+  (CLOUD_EDGE0, CLOUD_EDGE_W).
 - **CLOUD_SAT 1** (2026-11): lit faces tan (saturation 0.40 → 0.31). **The sky light's tints off**: the
   shade neutral grey (saturation 0.08), on the way to brown. Both stay.
 
@@ -403,9 +432,13 @@ Worth knowing before tuning again.
   ceiling; flat crowns remain where they overshot far (`high2`'s left tower), and `seed3`'s cap
   under the ceiling shows sky beneath its right end. Deep folds between lobes go near black
   (`tower`, `close`: a navy pit).
-- **Silver linings** are a pixel wide: a backlit tower's edge doesn't blaze (`sun`, `anvil`); a
-  fringe outside the surface failed (decisions).
-- **Inside cloud** is a uniform wall (mauve grey, `inside`), even with the exposure adapting to the
+- **Silver linings** of far towers are a pixel wide: a backlit tower's edge 10–20 km off doesn't
+  blaze (`sun`'s right tower, `anvil`). Since leg 5 the near sea's rims toward the sun glow; a far
+  tower's lie within a trace pixel (60–80 m), where a real edge's wisps and the profile both are: a
+  fringe outside the surface failed (decisions). What might: thin cloud by the pixel's footprint
+  (the sub-pixel wisps' average) where the outline ramps up.
+- **Inside cloud** is a uniform wall (mauve grey, `inside`; the medium's profile reaches 40 m in,
+  and the camera sits hundreds of metres deep), even with the exposure adapting to the
   mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays low);
   drifting mist only shows in motion. `under` (an anvil's underside) is dark navy now: right
   for shade at sunset, but judge it against its brief.
@@ -417,9 +450,10 @@ Worth knowing before tuning again.
   and sky light, smooth over tens of metres. **Into the sun** the sea's tops were pale cream, lit by
   the sky; since leg 2 they have form, with a soft bluish patch beside the bird in `start`.
 - **The light against its reference** (`node tools/light/reference.js`): an isolated small ball's lit
-  side 5× (the trace can't see how little cloud lies behind a billow; on a real cloud, a whole body),
-  a tower's shade 3.7× a ball's, 0.6× a wall's (real towers lie between), tops seen with the sun
-  behind 1.3–1.8×, faces 0.84×, the glare off tops toward the sun 0.75×.
+  side 5.7× (the trace can't see how little cloud lies behind a billow; on a real cloud, a whole
+  body), its edge 1.75×, a tower's shade 3.4–3.7× a ball's, 0.6× a wall's (real towers lie
+  between), tops seen with the sun behind 1.2–1.9×, faces 0.83×, the glare off tops toward the sun
+  0.83–0.95× (leg 5's medium).
 - **Lit faces darker since leg 2**: `tower`'s 174 → 152, `away`'s lit sea 146 → 114 (luminance), the
   exposure kept at 14 (raised, the glare toward the sun goes milky, decisions): for the author.
 - **The bird in shade** (`giant`): a pale blue-grey silhouette, like the shade around it (its keel

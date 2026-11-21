@@ -92,13 +92,32 @@ fn sceneSDF(wp: vec3f, h: f32, l: i32, lod: f32) -> f32 {
   return cloudSDF(wp, h, shapeAt(vec3f(wp.x, h, wp.z), l), colAt(wp.xz, l), lod);
 }
 
-// Density (0..1) from the signed distance: real cumulus ends within metres, so the density ramps
-// up over edgeW (a few metres, or about a pixel of the trace), at a surface the detail noise frays
-// by up to ERODE m (detailW fades it out far away; finer near the camera, nearW). It is only the
+// Density (0..1) from the signed distance: the medium's profile (constants.js), crisp at the
+// surface (a step to CLOUD_EDGE0 of the full density) and rising to it CLOUD_EDGE_W m in, where
+// dry air no longer reaches: an edge's thin parts and the smallest domes glow through, and a
+// backlit rim shines over metres, not a hair. Every depth the light takes (the light march near
+// the surface, the diffusion's leak, the powder, the sky light's falloff, the smallest billows'
+// faces) is a depth of full density (profileDepth), so a flat face looks as it would in a uniform
+// medium: only shapes the size of the profile change. The trace's outline ramps the step up over
+// edgeW (a few metres, or about a pixel of the trace), and at a surface the detail noise frays it
+// by up to ERODE m (detailW fades it out far away; finer near the camera, nearW). That is only the
 // edge: the light doesn't see it, so anything deeper reads as blur, not form (the domes of
 // cloudSDF carry the form). Inside a cloud near the camera: drifting variations of density, mist
 // streaming past.
 const ERODE = 6.0;
+fn profile(x: f32) -> f32 { return CLOUD_EDGE0 + (1.0 - CLOUD_EDGE0) * saturate(x / CLOUD_EDGE_W); }
+// the depth of full density as much cloud as lies between the surface and depth x
+fn profileDepth(x: f32) -> f32 {
+  let a = clamp(x, 0.0, CLOUD_EDGE_W);
+  return CLOUD_EDGE0 * max(x, 0.0) + (1.0 - CLOUD_EDGE0) * (a * a / (2.0 * CLOUD_EDGE_W) + max(x - CLOUD_EDGE_W, 0.0));
+}
+// the mean density along a step whose depth runs over x ± r, of the part inside
+fn profileMean(x: f32, r: f32) -> f32 {
+  let a = max(x - r, 0.0);
+  let b = max(x + r, 0.0);
+  if (b - a < 0.5) { return profile(b); }
+  return (profileDepth(b) - profileDepth(a)) / (b - a);
+}
 fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f32 {
   let x = -d;
   if (x <= 0.0) { return 0.0; }
@@ -112,9 +131,9 @@ fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f3
       let dn2 = textureSampleLevel(tDetail, sRep, (q + u.detailDrift) * (4.0 / DETAIL_TILE) + dn.a * 0.35, 0.0);
       e = mix(e, e * 0.6 + saturate((0.8 - dn2.r) / 0.45) * 0.4, nearW);
     }
-    return saturate((x - amp * e) / edgeW);
+    return saturate((x - amp * e) / edgeW) * profile(x);
   }
-  var dens = saturate(x / edgeW);
+  var dens = saturate(x / edgeW) * profile(x);
   if (nearW > 0.01) {
     let dn = textureSampleLevel(tDetail, sRep, (detailAt(wp) + u.detailDrift) * (2.0 / DETAIL_TILE), 0.0);
     dens *= mix(1.0, 0.25 + 1.1 * dn.r * dn.r + 0.3 * dn.g, nearW);
@@ -162,7 +181,7 @@ const DIFFUSE = 0.42;
 fn sunScatter(lp: LightPath, far: vec2f, ph: vec4f, pw: f32, depthIn: f32) -> f32 {
   let tau = lp.own + far.x;
   let mu = max(mix(lp.muF, lp.muN, lp.near), 1e-4);
-  let diffu = DIFFUSE * pow(mu, 1.4) / (1.0 + 0.11 * (tau * mu + lp.otherD)) * (1.0 - 0.55 * exp(-depthIn * SIGMA / 1.5));
+  let diffu = DIFFUSE * pow(mu, 1.4) / (1.0 + 0.11 * (tau * mu + lp.otherD)) * (1.0 - 0.55 * exp(-profileDepth(depthIn) * SIGMA / 1.5));
   return (msScatterP(tau + lp.other, ph) * pw + diffu) * exp(-far.y);
 }
 // the sky's light on cloud (bAmb holds irradiance / π; a thick cloud returns nearly all of it: as the
@@ -214,9 +233,10 @@ fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0:
     // the air just above it is outside), blurred over 3 m (cloud edges are not hard)
     let g = (d - dPrev) / (sm - sPrev);
     let f = saturate(0.5 - d / max(abs(g) * ds, 3.0));
-    lp.own += f * inside * ds * SIGMA;
-    lp.other += f * (1.0 - inside) * ds * SIGMA;
-    lp.otherD += saturate(0.5 - d / max(abs(g) * ds, 0.15 * sm)) * (1.0 - inside) * ds * SIGMA * smoothstep(60.0, 300.0, sm);
+    let sig = SIGMA * profileMean(-d, 0.5 * max(abs(g) * ds, 3.0));
+    lp.own += f * inside * ds * sig;
+    lp.other += f * (1.0 - inside) * ds * sig;
+    lp.otherD += saturate(0.5 - d / max(abs(g) * ds, 0.15 * sm)) * (1.0 - inside) * ds * sig * smoothstep(60.0, 300.0, sm);
     let w = max(inside - f, 0.0);
     wOut += w;
     gOut += w * saturate(g);

@@ -1,7 +1,8 @@
 // Constants several modules share: the sun (low, toward −Z), the wind, the noise volumes' sizes and
-// tiles and the detail volume's turn, the render origin's step, the clouds' ceiling, the clipmap
-// levels' grids, the atmosphere.
-// The shaders get CLOUD_TOP, the tiles, the turn and the atmosphere from here too (render/gpu.js).
+// tiles and the detail volume's turn, the render origin's step, the clouds' ceiling and medium, the
+// clipmap levels' grids, the atmosphere.
+// The shaders get CLOUD_TOP, the medium, the tiles, the turn and the atmosphere from here too
+// (render/gpu.js).
 
 import { DEG, norm, rotation } from './math.js';
 
@@ -27,6 +28,11 @@ export const RAY_S = [5.802e-3, 13.558e-3, 33.1e-3], RAY_H = 8.0;
 export const MIE_S = 3.996e-3 * 2.2, MIE_A = 0.444e-3 * 2.2, MIE_H = 1.2;
 export const OZO_A = [0.650e-3, 1.881e-3, 0.085e-3];
 export const CLOUD_TOP = 14000;       // m: nothing rises above this
+// The clouds' medium: the extinction inside (1/m; cumulus measure 0.05–0.12), and how it thins
+// toward the surface, where dry air mixes in (Nubis³'s profile): a step at the surface to
+// CLOUD_EDGE0 of it, rising to all of it CLOUD_EDGE_W m in (chunks/cloud.wgsl; tools/light/ judges
+// the light in it)
+export const SIGMA = 0.07, CLOUD_EDGE0 = 0.5, CLOUD_EDGE_W = 40;
 // The clipmap levels' grids (render/stream.js; tools/world/levels.js bakes them on the CPU): cells
 // (m) across and up, layers, the distance the bake clamps to, the smallest bubble each takes, and
 // the lod its column data is filled at (world/columns.js)
@@ -36,4 +42,4 @@ export const CLIP_LEVELS = [
   { cell: 2048, cellV: 512, nz: 32, maxD: 12000, minBR: 900, lod: 2 },
 ];
 // what the shaders get from here: render/gpu.js declares these in front of each
-export const FOR_SHADERS = { CLOUD_TOP, SHAPE_TILE, DETAIL_TILE, DETAIL_ROT, RG, RT, RAY_S, RAY_H, MIE_S, MIE_A, MIE_H, OZO_A };
+export const FOR_SHADERS = { CLOUD_TOP, SIGMA, CLOUD_EDGE0, CLOUD_EDGE_W, SHAPE_TILE, DETAIL_TILE, DETAIL_ROT, RG, RT, RAY_S, RAY_H, MIE_S, MIE_A, MIE_H, OZO_A };

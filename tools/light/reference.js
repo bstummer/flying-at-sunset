@@ -10,11 +10,12 @@
 // the heading from the sun's (0 toward it, 180 away), how far down (°).
 //
 //   node tools/light/reference.js [--paths 100000] [--cases top,face] [--fresh]
-// The Monte Carlo's results are kept in screenshots/light/reference.json (--fresh: again).
+// The Monte Carlo's results are kept in screenshots/light/reference.json (--fresh: again; made again
+// on their own once the medium changes, constants.js).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PHASES, SUN, ball, radiance, slab, viewDir } from './mc.js';
+import { MEDIUM, PHASES, SUN, ball, radiance, slab, viewDir } from './mc.js';
 import { traceRadiance } from './model.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
@@ -51,9 +52,9 @@ export function reference({ paths = PATHS, fresh = false, only = null } = {}) {
       if (v[0] * s.n[0] + v[1] * s.n[1] + v[2] * s.n[2] >= 0) continue;
       const key = `${c.name} ${az}/${dep}`;
       let mc = cache[key];
-      if (!mc || mc.paths < paths) {
+      if (!mc || mc.paths < paths || mc.medium !== MEDIUM) {
         const all = radiance(s, v, { phase: PHASES.cloud, paths }), ss = radiance(s, v, { phase: PHASES.cloud, orders: 1, paths });
-        mc = cache[key] = { paths, L: all.L, err: all.err, ss: ss.L, trace: radiance(s, v, { phase: PHASES.trace, paths, seed: 2 }).L };
+        mc = cache[key] = { medium: MEDIUM, paths, L: all.L, err: all.err, ss: ss.L, trace: radiance(s, v, { phase: PHASES.trace, paths, seed: 2 }).L };
       }
       rows.push({ key, name: c.name, shape: s, v, ...mc, ms: mc.L - mc.ss });
     }

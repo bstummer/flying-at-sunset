@@ -100,7 +100,7 @@ What the author keeps coming back to:
 | `node tools/flights.js [--label L]`, `--compare A B` | The scripted flights' logs (15 s each, from the start and diving into the cloud tops) into `screenshots/flights/<label>.json`; compare says per flight "identical" or where they part and by how much. |
 | `npm run map` | `tools/world/map.js`: a top-down map of the world (restlessness, towers by height), without rendering. |
 | `node tools/world/fingerprint.js [--write]` | Whether the CPU world is the one recorded in `tests/fixtures/world-fingerprint.json`; `--write` records it after a deliberate change. |
-| `node tools/light/reference.js [--cases top,face] [--fresh]` | The trace's light against a Monte Carlo of the medium (`tools/light/`): per shape (tops, slopes, faces, walls lit from behind, balls) and view, the radiance a real cloud sends and the trace's (its model, `tools/light/model.js`). The Monte Carlo's numbers are kept in `screenshots/light/` (minutes to make again). |
+| `node tools/light/reference.js [--cases top,face] [--fresh]` | The trace's light against a Monte Carlo of the medium (`tools/light/`): per shape (tops, slopes, faces, walls lit from behind, balls) and view, the radiance a real cloud sends and the trace's (its model, `tools/light/model.js`). The Monte Carlo's numbers are kept in `screenshots/light/` (minutes to make again; made again when the medium in `constants.js` changes). |
 | `node tools/linux.js <command>` | Runs a command in a Linux container like CI's runner (Docker): SwiftShader captures on Windows and macOS (§4). |
 
 The tools test `dist/index.html` as built, and refuse one older than its sources: `npm run build` first
@@ -186,10 +186,11 @@ For every change that can affect pixels:
   it to its promises (top speed, the floor under the sea, the ceiling, climbs trading speed for height,
   stability at a coarse time step). The flights in the page are `tools/flights.js`'s and the flight
   check's.
-- The light has a reference: `tests/light.test.js` holds the Monte Carlo (`tools/light/mc.js`) to
-  closed forms, and the trace's light within a factor two of it and independent of the outline's
-  width. The trace's light is `tools/light/model.js`, a copy of the shaders' (`sunScatter`,
-  `lightPath`, the skin): a change to those formulas changes it too, and `reference.js` says how far
+- The light has a reference: `tests/light.test.js` holds the Monte Carlo (`tools/light/mc.js`, of
+  the medium in `constants.js`: its extinction and profile) to closed forms, and the trace's light
+  within a factor two of it and independent of the outline's width. The trace's light is
+  `tools/light/model.js`, a copy of the shaders' (`sunScatter`, `lightPath`, the skin, the
+  profile's depths): a change to those formulas changes it too, and `reference.js` says how far
   it then is from a real cloud.
 - The checks test the piece, and the tools themselves: the streaming check compares the streamed
   volumes with a fresh start's texel by texel, and the errors check proves the tools hear a WebGPU
@@ -211,7 +212,7 @@ src/
   main.js             the start, the main loop (frameStep), the steering hint, a lost device, window.__debug
   worker.js           the world's worker: src/world/ off the page's thread (column data, bubbles, the domes around
                       the bird, ?preset's place), bundled into the page as a string and started from a blob: URL
-  math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the noise tiles and the detail volume's turn, the render origin, the ceiling, the clipmap levels' grids, the atmosphere
+  math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the noise tiles and the detail volume's turn, the render origin, the ceiling, the clouds' medium, the clipmap levels' grids, the atmosphere
   core/               the page around the piece: every URL parameter (params.js, §7), its elements, the note,
                       refused requests and fullscreen (page.js), steering (input.js), the world's worker from the
                       page's side (world.js), the test mode (capture.js), the readout (readout.js, ?debug), the
@@ -301,7 +302,7 @@ header; outside the test mode one the page can't read is a console warning, and 
   declared in a chunk the shaders that use it include); a pass (`pass`, `dispatch`) hands them over by
   those names, and a missing one throws (`render/gpu.js`'s header). Entry points: `vs`, `fs`, `cs`.
   A value JS and WGSL both use comes from `constants.js` through the pipeline's header (its
-  `FOR_SHADERS`: the ceiling, the noise tiles, `DETAIL_ROT`, the atmosphere), never as a second literal; a switch is an `override` set by the pipeline's
+  `FOR_SHADERS`: the ceiling, the medium, the noise tiles, `DETAIL_ROT`, the atmosphere), never as a second literal; a switch is an `override` set by the pipeline's
   `constants` (the trace's `DBG`).
 - **Row order**: every texture keeps GL's, row 0 at the bottom of the view, as when the piece was
   written for WebGL. Fullscreen passes work in pixel coordinates (`@builtin(position)` numbers rows like

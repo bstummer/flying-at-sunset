@@ -26,7 +26,7 @@ const CELL = 180.0;
     let ambSky = bAmb.up.rgb;
     let cosT = dot(rel / max(dist, 1e-3), u.sunDir);
     let di = max(-d, 0.0);
-    col = sunColorAt(h) * sunScatter(lp, far, phaseOctaves(cosT), 1.0, di) + ambSky * AMB_K * mix(0.5, 1.0, exp(-di / 55.0));
+    col = sunColorAt(h) * sunScatter(lp, far, phaseOctaves(cosT), 1.0, di) + ambSky * AMB_K * mix(0.5, 1.0, exp(-profileDepth(di) / 55.0));
   }
   let c = vec2f(f32(vi & 1u), f32(vi >> 1u)) * 2.0 - 1.0;
   let size = mix(9.0, 26.0, h4.x);

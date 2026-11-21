@@ -3,7 +3,6 @@
 // the large shapes, the column data (shaders/cloud.js)
 const INV2R = 0.5 / (RG * 1000.0);   // a height's rise with distance (m) on the curved planet
 const SEA_BASE = 520.0;
-const SIGMA = 0.07;         // extinction inside clouds (1/m): cumulus measure 0.05–0.12
 const EDGE_W = 80.0;        // soft boundary thickness (m)
 const LIGHT_NEAR = 1358.0;  // how far the trace's light march looks toward the sun through the billows (lightTauN); the shadow volume's other clouds start there
 const LIGHT_REACH = 6277.0; // how far it follows the cloud it is in (the large shapes alone); the shadow volume's own cloud starts there

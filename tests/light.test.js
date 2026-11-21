@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PHASES, SUN, ball, radiance, slab, viewDir } from '../tools/light/mc.js';
+import { PHASES, SUN, ball, profile, radiance, slab, viewDir } from '../tools/light/mc.js';
 import { traceRadiance } from '../tools/light/model.js';
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -42,6 +42,22 @@ test('a deep slab without absorption sends all the light back', () => {
   assert.ok(Math.abs(flux - mu0) < 0.12 * mu0, `flux back ${flux.toFixed(3)}, in ${mu0.toFixed(3)}`);
 });
 
+// The medium thins toward the surface (constants.js): the sun's optical depth through it, in closed
+// form, against the profile summed along the ray, from points near the surface and deep, every way
+test('the optical depth along a ray is the profile summed', () => {
+  const nrm = v => { const l = Math.hypot(...v); return v.map(x => x / l); };
+  for (const s of [slab([0, 1, 0], 800), slab([0.3, 1, -0.2], 60), ball([0, 0, 1], 750), ball(SUN, 100)]) {
+    for (const [p, w] of [[[0, -3, 0], SUN], [[0, -25, -10], nrm([0.2, -0.3, 1])], [[5, -50, 3], nrm([1, 0.1, 0.05])], [[0, -1, 0], nrm([0, -1, 0.01])]]) {
+      if (s.sdf(p) >= 0) continue;
+      const l = s.exit(...p, ...w), N = 20000;
+      let sum = 0;
+      for (let i = 0; i < N; i++) { const t = (i + 0.5) / N * l; sum += profile(-s.sdf([p[0] + w[0] * t, p[1] + w[1] * t, p[2] + w[2] * t])) * l / N; }
+      const od = s.od(...p, ...w, l);
+      assert.ok(Math.abs(od - sum) < 1e-3 * sum + 1e-3, `from ${p} along ${w.map(x => x.toFixed(2))}: ${od.toFixed(4)}, summed ${sum.toFixed(4)}`);
+    }
+  }
+});
+
 test('a ball\'s exit and distance agree with its surface', () => {
   const b = ball([0, 0, 1], 500);
   assert.ok(Math.abs(b.sdf([0, 0, 0])) < 1e-9);
@@ -62,10 +78,11 @@ test('the trace\'s light stays within a factor two of the reference', () => {
 });
 
 // The outline's ramp follows the trace's pixel; the light must not (it ate the glare off the tops
-// toward the sun, and changed with the resolution)
+// toward the sun, and changed with the resolution), also where the ramp is wider than the medium's
+// profile (far clouds)
 test('the trace\'s light does not change with the outline\'s width', () => {
   for (const [s, v] of [[slab([0, 1, 0], 800), viewDir(0, 10)], [slab(SUN, 2000), viewDir(180, 0)], [slab([0, 1, 0], 800), viewDir(180, 30)]]) {
-    const [a, b, c] = [1, 4, 16].map(edgeW => traceRadiance(s, v, { edgeW }));
-    assert.ok(Math.abs(b / a - 1) < 0.01 && Math.abs(c / a - 1) < 0.01, `${a.toFixed(4)} ${b.toFixed(4)} ${c.toFixed(4)}`);
+    const [a, ...rest] = [1, 4, 16, 64].map(edgeW => traceRadiance(s, v, { edgeW }));
+    assert.ok(rest.every(b => Math.abs(b / a - 1) < 0.01), [a, ...rest].map(x => x.toFixed(4)).join(' '));
   }
 });
