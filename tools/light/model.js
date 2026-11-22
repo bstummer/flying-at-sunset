@@ -1,8 +1,9 @@
 // The trace's light of a shape (tools/light/), as chunks/cloud.wgsl and trace.wgsl compute it: the view
 // ray integrated through the outline's density ramp and the medium's profile, each sample lit by
 // sunScatter at the depth a skin LIGHT_SKIN thick reaches at the same optical depth along the view
-// (lightDepth), through the light march (lightPath). Only the sun: the sky light and the shadow volume are left out (no other
-// cloud), and so is the trace's reuse of a sample's light deeper in. Keep it in step with those
+// (lightDepth), through the light march (lightPath). Only the sun: the sky light, the sun map and the shadow volume are left
+// out (no other cloud: past the march's first three steps the shaders take other clouds from the sun map), and so is the
+// trace's reuse of a sample's light deeper in. Keep it in step with those
 // shaders: it is what the reference (mc.js) judges.
 //
 //   import { traceRadiance } from './model.js';

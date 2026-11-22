@@ -13,8 +13,10 @@
 // same at any resolution of the trace); lightPath marches 6 growing
 // steps toward the sun, the first with the view sample's detail (domes of metres shade
 // themselves), the same for every pixel (jittered, they flipped in and out of the bulges beside the
-// path: a screen-door), the shadow volume carries on from there (through the same cloud, and
-// through the clouds beyond: their shadow a plain multiplier); multiple scattering by octaves
+// path: a screen-door), then on through its cloud's large shapes; other clouds' shadows
+// past its first ~90 m come from the sun map (render/sunmap.js: near ones as the march's own,
+// those past ~1.4 km a plain multiplier); past the map's window and past the march's reach, the
+// shadow volume's; multiple scattering by octaves
 // (Wrenninge) with a two-lobe HG phase (silver linings, the glare off the tops toward the sun);
 // diffusion (light soaking into the cloud where the path toward the sun leaves it, as squarely as
 // it came in there: a lit side's creases fill, a tower's shade gets a few % of its lit side); the
@@ -24,7 +26,8 @@
 // bellies, golden or violet sky on the sides; shade takes the sky's blue, grey inside cloud), as
 // strong as the sky view gives it; short-range occlusion; the cloud's own light with a colour
 // film's saturation (CLOUD_SAT); haze by optical depth (scale height 6 km: the farthest clouds the
-// haziest). ?dbg=1..7 sets DBG: normals, sun visibility, shadow volume, march cost, lighting (5
+// haziest). ?dbg=1..7 sets DBG: normals, sun visibility, the shadow volume and the sun map (the
+// light that gets through other clouds from a point), march cost, lighting (5
 // octaves, 6 diffusion, 7 sky light alone).
 
 import { U_CLIP, U_CLOUD } from './cloud.js';

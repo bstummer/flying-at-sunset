@@ -16,6 +16,7 @@ import { device, gpuState, pipelinesReady, readBuffer, readTexture } from './ren
 import { cloudTopAt, seaTopAt, towersNear } from './world/queries.js';
 import { generateStatic, T } from './render/setup.js';
 import { LEVELS, shiftWorld, TSVL, worldStats } from './render/stream.js';
+import { SUNMAP } from './render/sunmap.js';
 import { R, resize } from './render/targets.js';
 import { inCloud, probeBusy, probeData, updateInCloud } from './render/probe.js';
 import { bird_, newBird, updateFlight } from './flight/flight.js';
@@ -102,7 +103,7 @@ device.lost.then(async info => {
 });
 document.addEventListener('visibilitychange', () => { last = -1; });
 window.__debug = {
-  bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, worldStats, device, T, readTexture,
+  bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, SUNMAP, worldStats, device, T, readTexture,
   // (struct Probe and struct Ambient, chunks/probe.wgsl and chunks/ambient.wgsl)
   probe: async () => {
     const b = Array.from(await readBuffer(T.probe)), a = Array.from(await readBuffer(T.amb));

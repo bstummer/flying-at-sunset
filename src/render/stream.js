@@ -5,7 +5,9 @@
 // those of the nearest bubble are) and a 256×256 map of column data, centred on the
 // camera and addressed toroidally: once the camera is more than `step` cells off its centre the
 // window shifts, and only the blocks that entered it are made. TSVL, the shadow volume (the optical depth toward the
-// sun, through the cloud a texel sits in and through the clouds beyond it), is marched through the coarser levels and shifts once they are settled. A shifting level
+// sun, through the cloud a texel sits in and through the clouds beyond it: the light takes the first past the light
+// march's reach, the second past the sun map's window, render/sunmap.js), is marched through the coarser levels and
+// shifts once they are settled. A shifting level
 // asks the world's worker (core/world.js) for all its blocks at once; a block's column data goes
 // into the column map, its bubbles into the frame's bubble arena, to be baked (shaders/volumes.js).
 // Until a shift is baked a level is valid only where its old and new windows overlap, and the

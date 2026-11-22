@@ -149,6 +149,32 @@ fn tsvTau(wp: vec3f, h: f32) -> vec2f {
   if (w <= 0.0) { return vec2f(0.0); }
   return textureSampleLevel(tTsv, sVol, vec3f(wp.x * u.tsvA.x + u.tsvA.y, wp.z * u.tsvA.x + u.tsvA.z, h * u.tsvA.w), 0.0).rg * saturate(w / 8000.0);
 }
+// The sun map (render/sunmap.js): the optical depth toward the sun of the clouds past the one a
+// point is in (render-space xz, height h), from texels laid along the sun's rays (64 m across,
+// 32 m in height, 320 m along), and how far to trust it: fading out over its window's last 1.5 km.
+// in: how surely the point is inside the cloud it is seen from: then a texel farther toward the sun,
+// as the one behind it may lie past that cloud's shaded side, in its shadow. Four
+// taps half a texel apart across the rays (a shadow's edge is sharper than a texel, and between
+// texels it came out a staircase, in blocks tens of pixels wide near the camera): the penumbra a
+// cloud ~3 km off casts.
+fn sunMapAt(xz: vec2f, h: f32, in: f32) -> f32 {
+  let hs = normalize(u.sunDir.xz);
+  let w = dot(xz, hs);
+  let a = dot(xz, vec2f(-hs.y, hs.x));
+  var uvw = vec3f(w * u.smA.x + u.smA.y, a * u.smA.z + u.smA.w, (h - w * u.smB.z) * u.smB.x + u.smB.y);
+  uvw.x += in / SM_NW;
+  let o = vec2f(0.5 / SM_NA, 0.5 / SM_NV);
+  let t = textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, -o.x, -o.y), 0.0).r + textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, o.x, -o.y), 0.0).r
+        + textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, -o.x, o.y), 0.0).r + textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, o.x, o.y), 0.0).r;
+  return -log(max(0.25 * t, 1e-6));
+}
+fn sunMapW(xz: vec2f) -> f32 {
+  let hs = normalize(u.sunDir.xz);
+  let w = dot(xz, hs);
+  let a = dot(xz, vec2f(-hs.y, hs.x));
+  let v = u.smV;
+  return saturate(min(min(w - v.x, v.y - w), min(a - v.z, v.w - a)) / 1500.0);
+}
 
 // Multiple scattering approximation (Wrenninge): sum of octaves with reduced extinction (each
 // octave's share falls as fast as its extinction, a = b: no light that was never taken out). Their
@@ -171,18 +197,19 @@ fn msScatterP(tau: f32, ph: vec4f) -> f32 {
 // mean free path or two of the surface, where it leaks out. Where the light came in close by
 // (lp.near), mu is the surface's own large-scale facing (lp.muN); farther in, where the path leaves
 // (lp.muF: through a tower to its shade, its far, sunlit side; a few % of the lit side get through).
-// Clouds toward the sun past this one (other) take the direct light and the low orders; the
-// diffusion only the farther ones thin (otherD): light diffusing under the surface from the lit
-// cloud around fills a small shadow, and the shadow volume's clouds beyond (far.y, 768 m texels:
-// large shadows) take all of it. Neutral: droplets scatter every colour alike. lp: the path toward
-// the sun (lightPath; past its reach, the shadow volume's far.x through this cloud); pw: the powder
-// term; depthIn: depth below the surface (m).
+// Clouds toward the sun past this one within ~1.4 km (other) take the direct light and the low
+// orders; the diffusion only the farther ones thin (otherD): light diffusing under the surface from
+// the lit cloud around fills a small shadow. Those farther (beyond: the sun map's, past its window
+// the shadow volume's far.y) take all of it. Neutral: droplets scatter every colour alike. lp: the
+// path toward the sun (lightPath; past its reach, the shadow volume's far.x through this cloud);
+// pw: the powder term; depthIn: depth below the surface (m).
 const DIFFUSE = 0.42;
+fn beyond(lp: LightPath, far: vec2f) -> f32 { return mix(far.y, lp.farM, lp.mw); }
 fn sunScatter(lp: LightPath, far: vec2f, ph: vec4f, pw: f32, depthIn: f32) -> f32 {
   let tau = lp.own + far.x;
   let mu = max(mix(lp.muF, lp.muN, lp.near), 1e-4);
   let diffu = DIFFUSE * pow(mu, 1.4) / (1.0 + 0.11 * (tau * mu + lp.otherD)) * (1.0 - 0.55 * exp(-profileDepth(depthIn) * SIGMA / 1.5));
-  return (msScatterP(tau + lp.other, ph) * pw + diffu) * exp(-far.y);
+  return (msScatterP(tau + lp.other, ph) * pw + diffu) * exp(-beyond(lp, far));
 }
 // the sky's light on cloud (bAmb holds irradiance / π; a thick cloud returns nearly all of it: as the
 // sky gives it, now that diffusion lights the shade; more made the shade milky and the lit side flat)
@@ -200,11 +227,16 @@ const AMB_K = 1.0;
 // choice: how surely the path is still in its own cloud (inside) falls from step to step as each
 // step's length inside does, and every choice of a step cut the diffusion into flat blots. nS: how
 // much the surface faces the sun over the first ~60 m (-1..1); d0: the distance 5 m toward the sun
-// (the face of the smallest billows, against the point's own). dView: the point's own distance; l,
-// C, bs: clipmap level, column data and billows of the start.
-struct LightPath { own: f32, other: f32, otherD: f32, nS: f32, muN: f32, muF: f32, near: f32, d0: f32 }
+// (the face of the smallest billows, against the point's own). Other clouds past the first three
+// steps (~90 m) come from the sun map where it reaches (mw): sampled at a few points, a heap or a
+// billow hundreds of metres off cast its shadow as a copy of itself where a point hit it, not as
+// the streak it casts at a low sun; farM: those past the march (~1.4 km). dView: the point's own
+// distance; l, C, bs: clipmap level, column data and billows of the start.
+struct LightPath { own: f32, other: f32, otherD: f32, nS: f32, muN: f32, muF: f32, near: f32, d0: f32, farM: f32, mw: f32 }
 fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> LightPath {
-  var lp = LightPath(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  // (the sun map's weight where the march looks it up last, ~1.4 km toward the sun, too)
+  var lp = LightPath(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, min(sunMapW(wp0.xz), sunMapW(wp0.xz + u.sunDir.xz * LIGHT_NEAR)));
+  let mo = 1.0 - lp.mw;
   var s = 0.0;
   var ds = 10.0;
   var dPrev = dView;
@@ -235,8 +267,9 @@ fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0:
     let f = saturate(0.5 - d / max(abs(g) * ds, 3.0));
     let sig = SIGMA * profileMean(-d, 0.5 * max(abs(g) * ds, 3.0));
     lp.own += f * inside * ds * sig;
-    lp.other += f * (1.0 - inside) * ds * sig;
-    lp.otherD += saturate(0.5 - d / max(abs(g) * ds, 0.15 * sm)) * (1.0 - inside) * ds * sig * smoothstep(60.0, 300.0, sm);
+    let ko = select(1.0, mo, i >= 3);
+    lp.other += f * (1.0 - inside) * ds * sig * ko;
+    lp.otherD += saturate(0.5 - d / max(abs(g) * ds, 0.15 * sm)) * (1.0 - inside) * ds * sig * smoothstep(60.0, 300.0, sm) * ko;
     let w = max(inside - f, 0.0);
     wOut += w;
     gOut += w * saturate(g);
@@ -247,9 +280,10 @@ fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0:
     s += ds;
     ds *= 2.4;
   }
+  let inside6 = inside;
   // then on, through the large shapes alone, in three long steps out to LIGHT_REACH, until it comes
   // out (a tower's far side shades its backlit face in metres, not in the shadow volume's 768 m
-  // texels; the shadows of clouds beyond stay the shadow volume's)
+  // texels; the shadows of clouds beyond are the sun map's)
   ds = 1200.0;
   for (var i = 0; i < 3; i++) {
     let sm = s + ds * 0.5;
@@ -260,8 +294,8 @@ fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0:
     let d = macroAt(p, lf);
     let f = saturate((120.0 - d) / 380.0);
     lp.own += f * inside * ds * SIGMA;
-    lp.other += f * (1.0 - inside) * ds * SIGMA;
-    lp.otherD += f * (1.0 - inside) * ds * SIGMA;
+    lp.other += f * (1.0 - inside) * ds * SIGMA * mo;
+    lp.otherD += f * (1.0 - inside) * ds * SIGMA * mo;
     let w = max(inside - f, 0.0);
     wOut += w;
     gOut += w * saturate((d - dPrev) / (sm - sPrev));
@@ -274,6 +308,15 @@ fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0:
   }
   lp.muN = saturate(0.5 * lp.nS + 0.5 * nL);
   lp.muF = (gOut + 0.01) / (wOut + 0.02);
+  // the sun map: the clouds past ~90 m and past ~1.4 km (each without the one its point is in:
+  // still in this cloud there, without this one)
+  if (lp.mw > 0.0) {
+    let o1 = sunMapAt(wp0.xz + u.sunDir.xz * 91.6, h0 + u.sunDir.y * 91.6, 1.0 - lp.near);
+    lp.farM = sunMapAt(wp0.xz + u.sunDir.xz * LIGHT_NEAR, h0 + u.sunDir.y * LIGHT_NEAR, inside6);
+    let nearM = max(o1 - lp.farM, 0.0) * lp.mw;
+    lp.other += nearM;
+    lp.otherD += nearM;
+  }
   return lp;
 }
 // the optical depth toward the sun the march sees, through every cloud

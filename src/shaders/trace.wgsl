@@ -112,7 +112,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
   var nIter = 0.0;
   var nIn = 0.0;
   var nSdf = 0.0;
-  var lastLp = LightPath(0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 0.0);
+  var lastLp = LightPath(0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 0.0, 0.0, 0.0);
   var lastDepth = 0.0;
   var lastRel = 1.0;
   var lastNUp = 1.0;
@@ -190,7 +190,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       var c: vec3f;
       if (u.dbgMode == 1) { c = vec3f(0.08) + vec3f(1.0, 0.85, 0.6) * max(dot(nrm, u.sunDir), 0.0) + vec3f(0.1, 0.15, 0.3) * (nrm.y * 0.5 + 0.5); }
       else if (u.dbgMode == 2) { c = vec3f(exp(-lightTau(wp, h, d, lv, C, bs, lod + 0.5))); }
-      else { let f = tsvTau(wp, h); c = vec3f(exp(-f.x - f.y)); }
+      else { let f = tsvTau(wp, h); c = vec3f(exp(-f.x - mix(f.y, sunMapAt(wp.xz, h, 0.0), sunMapW(wp.xz)))); }
       return Out(vec4f(c * 0.12, 0.0), t * 0.001);
     }
     var dens = densityFromSDF(d, wp, detailW, edgeW, nearW);
@@ -245,7 +245,7 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
       var sunL = sc * sunScatter(lastLp, far, phase, pw, depthL) * lastRel;
       if (DBG && u.dbgMode >= 5) {
         // (5: the octaves alone, 6: the diffusion alone, 7: no sun)
-        let ms = msScatterP(lastLp.own + far.x + lastLp.other, phase) * pw * exp(-far.y);
+        let ms = msScatterP(lastLp.own + far.x + lastLp.other, phase) * pw * exp(-beyond(lastLp, far));
         sunL = sc * select(select(0.0, sunScatter(lastLp, far, phase, pw, depthL) - ms, u.dbgMode == 6), ms, u.dbgMode == 5);
       }
       let up = saturate((h - C.w + 250.0) / 1400.0);

@@ -41,5 +41,12 @@ export const CLIP_LEVELS = [
   { cell: 512, cellV: 256, nz: 56, maxD: 4000, minBR: 200, lod: 1 },
   { cell: 2048, cellV: 512, nz: 32, maxD: 12000, minBR: 900, lod: 2 },
 ];
+// The sun map's grid (render/sunmap.js): texels SM_DA m across the sun's way, SM_DV m apart in
+// height along its rays and SM_DW m along them; SM_NA, SM_NV, SM_NW of each (its height band from
+// SM_H0 up, above the ceiling); the march past it in SM_PIECES pieces
+export const SM_DA = 64, SM_DV = 32, SM_DW = 320, SM_NA = 256, SM_NV = 440, SM_NW = 64, SM_H0 = 300, SM_PIECES = 7;
 // what the shaders get from here: render/gpu.js declares these in front of each
-export const FOR_SHADERS = { CLOUD_TOP, SIGMA, CLOUD_EDGE0, CLOUD_EDGE_W, SHAPE_TILE, DETAIL_TILE, DETAIL_ROT, RG, RT, RAY_S, RAY_H, MIE_S, MIE_A, MIE_H, OZO_A };
+export const FOR_SHADERS = {
+  CLOUD_TOP, SIGMA, CLOUD_EDGE0, CLOUD_EDGE_W, SHAPE_TILE, DETAIL_TILE, DETAIL_ROT, RG, RT, RAY_S, RAY_H, MIE_S, MIE_A, MIE_H, OZO_A,
+  SM_DA, SM_DV, SM_DW, SM_NA, SM_NV, SM_NW, SM_PIECES,
+};

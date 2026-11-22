@@ -89,7 +89,7 @@ What the author keeps coming back to:
 |---|---|
 | `npm install` | Installs the dev dependencies (Vite, Playwright) and Playwright's headless Chromium, the only browser the tools use. |
 | `npm run dev` | Vite's dev server: the sources as ES modules, reloading on every edit. |
-| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the light's reference and the trace's light against it, the shaders' includes, the screenshot tool's arguments and compares, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
+| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the screenshot tool's arguments and compares, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
 | `npm run build` | `dist/index.html`. Fails on any other output, or a module from outside `src/`. |
 | `npm run check` | `tools/check-build.js`: one self-contained file within the size budget, and the `src/` lint. |
 | `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
@@ -221,7 +221,7 @@ src/
                       starts (presets.js: the test views, ?preset, ?pose)
   world/              the CPU world generator: the air, thermals, cells, shapes, what the GPU and the flight get. No DOM, no GPU
   render/             WebGPU: the device and pipelines (gpu.js), static resources (setup.js), streamed volumes (stream.js),
-                      size-dependent targets, the probe, timing, the sun's colours (sun.js), the bird, one frame
+                      the sun map (sunmap.js; its grid, sungrid.js), size-dependent targets, the probe, timing, the sun's colours (sun.js), the bird, one frame
                       (frame.js), dynamic resolution
   shaders/            WGSL: a .wgsl file per shader, chunks/ they include; per family (sky, textures, cloud, volumes,
                       trace, taau, probe, mist, bird, post) a .js module with the uniforms and the shaders
@@ -268,7 +268,7 @@ The tools rely on these; keep them, or change the tools with them.
   and 2). `window.__BENCH__` = `{ done, summary, legs }` once it ends; `#bench` holds the summary.
 - Globals: `window.__done`, `__error` (also shown in `#note`), `__frame`, `__png`, `__frames`, `__gpu` (with
   `?cpuprof`: per-pass GPU times summed over the run), `__log`, `__debug` (`bird`, `cam`, `R`,
-  `seaTopAt`, `cloudTopAt`, `towersNear`, `input`, `DR`, `LEVELS`, `TSVL`, `worldStats`, `device`, `T`,
+  `seaTopAt`, `cloudTopAt`, `towersNear`, `input`, `DR`, `LEVELS`, `TSVL`, `SUNMAP`, `worldStats`, `device`, `T`,
   `readTexture(texture, z, nz)`, `probe()`), `__BENCH__`. Elements: `#view` (the canvas, class `on`
   once shown), `#hint` (class `on`), `#touch`, `#note`, `#stats`, `#bench`.
 - Only `render/targets.js` opens out-of-memory error scopes (the out-of-memory check counts on it).
@@ -283,7 +283,7 @@ header; outside the test mode one the page can't read is a console warning, and 
 | `?seed=N`, `?towers=K` | another world (default 7); the density of convective cells (default 1) |
 | `?preset=start\|sun\|away\|side\|skim\|high\|bank\|fastdive\|humps\|high2\|upward\|tower\|giant\|anvil\|close\|approach\|inside\|under` | where the bird starts (in normal play too: `?preset=tower`); the last seven look at generated towers |
 | `?view=1..5` | cloud transmittance, raw cloud light, depth, sun rays, bloom |
-| `?dbg=1..7` | cloud debug: normals, sun visibility, shadow volume, march cost, lighting terms |
+| `?dbg=1..7` | cloud debug: normals, sun visibility, the shadow volume and the sun map, march cost, lighting terms |
 | `?exp ?con ?haze ?bloom ?bloomw ?bclamp ?rays ?tm` | exposure, contrast, haze density, bloom, sun rays, tone curve |
 | `?cpuprof` | with `?test`: `window.__gpu` sums the per-pass GPU times over the run (timestamp queries; `--profile`) |
 

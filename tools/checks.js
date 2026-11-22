@@ -25,7 +25,7 @@ export const CHECKS = [
   { name: 'steering', what: 'mouse, keys and touch bank, climb and dive the bird, and letting go levels it out', run: checkSteering },
   { name: 'reproducible', what: 'a capture renders the same, byte for byte, every time, and handing over more frames changes it not at all', run: checkReproducible },
   { name: 'out-of-memory', what: 'GPU memory running out at start, on a resize and for good: the page retries smaller, keeps running, or says so', run: checkOutOfMemory },
-  { name: 'volumes', what: 'the baked world volumes: no NaNs, no cloud cut off at a volume\'s ceiling, sound column maps', run: checkVolumes },
+  { name: 'volumes', what: 'the baked world volumes: no NaNs, no cloud cut off at a volume\'s ceiling, sound column maps, the sun map baked and within 0..1', run: checkVolumes },
   { name: 'pointer-and-keys', what: 'the pointer leaving levels out; Cmd/Ctrl shortcuts don\'t steer; Meta clears held keys', run: checkPointerAndKeys },
   { name: 'errors', what: 'the tools hear what nothing on screen shows: a WebGPU validation error, a lost device', run: checkErrors },
   { name: 'player', what: 'as a visitor sees it: the canvas fades in, the steering hint comes and goes, on a desktop, a phone, with ?debug and after a 12 s frame', run: checkPlayer, alone: true },
@@ -563,6 +563,9 @@ async function checkVolumes(browser, { fail, note, problems }) {
         }
         out[name] = { nan, topNeg };
       }
+      // (the sun map: the light that gets through other clouds, 0..1)
+      const sm = await D.readTexture(D.T.sunMap, 0, D.T.sunMap.d);
+      out['sun map'] = { nan: sm.filter((x) => !Number.isFinite(x)).length, outside: sm.filter((x) => x < 0 || x > 1).length, baked: !!D.SUNMAP.valid };
       for (const [name, L] of [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]]]) {
         const c = await D.readTexture(L.col);
         let bad = 0, sunk = 0, lowest = Infinity;
@@ -579,6 +582,8 @@ async function checkVolumes(browser, { fail, note, problems }) {
       if (r.nan) fail(`${name}: ${r.nan} texels that are not finite`);
       if (r.topNeg) fail(`${name}: cloud in ${r.topNeg} texels of the volume's top slice (cut off at its ceiling)`);
       if (r.columns?.bad) fail(`${name}: ${r.columns.bad} column values that are not finite`);
+      if (r.outside) fail(`${name}: ${r.outside} texels outside 0..1`);
+      if (r.baked === false) fail(`${name}: not baked after the first frame`);
       if (r.columns?.sunk) fail(`${name}: in ${r.columns.sunk} columns the heaps lower the sea instead of raising it`);
     }
     note(`sea surface from ${Math.min(res.L0.columns.lowest, res.L1.columns.lowest, res.L2.columns.lowest).toFixed(0)} m; no NaNs, nothing at a ceiling`);

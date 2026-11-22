@@ -83,7 +83,7 @@ const SAMPLER_NAMES = Object.keys(SAMPLERS);
 // filtered) or 'depth'; and every storage texture a compute shader writes (oX: its format). A
 // pipeline binds those its shaders mention.
 const TEXTURES = {
-  tTrans: '2d', tMS: '2d', tSky: '2d', tShape: '3d', tDetail: '3d', tTsv: '3d',
+  tTrans: '2d', tMS: '2d', tSky: '2d', tShape: '3d', tDetail: '3d', tTsv: '3d', tSunMap: '3d',
   tVol0: '3d', tVol1: '3d', tVol2: '3d', tBs0: '3d', tBs1: '3d', tBs2: '3d', tCol0: '2d', tCol1: '2d', tCol2: '2d', tCol: '2d',
   tCirrus: '2d', tLayers: '2d', tCur: '2d', tCurDepth: '2d', tHist: '2d', tSrc: '2d', tBird: 'raw', tScene: '2d',
   tBloom: '2d', tRays: '2d', tDbg: '2d', tDbg2: '2d', tShadowMap: 'depth',
@@ -101,7 +101,8 @@ const texKind = kind => TEX_KINDS[kind] ? ['texture', ...TEX_KINDS[kind]]
 // every storage buffer, by its WGSL name: its WGSL type (structs are declared by the shaders that
 // use them); `uniform`: a shader that only reads it binds it as a uniform buffer (the trace reads
 // the ambient light in its hottest loop)
-const BUFFERS = { bAmb: { type: 'Ambient', uniform: true }, bProbe: { type: 'Probe' }, bBub: { type: 'array<vec4f>' }, bTsv: { type: 'array<u32>' } };
+const BUFFERS = { bAmb: { type: 'Ambient', uniform: true }, bProbe: { type: 'Probe' }, bBub: { type: 'array<vec4f>' }, bTsv: { type: 'array<u32>' }, bSunMap: { type: 'array<u32>' },
+  bSmTail: { type: 'array<vec2f>' }, bSmSeg: { type: 'array<vec2f>' } };
 const BINDING = {};
 [...Object.keys(TEXTURES), ...Object.keys(BUFFERS)].forEach((n, k) => { BINDING[n] = 16 + k; });
 

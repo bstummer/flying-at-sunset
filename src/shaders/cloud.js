@@ -1,5 +1,5 @@
-// Clouds: what the trace, the shadow volume, the probe and the mist share (chunks/clip.wgsl,
-// chunks/lobes.wgsl, chunks/cloud.wgsl)
+// Clouds: what the trace, the shadow volume, the sun map, the probe and the mist share
+// (chunks/clip.wgsl, chunks/lobes.wgsl, chunks/cloud.wgsl)
 //
 // - The large shapes (sea relief, heaps, towers) come from the clipmaps (render/stream.js): levelAt
 //   picks a level by distance (dithered handovers at ~7–10 and ~40–55 km; a coarser one outside a
@@ -32,9 +32,10 @@
 // - lightPath: the light's path toward the sun (6 growing steps from 10 m, each sampled at its
 //   middle, the first three with the view sample's detail: domes of metres shade themselves; then
 //   three long steps through the large shapes): the optical depth through the point's own cloud and
-//   through clouds beyond it, whether the light came in close by and how squarely, all smooth
-//   weights. sunScatter: the octaves and the diffusion, fitted to a Monte Carlo of the medium
-//   (tools/light/). The trace's header describes the lighting.
+//   through clouds beyond it (past the first three steps, from the sun map: sunMapAt), whether the
+//   light came in close by and how squarely, all smooth weights. sunScatter: the octaves and the
+//   diffusion, fitted to a Monte Carlo of the medium (tools/light/). The trace's header describes
+//   the lighting.
 
 // uniforms of the clipmap lookups (part of the uniforms of every shader that includes them)
 export const U_CLIP = {
@@ -45,6 +46,9 @@ export const U_CLIP = {
 export const U_CLOUD = {
   tsvA: 'vec4f',        // shadow volume: the same as lvA
   tsvV: 'vec4f',
+  smA: 'vec4f',         // the sun map (render/sunmap.js): along the sun's way, the scale and offset of the
+  smB: 'vec4f',         //   texture's x, across it of its y; its height's (z, wrapped) scale, offset and the sun's slope
+  smV: 'vec4f',         //   its valid window (along: min, max; across: min, max)
   warpPh: 'vec4f',      // phases of the billow warp at the render origin
   warpPh2: 'vec2f',
   shapeOff: 'vec3f',    // slow evolution of the sea billows (wrapped)

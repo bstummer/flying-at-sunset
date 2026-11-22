@@ -25,7 +25,8 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
   switch wg.x {
     case 0u: {
       let far = tsvTau(bwp, bh);
-      let tau = lightTau(bwp, bh, sigmaAt(bwp, bh).y, 0, C, billowAt(vec3f(bwp.x, bh, bwp.z), 0), 0.0) * 0.6 + far.x + far.y;
+      let lp = lightPath(bwp, bh, sigmaAt(bwp, bh).y, 0, C, billowAt(vec3f(bwp.x, bh, bwp.z), 0), 0.0);
+      let tau = (lp.own + lp.other) * 0.6 + far.x + beyond(lp, far);
       let tr = exp(-tau);
       bProbe.sun = vec4f(sunColorAt(bh) * tr, tr);
     }

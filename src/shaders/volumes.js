@@ -1,7 +1,7 @@
-// Baking the streamed world volumes (render/stream.js runs them): the shadow volume and the distance
-// volumes of the clipmaps
+// Baking the streamed world volumes (render/stream.js and render/sunmap.js run them): the shadow
+// volume, the sun map and the distance volumes of the clipmaps
 
-import { U_CLIP } from './cloud.js';
+import { U_CLIP, U_CLOUD } from './cloud.js';
 
 // Shadow volume (camera-centred, streamed like the clipmaps): optical depth toward the sun from
 // each texel, marched through the large shapes of the coarser levels, through the cloud the texel
@@ -19,6 +19,35 @@ export const U_TSV = {
   cellT: 'f32', cellTV: 'f32',
 };
 export { default as CS_TSV } from './tsv.wgsl';
+
+// The sun map (render/sunmap.js), a slab of its columns across the sun's way at a time, in three
+// passes, each spread over many invocations (one walk a ray, its texture reads one after another,
+// kept the GPU waiting: two columns took as long as eight): the march past the window in pieces
+// (sunmap-tail.wgsl), the stretch from each texel to the next (sunmap.wgsl), then a scan along each
+// ray adding them up (sunmap-scan.wgsl), writing pairs of half floats into bSunMap (rows of SM_ROW
+// u32: 256 bytes, as a copy into a texture wants them), which render/sunmap.js copies into the map.
+export const SM_ROW = 64;
+export const U_SUNMAP = {
+  ...U_CLIP, ...U_CLOUD,
+  a0: 'i32',            // the slab's first column, from the window's first
+  slab: 'i32',          // its columns
+  nRays: 'i32',         // the rays through it that cross the map's height band
+  ys: 'i32',            // the texture row of its first column
+  aR: 'f32',            // render space: across the sun's way, of the window's first column
+  wR: 'f32',            //   along it, of its first texel
+  hB: 'f32',            // the height of the first ray at the window's first texel
+};
+export const U_SUNSCAN = {
+  slab: 'i32', nRays: 'i32',
+  row: 'i32',           // SM_ROW
+  vb: 'i32',            // the height slot of the slab's first ray
+  k0m: 'i32',           // the texture column of the window's first texel along the sun's way
+  c0: 'f32',            // where the height band starts at that texel (in rays from the first)
+  r: 'f32',             // how far it sinks a texel along (rays)
+};
+export { default as CS_SUNTAIL } from './sunmap-tail.wgsl';
+export { default as CS_SUNMAP } from './sunmap.wgsl';
+export { default as CS_SUNSCAN } from './sunmap-scan.wgsl';
 
 // The distance volumes of the clipmaps and their billow scales are baked NOUT slices of each at a
 // time, as the colour attachments of one pass (WebGPU guarantees 8): each bubble is looked at once

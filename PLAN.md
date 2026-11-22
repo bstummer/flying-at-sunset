@@ -206,14 +206,64 @@ tools/world/stats.js`, `catalog.js`):
    a whole tower in view now, `giant` −5), as the scenes changed; the bakes within their noise (the
    same bubbles, 6,030 → 6,027 in the 120 km box).
 
-**Leg 7: a sun-space shadow map over ~20 km** (known issue: blotchy close-ups, stair-stepped
-distant tops). At 5° a billow 50 m tall casts a ~575 m shadow; the march has two samples between
-230 m and 1.36 km, and the shadow volume's texels are 768 × 360 m. Neither the sun nor the world
-moves, so bake it per area and stream it like a clipmap. Watch memory and bake time.
+**Leg 7, done (2026-11-22)** (`screenshots/l7-before` → `l7-after`; the light checked against a fine
+march of the same cloud, in place of `?dbg=2` and not kept: from the point toward the sun, cloudSDF
+at lod 1.2, 25 m steps to 5 km, 50 m to 20 km, 200 m to 150 km, the profile's density where d < 0
+once the march has left the point's own cloud):
+1. The sun map (render/sunmap.js): texels along the sun's rays, 64 m across, 32 m apart in height,
+   320 m along, over a window of 16 × 20 km around the camera and all heights, each the light that
+   the clouds past the one it sits in let through toward the sun (their shadow; the light diffusing
+   through its own cloud stays the light march's). The light march keeps its first three steps
+   (~90 m, the view's detail); other clouds from there to ~1.4 km come from the map (as the
+   march's soft shadow: the octaves and the diffusion's otherD), those past it too (e^−τ on all,
+   the shadow volume's part before); past the window, the march and the shadow volume as before.
+   The plan's "neither the world moves" holds for the large shapes only: the billows drift with
+   the wind (3.5 m/s), and the map holds them (the turrets and the 320 m domes), so it is baked
+   again all the time, two columns a frame (a cycle of 128 frames: the billows move 7 m in it).
+   The window moves to the camera at a cycle's start, keeping what both windows share. Memory
+   14 MB, and under 1 MB of buffers.
+2. Against the fine march: in `start`, `side`, `down`, `away`, `giant` and `tower` the same tops lit
+   and shaded, the map's edges softer (its texels, and four taps: a penumbra of ~3 km). What the old
+   light got wrong: a heap hundreds of metres off shaded a copy of itself where one of the march's
+   far points hit it; the shadow volume's 768 m texels put `tower`'s cast shadow a few hundred metres
+   off, soft; and nothing held the billows 1.4–40 km toward the sun, which at 5° shade much of the
+   near sea (`start`'s heaps right of the bird, `side`, `down`: in shadow now, as the march has
+   them). Past the window's sunward end the map's own march sees the billows too (through the large
+   shapes alone it left those heaps lit). The shadow volume (far receivers, the own cloud past
+   6.3 km) is unchanged.
+3. The look: cast shadows sharper and where they belong (`tower`'s lower face, a clean diagonal);
+   long shadows across the sea (`away`, `giant`); fewer golden heaps in `start`, `side`, `down`
+   (they lie in shadow); `skim`'s fog sunlit, warm brown where it was mauve grey (it lay in a shadow
+   that isn't there). The blotches on `close`'s tower face hardly change: they are its lumps'
+   own shade, the march's first steps. Distant towers (`seed3`, past the window) unchanged.
+   Shimmer at rest `tower` 0.070 → 0.089%, `away` 0.031 → 0.037%, `skim` 0.052 → 0.007%, the rest
+   within ±0.01. Flights identical (the map changes light, not the cloud the flight feels). Cost
+   (leg 6 against leg 7, interleaved A B B A A B, 200 frames, NVIDIA laptop): the trace −4 to +6%
+   (`start` −1, `sun` +4, `side` −2, `tower` +6, `high2` −4, `close` +4, `away` +4, `down` −3: two
+   lookups of four taps a light march, and the scenes' light changed); the map 0.11–0.15 ms a frame
+   (a slab; by the difference to a page that bakes none), its first whole bake 18–30 ms, once. The
+   canvas at 3.9 s (the player check; 3.6–3.7 s in legs 5–6, not timed interleaved: three more
+   pipelines to compile, the first map).
+4. Failed on the way (decisions): the optical depth interpolated, a soft edge, the lookup snapped
+   to a texel, one walk a ray.
 
 ## Decisions: what failed, and why
 
 Worth knowing before tuning again.
+
+- **The sun map, first tries** (leg 7). The optical depth stored and interpolated: a shadow's edge
+  is sharper than a texel, and between a texel at τ 0 and one at 10 the light came out where a tenth
+  of the way was, a staircase (`tower`'s cast shadow); the light that gets through is stored now.
+  The cloud's edge blurred over 64 m (two texels) to smooth it: a sun ray passing over a heap's top
+  runs within that blur for hundreds of metres at 5°, so every cloud cast its shadow as if 30 m
+  taller, ~350 m longer, and the near sea went dark (`start`, `side`, `down` against the fine
+  march); 10 m now. The lookup snapped to the texel toward the sun inside a cloud (the one behind may
+  lie past its shaded side, in its shadow): blocks with straight edges near the camera (`away`);
+  shifted a texel instead. One walk a ray toward the sun, its texture reads one after another: two
+  columns took as long as eight (0.3 ms), the GPU waiting; three passes now, each over many
+  invocations. A step's share inside cloud from its distance and slope took a bound beside a
+  distance for a steep slope (a point 70 m clear counted as half inside: `side` 12% darker); the
+  slope is capped at 1, as a distance's is.
 
 - **A smooth "sand dune" sea**: billow strength tied to restlessness (≈ 0 over most of the sea) and
   ridged noise (`1 − |n|`) for the rolling mounds made smooth hills with sharp crest lines. The sea
@@ -449,9 +499,15 @@ Worth knowing before tuning again.
   stay narrow (wake lumps 0.43–0.6 of the bubble's radius). Leg 6 measured it with a scratch
   script (each tower's widest section in its upper third against its narrowest in the middle
   third): worth a place in stats.js if this is worked on again.
-- **Close-up surfaces** of towers can look blotchy in low sun (cast shadows between many lumps).
-  Distant towers (~40 km, `seed3`) show stair-stepped tops and blob-shaped patches where the shadow
-  volume's 768 m texels decide.
+- **Close-up surfaces** of towers can look blotchy in low sun (`close`): since leg 7 not from other
+  clouds (the sun map casts their shadows as streaks, where they belong) but from the lumps' own
+  shade, the light march's first ~90 m. **Past the sun map's window** (8 km across the sun's way,
+  8 km away from it, 12 km toward it) the shadow volume's 768 × 360 m texels still decide: distant
+  towers (`seed3`, ~40 km) show stair-stepped tops and blob-shaped patches, and the far sea misses
+  the billows' shadows the near sea has (a fade over 1.5 km at the window's edge). A coarser level
+  of the map would reach them: the memory (14 MB a level) and the bake are what it costs.
+  **The map lags the billows** by up to a cycle (128 frames, 2 s at 60 fps: 7 m); at a low frame
+  rate more. Motion couldn't be judged in stills.
 - **Popcorn far away**: towers 20–60 km off still read as one grape texture (`start`'s right
   tower, `high2`, `giant`, `away`'s horizon): their bubbles are big (billow scale over ~800 m), so
   all carry lobes and turrets alike (since leg 3 the turrets fade from ~40 km, sooner on a coarser

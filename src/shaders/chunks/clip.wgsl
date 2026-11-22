@@ -4,7 +4,7 @@
 const INV2R = 0.5 / (RG * 1000.0);   // a height's rise with distance (m) on the curved planet
 const SEA_BASE = 520.0;
 const EDGE_W = 80.0;        // soft boundary thickness (m)
-const LIGHT_NEAR = 1358.0;  // how far the trace's light march looks toward the sun through the billows (lightTauN); the shadow volume's other clouds start there
+const LIGHT_NEAR = 1358.0;  // how far the trace's light march looks toward the sun through the billows; the far clouds' shadow starts there (lightPath's farM; past the sun map, the shadow volume's)
 const LIGHT_REACH = 6277.0; // how far it follows the cloud it is in (the large shapes alone); the shadow volume's own cloud starts there
 fn lvMargin(l: i32) -> f32 { return select(select(750.0, 260.0, l == 1), 80.0, l == 0); }   // interpolation error of each level
 

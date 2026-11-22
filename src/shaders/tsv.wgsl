@@ -6,7 +6,7 @@
 // the texel sits in, until the march first comes out of it (light diffuses on through one body of
 // cloud), past where the trace's own march follows it (LIGHT_REACH); and through the clouds beyond,
 // past where the trace's march through the billows ends (LIGHT_NEAR) (their shadow is a shadow: a
-// tower 100 km toward the sun darkens the sea here).
+// tower 100 km toward the sun darkens the sea here; near the camera the sun map's, finer).
 fn march(xz: vec2f, y0: f32, jit: f32) -> vec2f {
   var tau = vec2f(0.0);
   var self_ = true;
