@@ -1,13 +1,15 @@
 // The trace's light of a shape (tools/light/), as chunks/cloud.wgsl and trace.wgsl compute it: the view
 // ray integrated through the outline's density ramp and the medium's profile, each sample lit by
 // sunScatter at the depth a skin LIGHT_SKIN thick reaches at the same optical depth along the view
-// (lightDepth), through the light march (lightPath). Only the sun: the sky light, the sun map and the shadow volume are left
-// out (no other cloud: past the march's first three steps the shaders take other clouds from the sun map), and so is the
-// trace's reuse of a sample's light deeper in. Keep it in step with those
-// shaders: it is what the reference (mc.js) judges.
+// (lightDepth), through the light march (lightPath); and in colour, the sky's light too (traceUnder,
+// traceAmbient). The sun map and the shadow volume are left out (no other cloud: past the march's
+// first three steps the shaders take other clouds from the sun map), and so is the trace's reuse of
+// a sample's light deeper in. Keep it in step with those shaders: it is what the reference (mc.js)
+// judges.
 //
-//   import { traceRadiance } from './model.js';
+//   import { traceRadiance, traceUnder } from './model.js';
 //   traceRadiance(slab([0, 1, 0], 800), viewDir(180, 30), { edgeW: 2 })
+//   traceUnder(slab([0, 1, 0], 800), viewDir(180, 30), { sky, sea, seaLit: 0, dist: 1000, sun: null })
 
 import { CLOUD_EDGE0, CLOUD_EDGE_W } from '../../src/constants.js';
 import { SIGMA, SUN, profile, profileDepth, profileMean } from './mc.js';
@@ -77,27 +79,78 @@ export function sunScatter(lp, far, ph, pw, depthIn) {
   return (msScatterP(tau + lp.other, ph) * pw + diffu) * Math.exp(-far[1]);
 }
 
+// The sky's light on a sample, as trace.wgsl adds it (its `amb`): the sky's irradiance / π on a
+// face up, toward the sun and away from it (the ambient buffer, sky: { up, sunSide, antiSun }), the
+// tints, the sea's bounce (sea: a deck lit at 5°), by which way the surface faces (a tap S up, and
+// the light march's nS), how open it is (the large shapes', here the shape's own, at two larger
+// scales: openLarge; and a tap out along their normal and back toward the camera), how deep the
+// sample is, the view's angle to their normal, and the sunlit cloud around.
+// dist: the sample's distance from the camera.
+const AMB_K = 1, COOL_UP = [0.88, 0.96, 1.2], COOL_ANTI = [1.03, 0.92, 1.18];
+const mix3 = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+export function openLarge(sdf, p, e = 64, s = 250) {
+  const g = [0, 0, 0];
+  const m = sdf(p);
+  for (const k of [[1, -1, -1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1]]) { const d = sdf(at(p, k, e)); for (let i = 0; i < 3; i++) g[i] += k[i] * d; }
+  g[1] += 1e-3;
+  const l = Math.hypot(...g), n = g.map(x => x / l);
+  return { n, open: 0.5 * (sat((sdf(at(p, n, s)) - m) / s) + sat((sdf(at(p, n, 3 * s)) - m) / (3 * s))) };
+}
+// sea: the sunlit sea's light (render/frame.js); seaLit: how much of the sea below and of the cloud
+// around is lit (the lit map's, chunks/sealit.wgsl)
+export function traceAmbient(sdf, q, v, lp, depthIn, { sky, sea, seaLit = 0.75, sun = null, dist }) {
+  const ambUp = sky.up.map((x, i) => x * AMB_K * COOL_UP[i]);
+  const seaB = sea.map((x, i) => sky.up[i] * AMB_K * 0.8 + x * seaLit);
+  const ambSunS = sky.sunSide.map((x, i) => x * AMB_K + seaB[i] * 0.4);
+  const ambAnti = sky.antiSun.map((x, i) => x * AMB_K * COOL_ANTI[i] + seaB[i] * 0.15);
+  const S = 22 + dist * 0.005;
+  const nUp = clamp((sdf(at(q, [0, 1, 0], S)) + depthIn) / S, -1, 1);
+  const L = openLarge(sdf, q), deep = mix(0.5, 1, Math.exp(-profileDepth(depthIn) / 55));
+  const o = L.n.map((x, i) => x - v[i]), ol = Math.hypot(...o);
+  const open = smoothstep(0, 0.8, (sdf(at(q, o.map(x => x / ol), 2.5 * S)) + depthIn) / (2.5 * S));
+  const ao = deep * mix(0.6, 1, open) * (0.35 + 0.65 * L.open);
+  const graze = 0.92 + 0.6 * Math.pow(1 - sat(-(v[0] * L.n[0] + v[1] * L.n[1] + v[2] * L.n[2])), 3);
+  const walls = 0.05 * (1 - L.open) * seaLit * sat(0.5 - 0.5 * lp.nS) * Math.exp(-profileDepth(depthIn) / 55);
+  const eSide = mix3(ambAnti, ambSunS, sat(0.5 + 0.5 * lp.nS));
+  const eDir = nUp > 0 ? mix3(eSide, ambUp, nUp) : mix3(eSide, seaB, -nUp);
+  return eDir.map((x, i) => x * ao * graze + (sun ? sun[i] * walls : 0));
+}
+
 // The radiance the trace gives looking along v at the shape's origin, per unit of sunlight. edgeW:
 // the outline's ramp (m); light(ctx): the light to take instead of sunScatter's, given { lp, tauExact,
 // ph, pw, depthIn } (the reference's single scattering, a fit's candidates).
 export function traceRadiance(s, v, { edgeW = 2, light = null } = {}) {
+  return march(s, v, { edgeW, light }).L;
+}
+// The same in colour, under the sky (traceAmbient's under, and sun: the sun's colour; null: in another
+// cloud's shadow), before the trace's saturation
+export function traceUnder(s, v, under, { edgeW = 2 } = {}) {
+  const { L, A } = march(s, v, { edgeW, under });
+  return A.map((a, i) => a + (under.sun ? L * under.sun[i] : 0));
+}
+function march(s, v, { edgeW, light = null, under = null }) {
   const cosT = v[0] * SUN[0] + v[1] * SUN[1] + v[2] * SUN[2];
   const ph = phaseOctaves(cosT), powder = 1 - 0.28 * sat(0.5 - 0.5 * cosT);
   let T = 1, L = 0, t = 0;
+  const A = [0, 0, 0];
   while (T > 1e-5 && t < 4000) {
     const dt = t < edgeW * 2 ? Math.max(edgeW * 0.05, 0.02) : Math.min(0.5 + t * 0.05, 20), tm = t + dt * 0.5;
     const depthV = -s.sdf(at([0, 0, 0], v, tm)), sigma = sat(depthV / edgeW) * profile(depthV) * SIGMA;
     if (sigma > 0) {
       // the light where the view, as far in as the light's depth, would be
       const depthIn = lightDepth(depthV, edgeW), q = at([0, 0, 0], v, tm * depthIn / Math.max(depthV, 1e-3));
-      const lp = lightPath(s.sdf, q, -depthIn), tauExact = SIGMA * s.exit(q[0], q[1], q[2], SUN[0], SUN[1], SUN[2]);
-      const pw = mix(powder, 1, 1 - Math.exp(-profileDepth(depthIn) * SIGMA));
-      const J = light ? light({ lp, tauExact, ph, pw, depthIn }) : sunScatter(lp, [0, 0], ph, pw, depthIn);
+      const lp = lightPath(s.sdf, q, -depthIn);
       const st = Math.exp(-sigma * dt);
-      L += T * 0.985 * J * (1 - st);
+      if (!under || under.sun) {
+        const tauExact = SIGMA * s.exit(q[0], q[1], q[2], SUN[0], SUN[1], SUN[2]);
+        const pw = mix(powder, 1, 1 - Math.exp(-profileDepth(depthIn) * SIGMA));
+        const J = light ? light({ lp, tauExact, ph, pw, depthIn }) : sunScatter(lp, [0, 0], ph, pw, depthIn);
+        L += T * 0.985 * J * (1 - st);
+      }
+      if (under) traceAmbient(s.sdf, q, v, lp, depthIn, under).forEach((a, i) => { A[i] += T * 0.985 * a * (1 - st); });
       T *= st;
     }
     t += dt;
   }
-  return L;
+  return { L, A };
 }

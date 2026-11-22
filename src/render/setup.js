@@ -9,7 +9,7 @@ import { buffer, CANVAS_FORMAT, compute, dispatch, flush, mipLevel, pass, pipeli
 import { sunColorAt } from './sun.js';
 import { CS_AMBIENT, FS_MULTISCAT, FS_SKYVIEW, FS_TRANSMITTANCE, U_AMBIENT, U_SKYVIEW } from '../shaders/sky.js';
 import { CS_DETAIL, CS_SHAPE, FS_CIRRUS, FS_LAYERS, FS_MIP, U_NOISE3D, U_SIZE } from '../shaders/textures.js';
-import { CS_SUNMAP, CS_SUNSCAN, CS_SUNTAIL, CS_TSV, FS_BAKE, NOUT, U_BAKE, U_SUNMAP, U_SUNSCAN, U_TSV } from '../shaders/volumes.js';
+import { CS_SUNMAP, CS_SUNSCAN, CS_SUNTAIL, CS_TSV, FS_BAKE, FS_LITMAP, NOUT, U_BAKE, U_LITMAP, U_SUNMAP, U_SUNSCAN, U_TSV } from '../shaders/volumes.js';
 import { FS_TRACE, U_TRACE } from '../shaders/trace.js';
 import { FS_TAAU, U_TAAU } from '../shaders/taau.js';
 import { CS_PROBE, U_PROBE } from '../shaders/probe.js';
@@ -39,6 +39,8 @@ export const P = {
   sunTail: compute('sun map tail', { cs: CS_SUNTAIL, uniforms: U_SUNMAP, writes: ['bSmTail'] }),
   sunSeg: compute('sun map stretches', { cs: CS_SUNMAP, uniforms: U_SUNMAP, writes: ['bSmSeg'] }),
   sunScan: compute('sun map scan', { cs: CS_SUNSCAN, uniforms: U_SUNSCAN, writes: ['bSunMap'] }),
+  litMap: pipeline('lit map', { fs: FS_LITMAP, uniforms: U_LITMAP, targets: ['r16float'] }),
+  litMip: pipeline('lit map mip', { fs: FS_MIP, uniforms: U_SIZE, targets: ['r16float'] }),
   bake: pipeline('bake', { fs: FS_BAKE, uniforms: U_BAKE, targets: [...Array(NOUT).fill('r16float'), ...Array(NOUT).fill('rg16float')] }),
   trace: pipeline('trace', { fs: FS_TRACE, constants: { DBG: params.dbg ? 1 : 0 }, uniforms: U_TRACE, targets: [F16, 'r16float'] }),
   taau: pipeline('taau', { fs: FS_TAAU, uniforms: U_TAAU, targets: [F16, F16] }),
@@ -65,7 +67,7 @@ export const T = {};
 const VOLUME = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING;
 T.trans = texture(256, 64, F16);
 T.ms = texture(32, 32, F16);
-T.sky = texture(192, 108, F16);
+T.sky = texture(192, 108, F16, { usage: RENDER | GPUTextureUsage.COPY_SRC });   // (the light's reference reads it: tools/light/sky.js)
 T.shape = texture(SHAPE_N, SHAPE_N, F16, { depth: SHAPE_N, dim: '3d', usage: VOLUME });
 T.detail = texture(DETAIL_N, DETAIL_N, 'rgba8unorm', { depth: DETAIL_N, dim: '3d', usage: VOLUME });
 T.cirrus = texture(512, 512, 'rgba8unorm');

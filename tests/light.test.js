@@ -4,8 +4,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PHASES, SUN, ball, profile, radiance, slab, viewDir } from '../tools/light/mc.js';
-import { traceRadiance } from '../tools/light/model.js';
+import { PHASES, SUN, ball, fold, profile, radiance, radianceUnder, slab, viewDir } from '../tools/light/mc.js';
+import { traceRadiance, traceUnder } from '../tools/light/model.js';
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
@@ -85,4 +85,51 @@ test('the trace\'s light does not change with the outline\'s width', () => {
     const [a, ...rest] = [1, 4, 16, 64].map(edgeW => traceRadiance(s, v, { edgeW }));
     assert.ok(rest.every(b => Math.abs(b / a - 1) < 0.01), [a, ...rest].map(x => x.toFixed(4)).join(' '));
   }
+});
+
+// No absorption: under an even light from every side and no sun, any shape sends all of it back
+// (the environment the shade's reference lights its shapes by, tools/light/reference.js)
+test('under an even light, a cloud of any shape sends all of it back', () => {
+  for (const [what, s, v] of [['a top', slab([0, 1, 0], 800), viewDir(180, 30)], ['a ball', ball([0, 0, 1], 200), viewDir(0, 10)],
+    ['a fold', fold(45, 1500), viewDir(90, 60)], ['a fold along the sun', fold(30, 1500, true), viewDir(0, 50)]]) {
+    const { L, err } = radianceUnder(s, v, { sun: null, env: () => [1, 1, 1], paths: 2000 });
+    assert.ok(Math.abs(L[0] - 1) < 1e-9 && err[0] < 1e-9, `${what}: ${L[0]} ± ${err[0]}`);
+  }
+});
+
+// The trace's light in shade (its sky light, tools/light/model.js) against the Monte Carlo under the
+// same sky: a sky of the kind of the dusk's (a blue zenith, the horizon far brighter, golden toward
+// the sun; dim ground below) given to the trace as its ambient buffer gives it (irradiance / π on faces up, toward
+// the sun and away). An open top in another cloud's shadow within a factor 1.5 of it from above and
+// from the side, and a crease between walls at 45° darker than that top in both.
+const SKY = w => {
+  if (w[1] < 0) return [0.001, 0.0015, 0.002];   // (the ground, far below the sea of clouds)
+  const el = w[1], toSun = Math.max(-w[2] / Math.max(Math.hypot(w[0], w[2]), 1e-6), 0), h = Math.pow(1 - el, 6);
+  return [0.002 + h * (0.02 + 0.2 * toSun ** 4), 0.0035 + h * (0.02 + 0.11 * toSun ** 4), 0.007 + h * (0.015 + 0.04 * toSun ** 4)];
+};
+function ambientOf(sky) {
+  const faces = { up: [0, 1, 0], sunSide: [0, 0, -1], antiSun: [0, 0, 1] }, out = {}, N = 120;
+  for (const [k, n] of Object.entries(faces)) {
+    const e = [0, 0, 0];
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+      const ct = (i + 0.5) / N, st = Math.sqrt(1 - ct * ct), ph = 2 * Math.PI * (j + 0.5) / N, d = [st * Math.cos(ph), ct, st * Math.sin(ph)];
+      const wt = Math.max(d[0] * n[0] + d[1] * n[1] + d[2] * n[2], 0), L = sky(d);
+      for (let c = 0; c < 3; c++) e[c] += L[c] * wt * 2 / (N * N);
+    }
+    out[k] = e;
+  }
+  return out;
+}
+test("the trace's shade stays near the reference's", () => {
+  const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const under = { sky: ambientOf(SKY), sea: [0.015, 0.008, 0.003], seaLit: 0, dist: 1000, sun: null };
+  const top = slab([0, 1, 0], 800), crease = fold(45, 1500);
+  for (const v of [viewDir(0, 90), viewDir(90, 30)]) {
+    const ref = lum(radianceUnder(top, v, { sun: null, env: SKY, paths: 3000 }).L), trace = lum(traceUnder(top, v, under));
+    assert.ok(trace > ref / 1.5 && trace < ref * 1.5, `a top in shadow: the trace ${trace.toFixed(5)}, the reference ${ref.toFixed(5)}`);
+  }
+  const v = viewDir(0, 90);
+  const ref = lum(radianceUnder(crease, v, { sun: null, env: SKY, paths: 1500 }).L) / lum(radianceUnder(top, v, { sun: null, env: SKY, paths: 3000 }).L);
+  const trace = lum(traceUnder(crease, v, under)) / lum(traceUnder(top, v, under));
+  assert.ok(ref < 0.9 && trace < 0.9 && trace > 0.5, `a crease against an open top: the trace ${trace.toFixed(2)}, the reference ${ref.toFixed(2)}`);
 });

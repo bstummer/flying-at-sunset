@@ -100,7 +100,7 @@ What the author keeps coming back to:
 | `node tools/flights.js [--label L]`, `--compare A B` | The scripted flights' logs (15 s each, from the start and diving into the cloud tops) into `screenshots/flights/<label>.json`; compare says per flight "identical" or where they part and by how much. |
 | `npm run map` | `tools/world/map.js`: a top-down map of the world (restlessness, towers by height), without rendering. |
 | `node tools/world/fingerprint.js [--write]` | Whether the CPU world is the one recorded in `tests/fixtures/world-fingerprint.json`; `--write` records it after a deliberate change. |
-| `node tools/light/reference.js [--cases top,face] [--fresh]` | The trace's light against a Monte Carlo of the medium (`tools/light/`): per shape (tops, slopes, faces, walls lit from behind, balls) and view, the radiance a real cloud sends and the trace's (its model, `tools/light/model.js`). The Monte Carlo's numbers are kept in `screenshots/light/` (minutes to make again; made again when the medium in `constants.js` changes). |
+| `node tools/light/reference.js [--cases top,face] [--shade] [--fresh]` | The trace's light against a Monte Carlo of the medium (`tools/light/`): per shape (tops, slopes, faces, walls lit from behind, balls) and view, the radiance a real cloud sends and the trace's (its model, `tools/light/model.js`); then the shade (`--shade` alone): in colour under the page's sky, in another cloud's shadow, beside a sunlit wall, folds, an overhang over a sea lit or in shadow. The Monte Carlo's numbers are kept in `screenshots/light/` (minutes to make again; made again when the medium in `constants.js` or the sky changes). The sky is read out of the built page once (`tools/light/sky.js`; again when the atmosphere changes). |
 | `node tools/linux.js <command>` | Runs a command in a Linux container like CI's runner (Docker): SwiftShader captures on Windows and macOS (§4). |
 
 The tools test `dist/index.html` as built, and refuse one older than its sources: `npm run build` first
@@ -187,11 +187,12 @@ For every change that can affect pixels:
   stability at a coarse time step). The flights in the page are `tools/flights.js`'s and the flight
   check's.
 - The light has a reference: `tests/light.test.js` holds the Monte Carlo (`tools/light/mc.js`, of
-  the medium in `constants.js`: its extinction and profile) to closed forms, and the trace's light
-  within a factor two of it and independent of the outline's width. The trace's light is
-  `tools/light/model.js`, a copy of the shaders' (`sunScatter`, `lightPath`, the skin, the
-  profile's depths): a change to those formulas changes it too, and `reference.js` says how far
-  it then is from a real cloud.
+  the medium in `constants.js`: its extinction and profile) to closed forms, the trace's light
+  within a factor two of it and independent of the outline's width, and its shade under a sky near
+  it (a crease darker than an open top in both). The trace's light is `tools/light/model.js`, a
+  copy of the shaders' (`sunScatter`, `lightPath`, the skin, the profile's depths, the sky light:
+  `traceAmbient`): a change to those formulas changes it too, and `reference.js` says how far it
+  then is from a real cloud.
 - The checks test the piece, and the tools themselves: the streaming check compares the streamed
   volumes with a fresh start's texel by texel, and the errors check proves the tools hear a WebGPU
   validation error and a lost device.
@@ -221,7 +222,7 @@ src/
                       starts (presets.js: the test views, ?preset, ?pose)
   world/              the CPU world generator: the air, thermals, cells, shapes, what the GPU and the flight get. No DOM, no GPU
   render/             WebGPU: the device and pipelines (gpu.js), static resources (setup.js), streamed volumes (stream.js),
-                      the sun map (sunmap.js; its grid, sungrid.js), size-dependent targets, the probe, timing, the sun's colours (sun.js), the bird, one frame
+                      the sun map and the lit map (sunmap.js; its grid, sungrid.js), size-dependent targets, the probe, timing, the sun's colours (sun.js), the bird, one frame
                       (frame.js), dynamic resolution
   shaders/            WGSL: a .wgsl file per shader, chunks/ they include; per family (sky, textures, cloud, volumes,
                       trace, taau, probe, mist, bird, post) a .js module with the uniforms and the shaders

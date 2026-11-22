@@ -1,14 +1,17 @@
 // The light of a cloud by Monte Carlo (tools/light/): a slab of the clouds' medium (constants.js:
 // σ 0.07/m, no absorption, thinner over its first metres below the surface) facing any way, as thick
-// as asked, or a ball, lit by the sun alone (SUN_DIR: 5° up, toward −Z, irradiance 1), and the
-// radiance it sends toward a viewer. Backward path tracing from the viewer, the sun sampled at every
+// as asked, a ball, or a fold (a crease between two slopes), lit by the sun alone (SUN_DIR: 5° up,
+// toward −Z, irradiance 1), and the radiance it sends toward a viewer; or in colour under a sky and
+// beside other clouds (radianceUnder: what a path meets when it leaves, the sun's colour or its
+// shadow). Backward path tracing from the viewer, the sun sampled at every
 // scattering (next-event estimation), free paths through the profile by delta tracking and the
 // sun's optical depth through it in closed form: the ground truth the trace's light (model.js) is
 // held to.
 //
-//   import { slab, viewDir, radiance, PHASES } from './mc.js';
+//   import { slab, viewDir, radiance, radianceUnder, PHASES } from './mc.js';
 //   const s = slab([0, 1, 0], 800);                   // a flat top, 800 m of cloud below it
 //   radiance(s, viewDir(180, 30), { phase: PHASES.cloud, paths: 2e5 })   // seen from the sun's side, 30° down
+//   radianceUnder(s, viewDir(0, 90), { sun: null, env: sky.radiance })  // in another cloud's shadow, sky.js's sky
 //
 // A slab is the cloud between the plane through the origin with outward normal n and the plane H
 // behind it; the viewer looks at the origin from outside. The sun may light it from the back
@@ -116,22 +119,68 @@ export function viewDir(az, dep) {
   return [Math.sin(a) * Math.cos(e), -Math.sin(e), -Math.cos(a) * Math.cos(e)];
 }
 
+// a fold: the crease between two slopes rising at a (degrees) on either side of a line through the
+// origin across the sun's way (along x), or along it; the cloud below both, down to H under the
+// crease. In shade only (the sun can't come out of it but along the crease): it has no optical
+// depth toward the sun.
+export function fold(a, H, along = false) {
+  const t = Math.tan(a * Math.PI / 180), c = Math.cos(a * Math.PI / 180), sn = Math.sin(a * Math.PI / 180);
+  const edges = [[c, sn], [-c, sn]];
+  return {
+    n: [0, 1, 0], H,
+    // (q: the coordinate across the crease) in the open wedge the nearer slope; inside, the
+    // distance to the wedge (to its edges) or to the bottom
+    sdf(p) {
+      const q = along ? p[0] : p[2], y = p[1];
+      if (y > Math.abs(q) * t) return Math.min(y * c - q * sn, y * c + q * sn);
+      return Math.max(-Math.min(...edges.map(([eq, ey]) => { const s = Math.max(q * eq + y * ey, 0); return Math.hypot(q - s * eq, y - s * ey); })), -H - y);
+    },
+    // a ray leaves for good through the bottom, or into the open wedge heading up out of it
+    exit(x, y, z, w0, w1, w2) {
+      const q = along ? x : z, wq = along ? w0 : w2;
+      if (w1 < 0) return (-H - y) / w1;
+      if (w1 <= Math.abs(wq) * t) return Infinity;
+      // where it enters the wedge: past both slopes
+      const ta = (q * sn - y * c) / (w1 * c - wq * sn), tb = (-q * sn - y * c) / (w1 * c + wq * sn);
+      return Math.max(ta, tb, 0);
+    },
+    od: () => Infinity,
+  };
+}
+
 // The radiance toward the viewer looking along v at the slab's origin, per unit of sunlight, and its
 // standard error. orders: how many scatterings to follow (1: single scattering alone).
 export function radiance(s, v, { phase = PHASES.cloud, paths = 1e5, orders = Infinity, maxEvents = 1e5, seed = 1 } = {}) {
+  const { L, err } = walk(s, v, { phase, paths, orders, maxEvents, seed, sun: [1, 0, 0], env: null });
+  return { L: L[0], err: err[0] };
+}
+// The same in colour, under a sky and beside other clouds: the sun's colour (sun; null: in another
+// cloud's shadow), and env(w), the radiance [r, g, b] arriving along w from where a path leaving
+// the shape heads (the sky, sunlit cloud around)
+export function radianceUnder(s, v, { sun, env, phase = PHASES.cloud, paths = 1e5, maxEvents = 1e5, seed = 1 }) {
+  return walk(s, v, { phase, paths, orders: Infinity, maxEvents, seed, sun, env });
+}
+function walk(s, v, { phase, paths, orders, maxEvents, seed, sun, env }) {
   const r = mulberry32(seed), [L0, L1, L2] = SUN;
-  let sum = 0, sum2 = 0;
+  const sum = [0, 0, 0], sum2 = [0, 0, 0];
   for (let p = 0; p < paths; p++) {
     let x = 0, y = 0, z = 0, [w0, w1, w2] = v, acc = 0;
+    const accE = [0, 0, 0];
     for (let k = 0; k < maxEvents; k++) {
       // (a tentative collision at the full density, real by the profile's share there)
       const te = s.exit(x, y, z, w0, w1, w2);
       let t = 0;
       do { t += -Math.log(1 - r()) / SIGMA; } while (t < te && r() >= profile(-s.sdf([x + w0 * t, y + w1 * t, z + w2 * t])));
-      if (t >= te) break;
+      if (t >= te) {
+        // (left for good: what arrives from there)
+        if (env && k > 0) { const e = env([w0, w1, w2]); accE[0] += e[0]; accE[1] += e[1]; accE[2] += e[2]; }
+        break;
+      }
       x += w0 * t; y += w1 * t; z += w2 * t;
-      const tl = s.exit(x, y, z, L0, L1, L2);
-      acc += phase.eval(w0 * L0 + w1 * L1 + w2 * L2) * Math.exp(-SIGMA * s.od(x, y, z, L0, L1, L2, tl));
+      if (sun) {
+        const tl = s.exit(x, y, z, L0, L1, L2);
+        acc += phase.eval(w0 * L0 + w1 * L1 + w2 * L2) * Math.exp(-SIGMA * s.od(x, y, z, L0, L1, L2, tl));
+      }
       if (k + 1 >= orders) break;
       // a new direction at cos c from the old, around it at a random angle
       const c = phase.sample(r), sn = Math.sqrt(Math.max(0, 1 - c * c)), ph = 2 * Math.PI * r();
@@ -142,8 +191,11 @@ export function radiance(s, v, { phase = PHASES.cloud, paths = 1e5, orders = Inf
       const cp = Math.cos(ph) * sn, sp = Math.sin(ph) * sn;
       w0 = c * w0 + cp * u0 + sp * b0; w1 = c * w1 + cp * u1 + sp * b1; w2 = c * w2 + cp * u2 + sp * b2;
     }
-    sum += acc; sum2 += acc * acc;
+    for (let c = 0; c < 3; c++) {
+      const a = acc * (sun ? sun[c] : 0) + accE[c];
+      sum[c] += a; sum2[c] += a * a;
+    }
   }
-  const m = sum / paths;
-  return { L: m, err: Math.sqrt(Math.max(sum2 / paths - m * m, 0) / paths) };
+  const m = sum.map(x => x / paths);
+  return { L: m, err: m.map((x, c) => Math.sqrt(Math.max(sum2[c] / paths - x * x, 0) / paths)) };
 }

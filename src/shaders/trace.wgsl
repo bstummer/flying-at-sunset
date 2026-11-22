@@ -2,6 +2,7 @@
 #include "chunks/atmo.wgsl"
 #include "chunks/cloud.wgsl"
 #include "chunks/ambient.wgsl"
+#include "chunks/sealit.wgsl"
 
 // The cloud raymarch, at low resolution: the clouds' light and transmittance, and their depth in km
 // (shaders/trace.js)
@@ -54,6 +55,28 @@ fn airT(t: f32, h0: f32, dy: f32) -> vec3f {
                + (MIE_S + MIE_A) * 1e-3 * layerOD(t, h0, dy, MIE_H * 1000.0)));
 }
 
+// How open the sky is over the large shapes (the heaps, the swells and valleys of the sea, the
+// towers and their largest lobes) at p, at 250 and 750 m (the scales of the heaps and the valleys
+// between them, wherever the camera is: tied to the pixel, at 9 km they took in a whole tower): how
+// much farther from them a point that far out along their normal lies, over that (1 over an open
+// face, cos a in a crease between walls at a), the two scales' mean. Their normal from a tetrahedron
+// of taps 64 m apart (at a crease it bisects the opening, where a one-sided difference turns into
+// one of its walls). Measured on the large shapes alone: the billows' flanks tilt from them, and
+// against the billowed surface every flank read as a crease.
+// (xyz: their normal, w: the openness)
+fn openLarge(p: vec3f, l: i32) -> vec4f {
+  let e = 64.0;
+  let s = 250.0;
+  let k = vec2f(1.0, -1.0);
+  let a = macroAt(p + k.xyy * e, l);
+  let b = macroAt(p + k.yyx * e, l);
+  let c = macroAt(p + k.yxy * e, l);
+  let d = macroAt(p + k.xxx * e, l);
+  let n = normalize(k.xyy * a + k.yyx * b + k.yxy * c + k.xxx * d + vec3f(0.0, 1e-3, 0.0));
+  let m = macroAt(p, l);
+  return vec4f(n, 0.5 * (saturate((macroAt(p + n * s, l) - m) / s) + saturate((macroAt(p + n * (3.0 * s), l) - m) / (3.0 * s))));
+}
+
 struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
 @fragment fn fs(@builtin(position) pos: vec4f) -> Out {
   let frag = pos.xy;
@@ -87,10 +110,9 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
   // which the sun outshines. Inside cloud the light has wandered in from everywhere: grey.)
   let cool = 1.0 - u.inCloud;
   let ambUp = bAmb.up.rgb * AMB_K * mix(vec3f(1.0), vec3f(0.88, 0.96, 1.2), cool);
-  // light bounced off the sunlit sea of clouds below (render/frame.js: a Lambertian deck lit at 5°)
-  let seaBounce = u.ambSea;
-  let ambSunS = bAmb.sunSide.rgb * AMB_K + seaBounce * 0.4;
-  let ambAnti = bAmb.antiSun.rgb * AMB_K * mix(vec3f(1.0), vec3f(1.03, 0.92, 1.18), cool) + seaBounce * 0.15;
+  // (and from below, light bounced off the sea of clouds, by how much of it is in the sun: per sample)
+  let skySunS = bAmb.sunSide.rgb * AMB_K;
+  let skyAnti = bAmb.antiSun.rgb * AMB_K * mix(vec3f(1.0), vec3f(1.03, 0.92, 1.18), cool);
   let cosT = dot(dir, u.sunDir);
   let phase = phaseOctaves(cosT);
   let powder = 1.0 - 0.28 * saturate(0.5 - 0.5 * cosT);
@@ -117,8 +139,10 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
   var lastRel = 1.0;
   var lastNUp = 1.0;
   var lastOpen = 1.0;
-  // (up and back toward the camera: the side of a visible surface that is open)
-  let openDir = normalize(vec3f(0.0, 1.0, 0.0) - dir);
+  var lastOpenL = 1.0;
+  var lastSea = seaBounce(SEA_LIT, u.ambSea, bAmb.up.rgb * AMB_K);
+  var lastWalls = 0.0;
+  var lastGraze = 1.0;
   for (var i = 0; i < 360; i++) {
     nIter += 1.0;
     if (t >= tEnd || T < 0.02) { done = true; break; }
@@ -227,14 +251,23 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
         lastRel = mix(1.0, rel, (1.0 - smoothstep(1500.0, 6000.0, t)) * exp(-profileDepth(depthL) / 12.0));
         // which way the surface faces: up from one distance tap above, toward the sun from the
         // light march. Each bulge then catches its own sky light, even in shadow. And how open the
-        // sky is over it: the distance to the cloud at a point up and back toward the camera,
-        // short in the folds between bulges and under overhangs. (Only near the visible surface;
-        // deeper samples keep the last estimate.)
+        // sky is over it: between the turrets and lobes and among the heaps, out along the large
+        // shapes' normal (lastOpenL); between the domes, at a point out along it and back toward the
+        // camera, the side of a visible surface that is open (lastOpen; up and back, it ran into every
+        // belly seen from below). (Only near the visible surface; deeper samples keep the last
+        // estimate.)
         if (T > 0.45) {
           let S = 22.0 + t * 0.005;
           lastNUp = clamp((cloudSDF(wpL + vec3f(0.0, S, 0.0), wpL.y + S, vec3f(macroAt(vec3f(wpL.x, wpL.y + S, wpL.z), lv), bs), C, lod) + depthL) / S, -1.0, 1.0);
-          let qo = wpL + openDir * (2.5 * S);
+          let oL = openLarge(wpL, lv);
+          lastOpenL = oL.w;
+          lastGraze = 0.92 + 0.6 * pow(1.0 - saturate(-dot(dir, oL.xyz)), 3.0);
+          let qo = wpL + normalize(oL.xyz - dir) * (2.5 * S);
           lastOpen = smoothstep(0.0, 0.8, (cloudSDF(qo, qo.y, vec3f(macroAt(qo, lv), bs), C, lod) + depthL) / (2.5 * S));
+          // (how much of the sea below and of the cloud around is in the sun)
+          let lit = seaLitBelow(wpL.xz, wpL.y - C.x);
+          lastSea = seaBounce(lit, u.ambSea, bAmb.up.rgb * AMB_K);
+          lastWalls = (1.0 - lastOpenL) * lit;
         }
       }
       lastDepth = depthL;
@@ -248,17 +281,29 @@ struct Out { @location(0) col: vec4f, @location(1) depth: f32 }
         let ms = msScatterP(lastLp.own + far.x + lastLp.other, phase) * pw * exp(-beyond(lastLp, far));
         sunL = sc * select(select(0.0, sunScatter(lastLp, far, phase, pw, depthL) - ms, u.dbgMode == 6), ms, u.dbgMode == 5);
       }
-      let up = saturate((h - C.w + 250.0) / 1400.0);
       // sky light only reaches the first few tens of metres (short scale also hides the
-      // discontinuous interior of the distance field)
-      let ao = mix(0.5, 1.0, exp(-profileDepth(depthL) / 55.0)) * mix(0.6, 1.0, lastOpen);
-      // sky light by orientation: the deep blue zenith on tops, the warm sunlit sea under bellies,
-      // the golden sun-side or the cool violet anti-sun sky on the sides (a belly sees only part of
-      // the sea below past the bulges around it)
-      let eSide = mix(ambAnti, ambSunS, saturate(0.5 + 0.5 * lastLp.nS));
+      // discontinuous interior of the distance field), and as much of it as the sky is open (a
+      // crease between walls at 30, 45 and 60° sends 0.8, 0.7 and 0.6 of an open top's, where the
+      // distance out of it is 0.87, 0.71 and 0.5 of the way, tools/light/reference.js; where the sky
+      // is closed, the walls that close it send light of their own)
+      let ao = mix(0.5, 1.0, exp(-profileDepth(depthL) / 55.0)) * mix(0.6, 1.0, lastOpen) * (0.35 + 0.65 * lastOpenL);
+      // sky light by orientation: the deep blue zenith on tops, the sea below under bellies (warm
+      // where it is sunlit, the sky's blue where it lies in shadow), the golden sun-side or the cool
+      // violet anti-sun sky on the sides, and the sea's light on their lower half (more toward the
+      // sun: its glare comes that way)
+      let eSide = mix(skyAnti + lastSea * 0.15, skySunS + lastSea * 0.4, saturate(0.5 + 0.5 * lastLp.nS));
       var eDir: vec3f;
-      if (lastNUp > 0.0) { eDir = mix(eSide, ambUp, lastNUp); } else { eDir = mix(eSide, seaBounce, -0.5 * lastNUp); }
-      var amb = eDir * mix(0.45, 1.0, up) * ao;
+      if (lastNUp > 0.0) { eDir = mix(eSide, ambUp, lastNUp); } else { eDir = mix(eSide, lastSea, -lastNUp); }
+      // and where the heaps around close the sky, the light of their sunlit flanks (a sunlit face sends
+      // ~0.1 of the sunlight, half of what it sends a shaded point reaches it: tools/light/reference.js),
+      // as much as the cloud around is lit, on faces turned from the sun (the flanks facing them are
+      // the lit ones), at the surface only (deep in a cloud nothing closes a sky: inside a tower it lit
+      // the mist)
+      let walls = sc * (0.05 * lastWalls * saturate(0.5 - 0.5 * lastLp.nS) * exp(-profileDepth(depthL) / 55.0));
+      // (seen at a grazing angle, a surface sends more of the sky's light: from the bright horizon it
+      // comes in grazing and leaves grazing; a flat top seen 10° down 1.6-2 times what it sends up, by
+      // the reference, less on billows, whose faces tilt toward such a view)
+      var amb = eDir * ao * lastGraze + walls;
       if (DBG && (u.dbgMode == 5 || u.dbgMode == 6)) { amb *= 0.0; }
       // (the cloud's light with a colour film's saturation: golden-hour orange on the lit faces, the
       // sky's blue in the shade; the air's veil keeps the sky's own colour)

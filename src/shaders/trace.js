@@ -22,10 +22,13 @@
 // it came in there: a lit side's creases fill, a tower's shade gets a few % of its lit side); the
 // smallest billows' own faces toward the sun,
 // over 5 m, near the camera; sky light by which way the surface faces (one SDF tap 22 m above and
-// more far away, and the light march: blue zenith on tops, the warm bounce of the sunlit sea under
-// bellies, golden or violet sky on the sides; shade takes the sky's blue, grey inside cloud), as
-// strong as the sky view gives it; short-range occlusion; the cloud's own light with a colour
-// film's saturation (CLOUD_SAT); haze by optical depth (scale height 6 km: the farthest clouds the
+// more far away, and the light march: blue zenith on tops, the sea below under bellies, warm where
+// the lit map has it in the sun, golden or violet sky on the sides; shade takes the sky's blue,
+// grey inside cloud), as strong as the sky view gives it, as open as the sky is over it (between
+// the domes, and over the large shapes at 250 and 750 m: creases and valleys), more of it seen at a
+// grazing angle, and where the heaps around close the sky, the light of their sunlit flanks (all
+// fitted to the shade's reference, tools/light/); the cloud's own light with a colour film's
+// saturation (CLOUD_SAT); haze by optical depth (scale height 6 km: the farthest clouds the
 // haziest). ?dbg=1..7 sets DBG: normals, sun visibility, the shadow volume and the sun map (the
 // light that gets through other clouds from a point), march cost, lighting (5
 // octaves, 6 diffusion, 7 sky light alone).

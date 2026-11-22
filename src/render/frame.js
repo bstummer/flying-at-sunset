@@ -1,7 +1,8 @@
 // One frame, render(time): its passes in order, each group timed (render/timing.js)
 //
 // - world: apply what the world's worker sent for the clipmaps (render/stream.js); sunmap: bake a slab
-//   of the sun map (render/sunmap.js), with the billows as they are now;
+//   of the sun map (render/sunmap.js), with the billows as they are now; litmap: once a window's bake
+//   is done, the lit map from it;
 // - sky: the sky view (192×108) and the ambient light, again whenever the camera has moved 10 m up
 //   or down; probe: light and cloud at the bird and the camera, read back later (render/probe.js);
 // - trace: the clouds at R.scale of the canvas, jittered each frame (shaders/trace.js);
@@ -20,7 +21,7 @@ import { clearPass, context, dispatch, flush, pass } from './gpu.js';
 import { sunColorAt, sunColTable } from './sun.js';
 import { layerColUniform, P, T } from './setup.js';
 import { originOf, streamWorld, worldUniforms } from './stream.js';
-import { refreshSunMap, sunMapUniforms } from './sunmap.js';
+import { refreshLitMap, refreshSunMap, sunMapUniforms } from './sunmap.js';
 import { bloomLevels, R } from './targets.js';
 import { inCloud, mapProbe, mistLum, readProbeAsync } from './probe.js';
 import { bird_ } from '../flight/flight.js';
@@ -59,7 +60,8 @@ export function render(time) {
   // the sun map holds their billows, baked once where it lies, render/sunmap.js.)
   const detailOff = mat3Apply(DETAIL_ROT, O).map(c => fmod(c, DETAIL_TILE));
   // the sunlit sea of clouds below as a Lambertian deck lit at 5°: its radiance per unit of sunlight
-  // (albedo · sin 5° / π), the light from below on the clouds' bellies and the bird's alike
+  // (albedo · sin 5° / π), the light from below on the clouds' bellies and the bird's alike where
+  // the sea is in the sun (the lit map's share, chunks/sealit.wgsl)
   const ambSea = scl(sunColorAt(1500), SEA_ALBEDO * SUN_DIR[1] / PI);
   const common = Object.assign(worldUniforms(O), sunMapUniforms(O), {
     tShape: T.shape, tDetail: T.detail, tTsv: T.tsv,
@@ -68,6 +70,10 @@ export function render(time) {
   // (the lookups take its window as it is after)
   tBegin('sunmap');
   refreshSunMap(cam.pos, O, common);
+  Object.assign(common, sunMapUniforms(O));
+  tEnd();
+  tBegin('litmap');
+  refreshLitMap(O, common);
   Object.assign(common, sunMapUniforms(O));
   tEnd();
 

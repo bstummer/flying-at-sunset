@@ -20,41 +20,71 @@ after each leg; legs 8 and 9 are mostly taste.
 integrated GPU, and the page opened once in Safari and in Firefox. Every budget below is one NVIDIA
 laptop's in Chrome; if a phone can't hold the piece, leg 12 comes first.
 
-**Leg 8: the shade.** Since leg 7 much of the near sea lies in cast shadow, rightly, and there the
-light is the sky's alone: navy and flat. The near shaded sea is (41,49,73) in `start`'s lower
-right, (46,49,66) in `side`, (46,51,71) in `giant`'s foreground: luminance ~50 with an SD of 3.5–6
-over large parts of those frames, 26–33% of the lit faces beside it (146–195); `down`'s
-(65,74,92), SD 1.8; all of `under` (60,54,61). Leg 2's lavender grey at 45% was a tower's own
-shade, which the light diffusing through its body fills. With it go `under`, the bird in shade,
-the blotchy shaded sea, the darkest folds (the darkest 1% of `tower` and of `close`: luminance 54)
-and the sunlit turret tops whose base melts into the shade.
-1. A reference for the shade, as leg 2's for the sun (tools/light/): the Monte Carlo under the
-   sky's dome (the sky view's radiance at a 5° sun) and beside sunlit cloud (a deck below, a lit
-   wall), for a top in cast shadow, a fold and an overhang's underside: what each sends against a
-   lit face. The reference knows the sun alone, so the shade has no target but the reviews'
-   "40–50%, luminous lavender grey".
-2. The light from the sunlit cloud around, by where it is lit. `ambSea` (frame.js) is one constant,
-   a deck lit at 5° everywhere, added at 0.4 and 0.15 of its weight on a cloud's sides and at up to
-   half on its bellies (trace.wgsl), though much of the near sea is in shadow now, and a lit flank
-   beside a shaded heap sends it nothing. The sun map and the shadow volume know where the tops
-   are lit: a coarse map of how much sunlit cloud lies around and below a point in place of the
-   constant, the bird's too (the probe's `ambDn`).
-3. Form without the sun: the sky's light by how open the sky is at more than one scale (the
-   distance field over tens and hundreds of metres; now one tap ~22 m up and one ~55 m up and back
-   toward the camera, only while T > 0.45), and by where in the sky it comes from (the horizon
-   toward the sun is its brightest part), so creases and crests read in shade. The decisions hold
-   the guard rails: a floor on the occlusion made gravel, a facing over 15 m pumice, the sky ×1.95
-   milk.
-4. With the author: `under` against its brief, the bird in shade (`giant`, `close`), the exposure
-   and the lit faces' level (known issues).
-   Cost: taps per lit sample. Under +8% of the trace over the six views, else taken from the
-   samples that reuse the last one's light.
+**Leg 8, done but for the author's step (2026-11-22)** (`screenshots/l8-before` → `l8-final`; `node
+tools/light/reference.js --shade`). Before it the near shaded sea was navy and flat: (41,49,73) in
+`start`'s lower right, luminance ~50 with an SD of 3.5–6, 26–35% of the lit faces beside it; all of
+`under` (60,54,61).
+1. The shade's reference (tools/light/): the Monte Carlo in colour under the page's own sky (sky.js
+   reads the sky view out of the built page at the start's height, 1845 m; its integrals match the
+   ambient buffer within 1%, 6% on the sun's side), the sun lit or behind another cloud, a path
+   leaving the shape meeting the sky, a sunlit wall, or the sea below (lit or in shadow, as the
+   Monte Carlo's own top sends it); a fold (a crease between walls at 30–60°) besides slabs and
+   balls. At 5° the sun puts only 1.4 times the sky's light on a level top. It found the trace's
+   shaded sea tops at 0.35–0.63 of a real cloud's and bluer (b/r 3.6 against 2.4 in light, before
+   the saturation): its sky light fell to 0.59 at the sea's level (`up`, the prototype's stand-in
+   for openness). Against the lit top seen the same way, a real top in shadow sends 50–67% (from the
+   side and away from the sun), the trace 31–39%. A crease between walls at 30, 45, 60° sends 0.8,
+   0.7, 0.6 of an open top (the trace: as much as the top); a sunlit wall 0–15° up a kilometre off
+   lifts a shaded top 20–40% (2.6× seen grazing toward it); a top seen 10° down sends 1.6–2× what it
+   sends up (the trace: the same every way); bellies 3–4.5× the trace's over a lit sea, 1.4× over a
+   shaded one; a tower's own shade 0.65× (the diffusion, leg 2's fit).
+2. The light from the sunlit cloud around: the lit map (render/sunmap.js, shaders/litmap.wgsl): over
+   the sun map's window, how much sunlight reaches the sea's layer (the sun map halfway up its
+   billows: the heaps' and towers' cast shadows, not the billows' own shading, which is the deck's
+   albedo), 80 × 64 m texels with mip levels, drawn when a window's bake ends. The sea's light from
+   below (chunks/sealit.wgsl) is the sky's as it reflects it (0.8) and the sunlit deck's where it is
+   lit, over a stretch as wide as the point is high (≥ 400 m): on bellies at full weight, on the
+   lower half of the sides, the bird's `ambDn`. Where the heaps around close the sky (step 3), the
+   light of their sunlit flanks on faces turned from the sun (0.05 of the sunlight × the closed
+   share × the lit share), at the surface only. Bellies 0.56–0.84 of the reference over a lit sea
+   (a Lambertian deck has no glare toward the sun at the horizon), 0.66–0.77 over one in shadow.
+3. Form without the sun, in place of `up`: the sky light by how open the sky is over the large
+   shapes at 250 and 750 m (their normal from a tetrahedron of `macroAt` taps 64 m out; how much
+   farther from them a point out along it lies, over the distance; the two scales' mean), as 0.35 +
+   0.65 of it, at each lit sample near the surface (as the taps before it); the small tap (~55 m)
+   out along that normal and back toward the camera (up and back, it ran into every belly seen
+   from below); and by the view's angle to that normal (0.92–1.5×, milder than the flat slab's:
+   billows tilt their faces toward a grazing view). The trace against the reference: an open top in
+   shadow 0.76–1.02 (grazing views 0.61–0.73 before), against the lit top 47–51%; creases 1.1–1.25
+   (0.91, 0.84, 0.68 of an open top for walls at 30, 45, 60°). Failed on the way (decisions): a
+   normal from the light march's facing, the openness against the billowed surface, scales tied to
+   the pixel, the point's distance as the taps' mean, a 0.2 floor, the openness once a cloud.
+   The look: the shaded near sea lighter (sRGB luminance 50 → 56 in `start`'s lower right, 49 → 55
+   in `side`'s, 50 → 61 in `giant`'s foreground, 67 → 70 in `down`; against the lit faces beside it
+   35 → 38% in `start`, where a tower's shadow lies over all of it, 46–52% elsewhere), with form in
+   its swells and valleys and in the middle distance, the brown blotches gone (the constant warm
+   bounce on downward facets where the sea below lies in shadow); bluer, not lavender ((45,56,83)
+   in `start`). `under` navy, (56,53,64) → (37,44,60): the sea beneath lies in the anvil's shadow
+   for tens of km, nothing warm comes up. `close` and `tower`: the creases between lit lobes bluer,
+   the darkest 1% as before. `skim` a lighter mauve-grey card, `inside` a shade darker (leg 9).
+   Shimmer at rest down in every view (`start` 0.048 → 0.040%, `tower` 0.111 → 0.101%). Flights
+   identical (only the bird's light from below changed in the probe). Cost (HEAD against leg 8,
+   interleaved A B B A A B, 200 frames, NVIDIA laptop): the trace +8 to +12% (`start` +9, `sun`
+   +10, `side` +8, `tower` +11, `high2` +10, `close` +10, `down` +9, `giant` +12; over the +8% this
+   leg allowed: the openness's seven reads a lit sample near the surface), the lit map 0.03–0.04 ms
+   once a window (~2 km of flight), 170 KB.
+4. With the author (`screenshots/l8-colour/`: A as now, B the tints off, C the saturation on the
+   sun's light alone): the shade's colour (lighter, with form, but blue, not the reviews' lavender
+   grey: lavender needs red in its light, and B and C only take blue out), `under` against its
+   brief, the bird in shade (`giant`: nearly lost in the shade around it), the exposure and the lit
+   faces' level (known issues).
 
-**Leg 9: in cloud and at its edge.** `inside` and `skim` are flat brown cards: (135,106,89) and
-(113,85,66), SD 3.5 and 4.9 over the frame. In the `skim` flight (a dive held from 170 m over the
-sea's top) the bird is in cloud 36% of the 15 s and never deeper than 32 m; the other four flights
-never enter one. So what a visitor skimming the tops meets every few seconds is a cloud's first
-tens of metres, and it is that card.
+**Leg 9: in cloud and at its edge.** `inside` and `skim` are flat cards, brown and mauve grey:
+(124,98,80) and (136,116,116), SD 3.2 and 8.1 over the frame (both brown, (135,106,89) and
+(113,85,66), until leg 8 took the warm bounce off where the sea below lies in shadow). In the
+`skim` flight (a dive held from 170 m over the sea's top) the bird is in cloud 36% of the 15 s
+and never deeper than 32 m; the other four flights never enter one. So what a visitor skimming
+the tops meets every few seconds is a cloud's first tens of metres, and it is that card.
 1. The exposure in cloud by what the frame shows (the bloom chain's coarsest level is close to its
    average, on the GPU already), not by the probe's estimate: that runs brighter than what the
    trace draws, the gain stays low, hence the brown.
@@ -491,6 +521,19 @@ they hold until the author says otherwise.
   slope took a bound beside a distance for a steep slope (cap the slope at 1).
 - **Fold occlusion** (before leg 2's light): a tap up and back toward the camera; a 0.2 floor turned
   shade into gravel; a tap straight up can't tell a fold from a wall.
+- **The openness of the sky, first tries** (leg 8): a normal from the tap up and the light march's
+  facing toward the sun: that facing is a one-sided difference over 58 m, so at a crease it points
+  into one wall and taps along it read every crease closed (folds at 0.4–0.5 of the reference).
+  The large scales judged against the billowed surface (the distance to the billows out along the
+  large shapes' normal): every billow flank tilted from the large shapes read as a crease, the
+  sea's openness ~0.55 on average, which ate what dropping `up` gave; against the large shapes' own
+  distance it is consistent. The scales tied to the pixel (to 670 m and 2 km at 9 km): a whole
+  tower in one tap, its flank and the sea under an anvil black. The point's distance as the mean
+  of the tetrahedron's taps: the field kinks at a crease (−45 m against −1 m), creases read open.
+  A floor of 0.2: an enclosed spot fell to 0.12 of the sky's light, as if the walls closing it
+  sent none of their own. Taken once a cloud the ray enters instead of a sample (the same to the
+  eye): the trace +15–22% where per sample it is +8–12%, lanes entering clouds at different
+  steps, so a warp runs it whenever any lane needs it.
 - **A fringe outside the surface for silver linings** (before the legs, thin cloud 40 m out, lit
   forward): rays toward the sun skim the sea's tops through it for kilometres (glowing veils; capped
   per ray, sheets with hard edges, like film).
@@ -615,8 +658,9 @@ they hold until the author says otherwise.
 - **Inside cloud** is a uniform wall (warm brown since leg 7 lit it, `inside`; the medium's profile
   reaches 40 m in, and the camera sits hundreds of metres deep), even with the exposure adapting to the
   mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays low);
-  the mist streams past only as the bird flies. `under` (an anvil's underside) is dark navy now: right
-  for shade at sunset, but judge it against its brief.
+  the mist streams past only as the bird flies. `under` (an anvil's underside) is navy since leg 8:
+  the sea beneath lies in the anvil's shadow for tens of km at a 5° sun, so nothing warm comes up.
+  Right for shade at sunset, but judge it against its brief.
 - **Seen through a cloud's edge, the picture is grainy in flight** (the author, 2026-11-22:
   pixelated, like noise that changes as you move, at the clouds' edges; leg 9, step 3). With the
   camera in a billow's edge, looking out (`?pose=0,1400,0,-1.0,-0.03,0`; from 1470 m the same
@@ -650,8 +694,11 @@ they hold until the author says otherwise.
   frame's height where it should dominate. `close` stands 17.4 km from the tower `tower` sees from 9.4 km
   (the first air clear of the heaps at 1100 m over the sea lies that far out) and frames all of
   it; neither looks up a flank from below.
-- **The shade on the near sea** is navy and flat (2026-11-22; leg 8 has the numbers): since leg 7
-  much of it lies in cast shadow, lit by the sky alone, at a quarter to a third of the lit faces.
+- **The shade's colour**: since leg 8 lighter and with form, but blue, not the reviews' lavender
+  grey: the sky's own colour (the reference's shade, b/r 2.4 in light), tinted bluer (COOL_UP,
+  COOL_ANTI: b/r 3.5) and saturated (CLOUD_SAT). Lavender needs red in the shade's light: the
+  warm bounce from sunlit cloud is there only where cloud around is lit. Variants for the author
+  (leg 8, step 4).
 - **Near the camera** the sea into the sun is still soft, glowing mush (`start` lower left, `seed3`),
   and the shaded sea seen from above blotchy (`giant`'s foreground): the light there is diffusion
   and sky light, smooth over tens of metres. **Into the sun** the sea's tops were pale cream, lit by
@@ -660,11 +707,17 @@ they hold until the author says otherwise.
   side 5.7× (the trace can't see how little cloud lies behind a billow; on a real cloud, a whole
   body), its edge 1.75×, a tower's shade 3.4–3.7× a ball's, 0.6× a wall's (real towers lie
   between), tops seen with the sun behind 1.2–1.9×, faces 0.83×, the glare off tops toward the sun
-  0.83–0.95× (leg 5's medium).
+  0.83–0.95× (leg 5's medium). In shade, under the sky (`--shade`, leg 8): an open top 0.76–1.02,
+  creases 1.1–1.25 (their walls' own light kept by a floor), bellies 0.56–0.84 over a lit sea (a
+  Lambertian deck has no glare toward the sun at the horizon) and 0.66–0.77 over one in shadow, a
+  tower's shade with the sky 0.65× (the diffusion's 0.6× above), a top beside a sunlit wall
+  standing a kilometre off 0.36–0.81× (the lit map sees the sea's lit share, not a wall rising
+  beyond it).
 - **Lit faces darker since leg 2**: `tower`'s 174 → 152, `away`'s lit sea 146 → 114 (luminance), the
   exposure kept at 14 (raised, the glare toward the sun goes milky, decisions): for the author.
 - **The bird in shade** (`giant`): a pale blue-grey silhouette, like the shade around it (its keel
-  glowed orange from a sea bounce 2.6× the clouds' until leg 1): for the author.
+  glowed orange from a sea bounce 2.6× the clouds' until leg 1); since leg 8 its light from below
+  is the sea's under it, in shadow there: it nearly vanishes into the shade. For the author.
 - **Colour and range** (reviews, 2026-11): lit faces apricot (≈ 238,177,116) where a sunset photo
   shows orange to salmon; toward the sun the haze is a milky band over the low sea (`high2`,
   `seed3`). Lit tower faces sit high on the tone curve with their folds filled by the light inside

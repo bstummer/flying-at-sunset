@@ -45,6 +45,14 @@ export const U_SUNSCAN = {
   c0: 'f32',            // where the height band starts at that texel (in rays from the first)
   r: 'f32',             // how far it sinks a texel along (rays)
 };
+// The lit map (render/sunmap.js): drawn over the sun map's window once its bake is done, a texel
+// per column, how much sunlight reaches the sea of clouds there (litmap.wgsl); its mip levels the
+// share over wider stretches (chunks/sealit.wgsl reads them)
+export const U_LITMAP = {
+  ...U_CLIP, ...U_CLOUD,
+  litR: 'vec4f',        // render space: along the sun's way and across it, the map's first edge; a texel's size each way
+};
+export { default as FS_LITMAP } from './litmap.wgsl';
 export { default as CS_SUNTAIL } from './sunmap-tail.wgsl';
 export { default as CS_SUNMAP } from './sunmap.wgsl';
 export { default as CS_SUNSCAN } from './sunmap-scan.wgsl';

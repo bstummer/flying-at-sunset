@@ -3,6 +3,7 @@
 #include "chunks/cloud.wgsl"
 #include "chunks/ambient.wgsl"
 #include "chunks/probe.wgsl"
+#include "chunks/sealit.wgsl"
 
 // The probe: the light and cloud at the bird and around the camera (shaders/probe.js)
 
@@ -36,8 +37,9 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
       bProbe.ambUp = vec4f(ambSky * 3.14159 * occ, 1.0);
     }
     case 2u: {
-      // light from the sunlit cloud sea below: the irradiance of a lower half sky of its radiance
-      bProbe.ambDn = vec4f(u.ambSea * 3.14159, 1.0);
+      // light from the sea of clouds below, sunlit or in shadow: the irradiance of a lower half sky
+      // of its radiance
+      bProbe.ambDn = vec4f(seaBounce(seaLitBelow(bwp.xz, bh - C.x), u.ambSea, ambSky) * 3.14159, 1.0);
     }
     case 3u: {
       let sc = sigmaAt(u.camPos, u.camPos.y);
