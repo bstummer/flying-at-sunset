@@ -20,7 +20,7 @@ after each leg; legs 8 and 9 are mostly taste.
 integrated GPU, and the page opened once in Safari and in Firefox. Every budget below is one NVIDIA
 laptop's in Chrome; if a phone can't hold the piece, leg 12 comes first.
 
-**Leg 8, done but for the author's step (2026-11-22)** (`screenshots/l8-before` → `l8-final`; `node
+**Leg 8, done (2026-11-22)** (`screenshots/l8-before` → `l8-final`; `node
 tools/light/reference.js --shade`). Before it the near shaded sea was navy and flat: (41,49,73) in
 `start`'s lower right, luminance ~50 with an SD of 3.5–6, 26–35% of the lit faces beside it; all of
 `under` (60,54,61).
@@ -73,11 +73,11 @@ tools/light/reference.js --shade`). Before it the near shaded sea was navy and f
    +10, `side` +8, `tower` +11, `high2` +10, `close` +10, `down` +9, `giant` +12; over the +8% this
    leg allowed: the openness's seven reads a lit sample near the surface), the lit map 0.03–0.04 ms
    once a window (~2 km of flight), 170 KB.
-4. With the author (`screenshots/l8-colour/`: A as now, B the tints off, C the saturation on the
-   sun's light alone): the shade's colour (lighter, with form, but blue, not the reviews' lavender
-   grey: lavender needs red in its light, and B and C only take blue out), `under` against its
-   brief, the bird in shade (`giant`: nearly lost in the shade around it), the exposure and the lit
-   faces' level (known issues).
+4. The author (2026-11-22): between the shade's colours (A as now, B the tints off, C the
+   saturation on the sun's light alone) they barely see a difference: A stays (the violet on the
+   sides turned from the sun is the nearest to lavender; B and C only take blue out). `under` and
+   the bird in shade stay as they are, physically right. Noted for leg 9: flying through dark
+   clouds the screen turns bright (step 1).
 
 **Leg 9: in cloud and at its edge.** `inside` and `skim` are flat cards, brown and mauve grey:
 (124,98,80) and (136,116,116), SD 3.2 and 8.1 over the frame (both brown, (135,106,89) and
@@ -87,7 +87,10 @@ and never deeper than 32 m; the other four flights never enter one. So what a vi
 the tops meets every few seconds is a cloud's first tens of metres, and it is that card.
 1. The exposure in cloud by what the frame shows (the bloom chain's coarsest level is close to its
    average, on the GPU already), not by the probe's estimate: that runs brighter than what the
-   trace draws, the gain stays low, hence the brown.
+   trace draws, the gain stays low, hence the brown. And the other way (the author, 2026-11-22):
+   flying through dark clouds the screen turns bright. In a cloud in shadow the estimate is low,
+   the gain goes to its 8×, and as one number for the frame it brightens what lies past the fog
+   too (step 3).
 2. The first tens of metres, where the medium is thin (its profile, the erosion): shreds and holes
    around the camera that let the lit tops and the sky through, the fog brighter toward the sun;
    going in and coming out as a passage, not a cut.
@@ -660,7 +663,7 @@ they hold until the author says otherwise.
   mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays low);
   the mist streams past only as the bird flies. `under` (an anvil's underside) is navy since leg 8:
   the sea beneath lies in the anvil's shadow for tens of km at a 5° sun, so nothing warm comes up.
-  Right for shade at sunset, but judge it against its brief.
+  Kept: physically right (the author, 2026-11-22).
 - **Seen through a cloud's edge, the picture is grainy in flight** (the author, 2026-11-22:
   pixelated, like noise that changes as you move, at the clouds' edges; leg 9, step 3). With the
   camera in a billow's edge, looking out (`?pose=0,1400,0,-1.0,-0.03,0`; from 1470 m the same
@@ -697,8 +700,8 @@ they hold until the author says otherwise.
 - **The shade's colour**: since leg 8 lighter and with form, but blue, not the reviews' lavender
   grey: the sky's own colour (the reference's shade, b/r 2.4 in light), tinted bluer (COOL_UP,
   COOL_ANTI: b/r 3.5) and saturated (CLOUD_SAT). Lavender needs red in the shade's light: the
-  warm bounce from sunlit cloud is there only where cloud around is lit. Variants for the author
-  (leg 8, step 4).
+  warm bounce from sunlit cloud is there only where cloud around is lit. Without the tints, or
+  with the saturation on the sun's light alone, the author saw barely a difference (leg 8).
 - **Near the camera** the sea into the sun is still soft, glowing mush (`start` lower left, `seed3`),
   and the shaded sea seen from above blotchy (`giant`'s foreground): the light there is diffusion
   and sky light, smooth over tens of metres. **Into the sun** the sea's tops were pale cream, lit by
@@ -717,7 +720,8 @@ they hold until the author says otherwise.
   exposure kept at 14 (raised, the glare toward the sun goes milky, decisions): for the author.
 - **The bird in shade** (`giant`): a pale blue-grey silhouette, like the shade around it (its keel
   glowed orange from a sea bounce 2.6× the clouds' until leg 1); since leg 8 its light from below
-  is the sea's under it, in shadow there: it nearly vanishes into the shade. For the author.
+  is the sea's under it, in shadow there: it nearly vanishes into the shade. Kept: physically
+  right (the author, 2026-11-22).
 - **Colour and range** (reviews, 2026-11): lit faces apricot (≈ 238,177,116) where a sunset photo
   shows orange to salmon; toward the sun the haze is a milky band over the low sea (`high2`,
   `seed3`). Lit tower faces sit high on the tone curve with their folds filled by the light inside
