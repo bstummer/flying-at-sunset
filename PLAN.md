@@ -11,9 +11,9 @@ The known issues below, checked on HEAD (8a4dacb) against a capture of every vie
 laptop), the scripted flights and the world tools, and put in the order the images ask for.
 `screenshots/` isn't kept: the numbers here (sRGB means over a region of a still) are what is left
 of that capture. As in legs 1–7, each step: a before/after capture of the views named (CLAUDE.md
-§4), `--profile` where the trace or a bake changes, flights compared where the flight or the world
-changes, then a line here on what held (and in the decisions on what failed). The author judges
-after each leg; legs 8 and 9 are mostly taste.
+§4), the cost (`node tools/cost.js`) where the trace or a bake changes, flights compared where the
+flight or the world changes, then a line here on what held (and in the decisions on what failed).
+The author judges after each leg; legs 8 and 9 are mostly taste.
 
 **First, from the author**: `?bench` on the branch's preview
 (https://bstummer.github.io/flying-at-sunset/cloud-improvement/?bench) on a phone and on an
@@ -68,15 +68,16 @@ tools/light/reference.js --shade`). Before it the near shaded sea was navy and f
    for tens of km, nothing warm comes up. `close` and `tower`: the creases between lit lobes bluer,
    the darkest 1% as before. `skim` a lighter mauve-grey card, `inside` a shade darker (leg 9).
    Shimmer at rest down in every view (`start` 0.048 → 0.040%, `tower` 0.111 → 0.101%). Flights
-   identical (only the bird's light from below changed in the probe). Cost (HEAD against leg 8,
-   interleaved A B B A A B, 200 frames, NVIDIA laptop): the trace +8 to +12% (`start` +9, `sun`
-   +10, `side` +8, `tower` +11, `high2` +10, `close` +10, `down` +9, `giant` +12; over the +8% this
-   leg allowed: the openness's seven reads a lit sample near the surface), the lit map 0.03–0.04 ms
+   identical (only the bird's light from below changed in the probe). Cost (`node tools/cost.js
+   --against e43f53a`: interleaved A B B A A B, a view at a time, 200 frames, NVIDIA laptop): the
+   trace +6 to +11% (`start` +7, `sun` +6, `side` +11, `tower` −1, `high2` +7, `close` +7; the
+   openness's seven reads a lit sample near the surface); two pages at a time, as `npm run shot`
+   renders them, it read +8 to +12% (`tower` +11): they share the GPU. The lit map 0.03–0.04 ms
    once a window (~2 km of flight), 170 KB.
 4. The author (2026-11-22): between the shade's colours (A as now, B the tints off, C the
    saturation on the sun's light alone) they barely see a difference: A stays (the violet on the
    sides turned from the sun is the nearest to lavender; B and C only take blue out). `under` and
-   the bird in shade stay as they are, physically right. The trace's +8–12% a frame stays (dynamic
+   the bird in shade stay as they are, physically right. The trace's +6–11% a frame stays (dynamic
    resolution takes it; leg 12's devices will say more). Noted for leg 9: flying through dark
    clouds the screen turns bright (step 1).
 
@@ -536,8 +537,8 @@ they hold until the author says otherwise.
   of the tetrahedron's taps: the field kinks at a crease (−45 m against −1 m), creases read open.
   A floor of 0.2: an enclosed spot fell to 0.12 of the sky's light, as if the walls closing it
   sent none of their own. Taken once a cloud the ray enters instead of a sample (the same to the
-  eye): the trace +15–22% where per sample it is +8–12%, lanes entering clouds at different
-  steps, so a warp runs it whenever any lane needs it.
+  eye): the trace +15–22% where per sample it is +8–12% (both two pages at a time), lanes
+  entering clouds at different steps, so a warp runs it whenever any lane needs it.
 - **A fringe outside the surface for silver linings** (before the legs, thin cloud 40 m out, lit
   forward): rays toward the sun skim the sea's tops through it for kilometres (glowing veils; capped
   per ray, sheets with hard edges, like film).

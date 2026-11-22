@@ -89,7 +89,7 @@ What the author keeps coming back to:
 |---|---|
 | `npm install` | Installs the dev dependencies (Vite, Playwright) and Playwright's headless Chromium, the only browser the tools use. |
 | `npm run dev` | Vite's dev server: the sources as ES modules, reloading on every edit. |
-| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the screenshot tool's arguments and compares, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
+| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the screenshot tool's arguments and compares, the cost tool's runs, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
 | `npm run build` | `dist/index.html`. Fails on any other output, or a module from outside `src/`. |
 | `npm run check` | `tools/check-build.js`: one self-contained file within the size budget, and the `src/` lint. |
 | `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
@@ -97,6 +97,7 @@ What the author keeps coming back to:
 | `npm run verify:ci` | verify as CI runs it: SwiftShader, 320×180, 8 frames, no measurements. The one to run without a GPU (cloud sessions; `node tools/linux.js npm run verify:ci` on Windows and macOS). |
 | `node tools/screenshot.js --compare A B [--views a,b]` | Before/after sheet `screenshots/compare/A_vs_B.png` with a diff column, per view how many pixels differ and how the measurements changed, and for each view that changed `compare/A_vs_B/<view>.png`: A, B and the diff at full size, then the view's crops zoomed. |
 | `node tools/checks.js [names]` | The behaviour checks alone (`streaming flight steering reproducible out-of-memory volumes pointer-and-keys errors player benchmark`), writing into `screenshots/checks/`. |
+| `node tools/cost.js [--against HEAD] [--views a,b] [--frames 200] [--rounds 3]` | What a change costs the GPU: the working tree's build against another commit's (built in a temporary git worktree), interleaved A B B A A B, a view at a time, with `?cpuprof`; per view and pass the totals, the change and each side's spread (a change within it is noise), every run in `screenshots/cost/<label>.json`. After committing a change, `--against HEAD~1`. About 6 minutes for the six default views on a desktop GPU. |
 | `node tools/flights.js [--label L]`, `--compare A B` | The scripted flights' logs (15 s each, from the start and diving into the cloud tops) into `screenshots/flights/<label>.json`; compare says per flight "identical" or where they part and by how much. |
 | `npm run map` | `tools/world/map.js`: a top-down map of the world (restlessness, towers by height), without rendering. |
 | `node tools/world/fingerprint.js [--write]` | Whether the CPU world is the one recorded in `tests/fixtures/world-fingerprint.json`; `--write` records it after a deliberate change. |
@@ -332,10 +333,11 @@ Smooth before sharp: dynamic resolution keeps the GPU under 12.5 ms a frame wher
 timestamp queries, else it aims at the display's frame rate by frame times (`render/resolution.js`),
 and detail gives way first. Phones get a lower resolution cap and cloud scale. Real computers and
 phones report through the benchmark (`?bench`, §3); the numbers in hand are in PLAN.md (known issues). CI's
-SwiftShader timings are only relative. To compare two builds on one machine, run them interleaved
-(A B B A A B, the older one in a git worktree) over a few hundred frames each (`--profile --frames
-200`): the NVIDIA laptop's clocks drift between runs (the same bake 2× apart, separate captures
-±25%), and a page that waited idle runs its frames slower. Watch the CPU too: the world generator
+SwiftShader timings are only relative. To compare two builds on one machine, `node tools/cost.js`:
+it runs them interleaved (A B B A A B, the older one in a git worktree), a view at a time, over a
+few hundred frames each: the NVIDIA laptop's clocks drift between runs (the same bake 2× apart,
+separate captures ±25%), a page that waited idle runs its frames slower, and two pages side by side
+(as `npm run shot` renders them) share the GPU. Watch the CPU too: the world generator
 runs in a worker, but the page applies what it sends within a budget of main-thread and estimated GPU
 time (`render/stream.js`): a hitch in the benchmark is a question for that budget.
 
@@ -365,7 +367,7 @@ What tends to help:
 
 - A `before` capture (§4) shows where the piece falls short of the request and the vision.
 - For the world, `tools/world/` (stats, map, preview, catalog) answers in seconds, before any GPU
-  capture; `--profile` shows what a change costs on the GPU.
+  capture; `node tools/cost.js` shows what a change costs on the GPU (§9).
 - Judging the result as harshly as the author will: the views against their briefs and against what
   the author keeps coming back to (§1). A subagent that hasn't seen the code is a good second pair of
   eyes.

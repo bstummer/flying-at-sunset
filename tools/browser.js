@@ -92,11 +92,12 @@ async function probeWebGPU(browser) {
   }
 }
 
-// The built page's file:// URL with URL parameters (an object, or a query string).
-export function pageUrl(params = {}) {
-  if (!existsSync(BUILT_HTML)) throw new Error('dist/index.html not found. Run `npm run build` first.');
+// The built page's file:// URL with URL parameters (an object, or a query string). html: another
+// build of it (tools/cost.js runs another commit's).
+export function pageUrl(params = {}, html = BUILT_HTML) {
+  if (!existsSync(html)) throw new Error(`${html === BUILT_HTML ? 'dist/index.html' : html} not found. Run \`npm run build\` first.`);
   const query = new URLSearchParams(params).toString().replace(/=(?=&|$)/g, '');
-  return pathToFileURL(BUILT_HTML).href + (query ? `?${query}` : '');
+  return pathToFileURL(html).href + (query ? `?${query}` : '');
 }
 
 // Throws if a source of the page changed after dist/index.html was built: the tools test the
@@ -122,8 +123,9 @@ const NOISE = [/powerPreference option is currently ignored/];
 
 // Watches a page: console errors, page errors, WebGPU errors (validation, out of memory, internal:
 // the page doesn't catch them, so they are heard on the device) and requests for anything but the
-// page itself become problems; other console warnings are kept as warnings. Call before goto().
-export async function watchPage(page) {
+// page itself (html: the build it opens) become problems; other console warnings are kept as
+// warnings. Call before goto().
+export async function watchPage(page, html = BUILT_HTML) {
   const problems = [];
   const warnings = [];
   page.on('console', (msg) => {
@@ -134,7 +136,7 @@ export async function watchPage(page) {
   page.on('pageerror', (err) => problems.push({ kind: 'page error', text: err.stack ?? err.message }));
   page.on('request', (req) => {
     const url = req.url();
-    if (!isSameFile(url, pathToFileURL(BUILT_HTML).href) && !/^(data|blob):/.test(url)) problems.push({ kind: 'network request', text: url });
+    if (!isSameFile(url, pathToFileURL(html).href) && !/^(data|blob):/.test(url)) problems.push({ kind: 'network request', text: url });
   });
   // A WebSocket is no request to Playwright.
   page.on('websocket', (ws) => problems.push({ kind: 'network request', text: ws.url() }));
@@ -226,11 +228,12 @@ export function isSameFile(url, fileUrl, platform = process.platform) {
 // `read`: a function run in the page once it is done, whose result comes back as `read`.
 // Never throws for what the page does: a crash, a hang, a lost device or no image is a problem.
 // Returns { png (Buffer, or null), ms, frame, gpu (?cpuprof's per-pass ms, or null), read, problems, warnings }.
-export async function testRender(browser, params, { timeoutMs = 900_000, viewport, read } = {}) {
+// html: another build of the page (tools/cost.js).
+export async function testRender(browser, params, { timeoutMs = 900_000, viewport, read, html = BUILT_HTML } = {}) {
   const w = Number(params.w ?? 960), h = Number(params.h ?? 540);
   const context = await browser.newContext({ viewport: viewport ?? { width: w, height: h }, deviceScaleFactor: 1 });
   const page = await context.newPage();
-  const { problems, warnings, gpuErrors } = await watchPage(page);
+  const { problems, warnings, gpuErrors } = await watchPage(page, html);
   const started = Date.now();
   const dog = watchdog(context, timeoutMs);
   let crashed = false;
@@ -238,7 +241,7 @@ export async function testRender(browser, params, { timeoutMs = 900_000, viewpor
   let state = {};
   let extra;
   try {
-    await page.goto(pageUrl({ test: '', ...params }));
+    await page.goto(pageUrl({ test: '', ...params }, html));
     await until(page, () => window.__done || window.__error);
     state = await page.evaluate(() => ({
       error: window.__error ?? null,

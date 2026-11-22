@@ -1,6 +1,6 @@
 // The tools' logic that needs no browser: the screenshot tool's arguments, plans, labels and compares
 // (tools/screenshot.js, labels.js, views.js), why a page stopped (browser.js), the flight logs'
-// compare (flights.js) and the streaming check's (checks.js)
+// compare (flights.js), the streaming check's (checks.js) and the cost tool's runs (cost.js)
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,6 +12,7 @@ import { labelFolder } from '../tools/labels.js';
 import { compareLevels, difference } from '../tools/checks.js';
 import { whyStopped } from '../tools/browser.js';
 import { describeDifference, parseArgs as flightArgs } from '../tools/flights.js';
+import { describeRows, parseArgs as costArgs, runOrder, summarize } from '../tools/cost.js';
 import { VIEWS } from '../tools/views.js';
 
 test('arguments: options with or without "=", flags, and the compare pair', () => {
@@ -150,3 +151,31 @@ test('streamed levels are compared where both windows overlap, by world cell, wi
   assert.equal(edge.volumeMax, 0);
 });
 
+
+test('the cost tool: its arguments, its runs in turn, and what it makes of them', () => {
+  const a = costArgs(['--views', 'tower, start', '--rounds=2', '--frames', '50', '--against', 'HEAD~1']);
+  assert.deepEqual(a.views.map((v) => v.name), ['tower', 'start']);
+  assert.deepEqual([a.rounds, a.frames, a.against, a.width, a.height, a.scale], [2, 50, 'HEAD~1', 960, 540, 0.5]);
+  assert.equal(costArgs([]).views.length, 6);
+  assert.throws(() => costArgs(['--rounds', '0']), /--rounds/);
+  assert.throws(() => costArgs(['--size', '960']), /--size/);
+  assert.throws(() => costArgs(['--views', 'nowhere']), /unknown view/);
+  assert.throws(() => costArgs(['--bogus', '1']), /unknown option --bogus/);
+  assert.throws(() => costArgs(['--against']), /--against needs a value/);
+  assert.throws(() => costArgs(['HEAD']), /unexpected argument/);
+  // (A B B A A B: each side first as often as second)
+  assert.deepEqual(runOrder(3), ['A', 'B', 'B', 'A', 'A', 'B']);
+  assert.deepEqual(runOrder(2), ['A', 'B', 'B', 'A']);
+  const rows = summarize([
+    { side: 'A', gpu: { start: { trace: 100, post: 0.2 } } }, { side: 'B', gpu: { start: { trace: 110, post: 0.2 } } },
+    { side: 'B', gpu: { start: { trace: 130, post: 0.2 } } }, { side: 'A', gpu: { start: { trace: 100, post: 0.2 } } },
+  ]);
+  const t = rows.find((r) => r.pass === 'trace');
+  assert.deepEqual([t.meanA, t.meanB, t.spreadA], [100, 120, 0]);
+  assert.ok(Math.abs(t.change - 0.2) < 1e-12 && Math.abs(t.spreadB - 10 / 120) < 1e-12);
+  // (a pass too small to matter is left out of the table, the trace's change summed up after it)
+  const lines = describeRows(rows);
+  assert.match(lines[0], /trace 100\.0 → 120\.0 \+20% \(±0\/8%\)/);
+  assert.doesNotMatch(lines[0], /post/);
+  assert.match(lines.at(-1), /the trace: start \+20%/);
+});
