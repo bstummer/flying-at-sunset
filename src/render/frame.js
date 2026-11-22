@@ -14,8 +14,8 @@
 // tunables, each with its URL parameter, are at the end.
 
 import { params, TEST } from '../core/params.js';
-import { add, dot, fmod, halton, mat3Apply, mat4Mul, perspective, PI, scl, smoothstep, sub, viewFromBasis } from '../math.js';
-import { DETAIL_ROT, DETAIL_TILE, SHAPE_TILE, SUN_DIR, WIND } from '../constants.js';
+import { dot, fmod, halton, mat3Apply, mat4Mul, perspective, PI, scl, smoothstep, sub, viewFromBasis } from '../math.js';
+import { DETAIL_ROT, DETAIL_TILE, SUN_DIR, WIND } from '../constants.js';
 import { clearPass, context, dispatch, flush, pass } from './gpu.js';
 import { sunColorAt, sunColTable } from './sun.js';
 import { layerColUniform, P, T } from './setup.js';
@@ -54,19 +54,16 @@ export function render(time) {
   const camDelta = sub(cam.pos, cam.prevPos);
   const tanY = Math.tan(cam.fov / 2), tanX = tanY * aspect;
   const jitter = [halton((frame % 16) + 1, 2) - 0.5, halton((frame % 16) + 1, 3) - 0.5];
-  // noise offsets wrap at multiples of their lookup periods (the vertical one is squashed 1.7x)
-  const shapeOff = [fmod(WIND[0] * time, SHAPE_TILE), fmod(-time * 0.9, 10 * SHAPE_TILE), fmod(WIND[2] * time, SHAPE_TILE)];
-  // the detail volume is looked up turned (DETAIL_ROT): its drift, and the render origin with it, are
-  // turned too and wrap in the turned frame (unturned, an origin snap or a wrap would make it jump)
-  const drift = [WIND[0] * time * 1.6, -time * 2.2, WIND[2] * time * 1.6];
-  const turnWrap = v => mat3Apply(DETAIL_ROT, v).map(c => fmod(c, DETAIL_TILE));
-  const detailOff = turnWrap(add(O, drift)), detailDrift = turnWrap(drift);
+  // the detail volume is looked up turned (DETAIL_ROT): the render origin is turned too and wraps in
+  // the turned frame (unturned, an origin snap would make it jump). (Nothing in the clouds drifts:
+  // the sun map holds their billows, baked once where it lies, render/sunmap.js.)
+  const detailOff = mat3Apply(DETAIL_ROT, O).map(c => fmod(c, DETAIL_TILE));
   // the sunlit sea of clouds below as a Lambertian deck lit at 5°: its radiance per unit of sunlight
   // (albedo · sin 5° / π), the light from below on the clouds' bellies and the bird's alike
   const ambSea = scl(sunColorAt(1500), SEA_ALBEDO * SUN_DIR[1] / PI);
   const common = Object.assign(worldUniforms(O), sunMapUniforms(O), {
     tShape: T.shape, tDetail: T.detail, tTsv: T.tsv,
-    shapeOff, detailOff, detailDrift, sunDir: SUN_DIR, sunCol: sunColTable,
+    detailOff, sunDir: SUN_DIR, sunCol: sunColTable,
   });
   // (the lookups take its window as it is after)
   tBegin('sunmap');

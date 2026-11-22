@@ -459,8 +459,13 @@ const readLevels = async () => {
       out[name + (c ? L.second ?? ' beyond' : '')] = { gi: L.gi, gj: L.gj, step: L.step, pending: L.pending, valid: L.valid, mean: base64(mean), col: col && base64(col) };
     });
   }
+  // (the sun map: its window, and per texel column along the sun's way and across it, all heights,
+  // the mean of the light it lets through)
+  const W = D.SUNMAP, t = D.T.sunMap, sm = await D.readTexture(t, 0, t.d), mean = new Float64Array(t.w * t.h);
+  for (let k = 0; k < sm.length; k++) mean[k % (t.w * t.h)] += sm[k] / t.d;
+  const sun = { K0: W.K0, A0: W.A0, steps: W.steps, valid: W.valid, nw: t.w, na: t.h, mean: base64(mean) };
   const b = D.bird;
-  return { pose: [...b.pos, b.yaw, b.gamma, b.bank], levels: out };
+  return { pose: [...b.pos, b.yaw, b.gamma, b.bank], levels: out, sun };
 };
 
 // Most a level's volume may differ between the flown and the fresh page, as the mean over a texel
@@ -475,8 +480,9 @@ const VOLUME_TOLERANCE = { L0: 0.5, L1: 0.5, L2: 0.5, 'L0 billows': 2, 'L1 billo
 async function checkStreaming(browser, { fail, note, problems, outDir }) {
   // 2 minutes of flight from the start (about 8 km, every level shifting at least once), then a
   // fresh start at the exact pose the flight ended at. Where both windows overlap (but for their
-  // edges, never sampled) the column maps must be the same bit for bit and the volumes the same:
-  // what entered was generated and baked where it belongs, and nothing stale stayed behind.
+  // edges, never sampled) the column maps must be the same bit for bit and the volumes the same,
+  // the sun map too: what entered was generated and baked where it belongs, and nothing stale
+  // stayed behind.
   const size = { w: '320', h: '180', scale: '0.5' };
   const flown = await testRender(browser, { ...size, preset: 'start', frames: '480', dt: '0.25' }, { timeoutMs: 1_800_000, read: readLevels });
   problems.push(...flown.problems);
@@ -502,10 +508,38 @@ async function checkStreaming(browser, { fail, note, problems, outDir }) {
     if (!(r.volumeMax <= VOLUME_TOLERANCE[name])) fail(`${name}: the volume differs from a fresh start's by up to ${r.volumeMax.toFixed(2)} (mean over a texel column) at cell ${r.worst.join(', ')}`);
     lines.push(`${name} ${r.volumeMax.toFixed(2)}`);
   }
+  // (the sun map, where both are valid: the same light, but where the march past its window starts
+  // elsewhere, through coarser cloud)
+  const sa = flown.read.sun, sb = fresh.read.sun;
+  if (!sa.valid || !sb.valid) fail('sun map: not baked after the flight');
+  else if (Math.abs(sa.K0 - sb.K0) > sa.steps[0] + 2 || Math.abs(sa.A0 - sb.A0) > sa.steps[1] + 2) {
+    fail(`sun map: its window stayed at texel ${sa.K0}, ${sa.A0}; a fresh start there places it at ${sb.K0}, ${sb.A0}`);
+  } else {
+    const r = compareSunMaps(sa, sb);
+    if (!(r.max <= SUN_TOLERANCE)) fail(`sun map: the light differs from a fresh start's by up to ${r.max.toFixed(3)} (mean over a texel column) at texel ${r.worst.join(', ')}`);
+    lines.push(`sun map ${r.max.toFixed(3)} (${r.compared} columns)`);
+  }
   const d = difference(decodePng(flown.png), decodePng(fresh.png));
   note(`flown to ${flown.read.pose.slice(0, 3).map((v) => (v / 1000).toFixed(1)).join(', ')} km; volumes differ from a fresh start's by at most: ${lines.join(', ')}`);
-  note(`images: mean ${d.mean.toFixed(2)} levels, ${(100 * d.over16).toFixed(1)}% of pixels more than 16 levels off (the billows drift with time)`);
+  note(`images: mean ${d.mean.toFixed(2)} levels, ${(100 * d.over16).toFixed(1)}% of pixels more than 16 levels off (a flown page has 480 frames of history behind it, a fresh one 12)`);
   if (d.mean > 8 || d.over16 > 0.12) fail(`the streamed world looks different from a fresh start: mean ${d.mean.toFixed(2)}, ${(100 * d.over16).toFixed(1)}% more than 16 levels off`);
+}
+
+// Two pages' sun maps (readLevels().sun) where both are valid but for a texel at their edges:
+// { compared, max, worst }. Texel (K mod nw, A mod na) holds world texel K along the sun's way, A across.
+const SUN_TOLERANCE = 0.05;
+export function compareSunMaps(a, b) {
+  const [ma, mb] = [a.mean, b.mean].map((s) => new Float64Array(Uint8Array.from(Buffer.from(s, 'base64')).buffer));
+  const mod = (x, n) => ((x % n) + n) % n;
+  let compared = 0, max = 0, worst = null;
+  for (let K = Math.max(a.valid[0], b.valid[0]) + 1; K < Math.min(a.valid[1], b.valid[1]) - 1; K++) {
+    for (let A = Math.max(a.valid[2], b.valid[2]) + 1; A < Math.min(a.valid[3], b.valid[3]) - 1; A++) {
+      const p = mod(A, a.na) * a.nw + mod(K, a.nw), d = Math.abs(ma[p] - mb[p]);
+      compared++;
+      if (d > max) [max, worst] = [d, [K, A]];
+    }
+  }
+  return { compared, max, worst };
 }
 
 // Two pages' readLevels() of one level, over where both windows overlap but for their edges:

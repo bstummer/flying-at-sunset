@@ -28,7 +28,8 @@
 //   billows rise (empty-space skipping).
 // - densityFromSDF: density from the signed distance, ramping up over a few metres or about a pixel
 //   (real cumulus ends within metres), its surface frayed a few metres deep by the detail volume;
-//   drifting mist inside cloud near the camera, while the camera is in cloud.
+//   variations of density inside cloud near the camera (mist streaming past as the bird flies), while
+//   the camera is in cloud.
 // - lightPath: the light's path toward the sun (6 growing steps from 10 m, each sampled at its
 //   middle, the first three with the view sample's detail: domes of metres shade themselves; then
 //   three long steps through the large shapes): the optical depth through the point's own cloud and
@@ -51,9 +52,7 @@ export const U_CLOUD = {
   smV: 'vec4f',         //   its valid window (along: min, max; across: min, max)
   warpPh: 'vec4f',      // phases of the billow warp at the render origin
   warpPh2: 'vec2f',
-  shapeOff: 'vec3f',    // slow evolution of the sea billows (wrapped)
-  detailOff: 'vec3f',   // the detail volume's lookup: the render origin and the drift, turned and wrapped
-  detailDrift: 'vec3f', // the drift alone, turned and wrapped (the mist inside cloud drifts twice as fast)
+  detailOff: 'vec3f',   // the detail volume's lookup: the render origin, turned and wrapped
   sunDir: 'vec3f',
   sunCol: 'vec3f[16]',
 };

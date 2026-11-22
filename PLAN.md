@@ -217,11 +217,13 @@ once the march has left the point's own cloud):
    (~90 m, the view's detail); other clouds from there to ~1.4 km come from the map (as the
    march's soft shadow: the octaves and the diffusion's otherD), those past it too (e^−τ on all,
    the shadow volume's part before); past the window, the march and the shadow volume as before.
-   The plan's "neither the world moves" holds for the large shapes only: the billows drift with
-   the wind (3.5 m/s), and the map holds them (the turrets and the 320 m domes), so it is baked
-   again all the time, two columns a frame (a cycle of 128 frames: the billows move 7 m in it).
-   The window moves to the camera at a cycle's start, keeping what both windows share. Memory
-   14 MB, and under 1 MB of buffers.
+   The map holds the billows a texel can (the turrets and the 320 m domes). Those drifted with the
+   wind (3.5 m/s, rising 0.9 m/s; the detail volume's 5.6 and 2.2 m/s), which made the map bake
+   again all the time; the author: nothing has to drift, for now. So the clouds hold still (the
+   shape volume's lookup kept half a tile up, where it lay in every capture: its vertical wrap was
+   13.5 periods, so the drift's first frame put it there), and the map is baked once where it
+   lies: anew when its window moves to the camera (~2 km of flight), two columns a frame over
+   128 frames, keeping what both windows share. Memory 14 MB, and under 1 MB of buffers.
 2. Against the fine march: in `start`, `side`, `down`, `away`, `giant` and `tower` the same tops lit
    and shaded, the map's edges softer (its texels, and four taps: a penumbra of ~3 km). What the old
    light got wrong: a heap hundreds of metres off shaded a copy of itself where one of the march's
@@ -237,11 +239,15 @@ once the march has left the point's own cloud):
    that isn't there). The blotches on `close`'s tower face hardly change: they are its lumps'
    own shade, the march's first steps. Distant towers (`seed3`, past the window) unchanged.
    Shimmer at rest `tower` 0.070 → 0.089%, `away` 0.031 → 0.037%, `skim` 0.052 → 0.007%, the rest
-   within ±0.01. Flights identical (the map changes light, not the cloud the flight feels). Cost
+   within ±0.01. The clouds holding still, the shimmer at rest is measured on the clouds the stills
+   show (its frozen clock had left the lobes half a tile lower): `tower` 0.111%, `geometry` 0.35%,
+   `down` 0.031%, the rest 0–0.07%; a new baseline, not more flicker. Flights: the map alone left them identical; the clouds holding still, `skim`
+   differs by up to 2.3 m in height, `dive` and `weave` by millimetres. Cost
    (leg 6 against leg 7, interleaved A B B A A B, 200 frames, NVIDIA laptop): the trace −4 to +6%
    (`start` −1, `sun` +4, `side` −2, `tower` +6, `high2` −4, `close` +4, `away` +4, `down` −3: two
    lookups of four taps a light march, and the scenes' light changed); the map 0.11–0.15 ms a frame
-   (a slab; by the difference to a page that bakes none), its first whole bake 18–30 ms, once. The
+   while it bakes (a slab; by the difference to a page that bakes none), else nothing; its first
+   whole bake 18–30 ms, once. The
    canvas at 3.9 s (the player check; 3.6–3.7 s in legs 5–6, not timed interleaved: three more
    pipelines to compile, the first map).
 4. Failed on the way (decisions): the optical depth interpolated, a soft edge, the lookup snapped
@@ -506,8 +512,11 @@ Worth knowing before tuning again.
   towers (`seed3`, ~40 km) show stair-stepped tops and blob-shaped patches, and the far sea misses
   the billows' shadows the near sea has (a fade over 1.5 km at the window's edge). A coarser level
   of the map would reach them: the memory (14 MB a level) and the bake are what it costs.
-  **The map lags the billows** by up to a cycle (128 frames, 2 s at 60 fps: 7 m); at a low frame
-  rate more. Motion couldn't be judged in stills.
+- **The clouds hold still** (2026-11-22, the author: nothing has to drift, for now): the billows and
+  the detail drifted with the wind and rose (frame.js until leg 7), and the sun map holds the
+  billows. Drift brought back, the map has to be baked all the time (0.11–0.15 ms a frame, and it
+  lags the billows by its cycle: 2 s, 7 m at 60 fps); or it could hold the large shapes alone, and
+  the light march the billows' shadows near by.
 - **Popcorn far away**: towers 20–60 km off still read as one grape texture (`start`'s right
   tower, `high2`, `giant`, `away`'s horizon): their bubbles are big (billow scale over ~800 m), so
   all carry lobes and turrets alike (since leg 3 the turrets fade from ~40 km, sooner on a coarser
@@ -531,7 +540,7 @@ Worth knowing before tuning again.
 - **Inside cloud** is a uniform wall (mauve grey, `inside`; the medium's profile reaches 40 m in,
   and the camera sits hundreds of metres deep), even with the exposure adapting to the
   mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays low);
-  drifting mist only shows in motion. `under` (an anvil's underside) is dark navy now: right
+  the mist streams past only as the bird flies. `under` (an anvil's underside) is dark navy now: right
   for shade at sunset, but judge it against its brief.
 - **`close` nearly repeats `tower`**: since the tower heads are rounder (2026-11) the first spot
   clear of the tower's bubbles (presets.js, clearOf) is near `tower`'s pose, so both frame the same

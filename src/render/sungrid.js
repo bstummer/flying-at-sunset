@@ -8,12 +8,12 @@
 // [K0, K0 + SM_NW) × [A0, A0 + SM_NA) and at each K the rays of the height band from SM_H0 up;
 // stored toroidally (the texture's x is K, y is A, z is V, each wrapped), so a window that moves
 // keeps what it shares with the old one, and each slot of z at K is the one ray of the band there.
-// It moves only at a bake cycle's start, after the camera wandered STEP_A or STEP_K texels off its
-// place; until that cycle ends it is valid only where both windows overlap.
+// It moves only after the camera wandered STEP_A or STEP_K texels off its place, and is baked anew
+// then; until that bake ends it is valid only where both windows overlap.
 
 import { SM_DA, SM_DV, SM_DW, SM_H0, SM_NA, SM_NV, SM_NW, SUN_DIR } from '../constants.js';
 
-export const SLAB = 2;              // columns baked a frame (a cycle: SM_NA / SLAB frames)
+export const SLAB = 2;              // columns baked a frame (the whole window: SM_NA / SLAB frames)
 const BEHIND = 26;                  // texels of the window on the camera's side away from the sun
 const STEP_A = 32, STEP_K = 6;      // how far the camera may wander before the window moves
 // the sun's way (horizontal), across it, and its slope
@@ -28,12 +28,12 @@ const vLo = K => Math.floor((SM_H0 - K * SM_DW * TAN_E) / SM_DV);
 export const rays = () => SM_NV + Math.ceil((SM_NW - 1) * SM_DW * TAN_E / SM_DV) + 2;
 
 // the window: texels [K0, K0 + SM_NW) along, [A0, A0 + SM_NA) across; valid: [k0, k1, a0, a1], or
-// null; cursor: the next column to bake
-export const newWindow = () => ({ A0: null, K0: 0, cursor: 0, valid: null, cycles: 0, slab: SLAB });
-// keep the window, or move it to the camera (world position)
+// null; cursor: the next column to bake; steps: how far (texels along, across) the camera may wander
+export const newWindow = () => ({ A0: null, K0: 0, cursor: 0, valid: null, cycles: 0, slab: SLAB, steps: [STEP_K, STEP_A] });
+// keep the window, or move it to the camera (world position): whether it moved
 export function place(W, camPos) {
   const a = (camPos[0] * PERP[0] + camPos[2] * PERP[1]) / SM_DA, w = (camPos[0] * HS[0] + camPos[2] * HS[1]) / SM_DW;
-  if (W.A0 !== null && Math.abs(a - (W.A0 + SM_NA / 2)) <= STEP_A && Math.abs(w - (W.K0 + BEHIND)) <= STEP_K) return;
+  if (W.A0 !== null && Math.abs(a - (W.A0 + SM_NA / 2)) <= STEP_A && Math.abs(w - (W.K0 + BEHIND)) <= STEP_K) return false;
   // (it starts at a whole slab across, so no slab wraps around the texture; at an even texel along
   // it, as the bake writes texels in pairs)
   const A0 = Math.round((a - SM_NA / 2) / SLAB) * SLAB, K0 = Math.round((w - BEHIND) / 2) * 2;
@@ -41,6 +41,7 @@ export function place(W, camPos) {
   W.valid = v && [Math.max(v[0], K0), Math.min(v[1], K0 + SM_NW), Math.max(v[2], A0), Math.min(v[3], A0 + SM_NA)];
   if (W.valid && (W.valid[1] - W.valid[0] < 8 || W.valid[3] - W.valid[2] < 8)) W.valid = null;
   W.A0 = A0; W.K0 = K0;
+  return true;
 }
 // the uniforms of the slab at the cursor, render space around the origin O: U the bake's (its
 // columns' render-space place, the first ray's height), S the scan's (where it writes)

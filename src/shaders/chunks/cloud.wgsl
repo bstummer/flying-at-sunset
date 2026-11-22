@@ -29,7 +29,7 @@ fn shellOf(a: f32) -> f32 { return 400.0 * a + 160.0; }    // highest billows ab
 fn onCap(n: f32, w: f32) -> f32 { return 1.0 - smoothstep(-0.3 * w, w, n); }
 
 // where a point (render space) looks up the detail volume: turned in 3D (DETAIL_ROT, constants.js), so
-// no surface cuts its 512 m tile along the lattice and repeats, and drifting with the air
+// no surface cuts its 512 m tile along the lattice and repeats
 fn detailAt(p: vec3f) -> vec3f { return DETAIL_ROT * p + u.detailOff; }
 
 // where the domes of a field b (0..1) are highest: the next finer ones heap up there
@@ -45,8 +45,9 @@ fn dome(ds: f32, a: f32, k: f32) -> f32 { return ds - a * (1.0 - smoothstep(0.0,
 // 52 m (0 = full detail): each octave fades as its cells shrink from about 4 pixels to 2.
 fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
   let dm = sh.x;
-  // squashed lookup: billows are wider than tall (heaps, not balls)
-  let s = textureSampleLevel(tShape, sRep, (warpLand(wp) + u.shapeOff) * (vec3f(1.0, 1.35, 1.0) / SHAPE_TILE), 0.0);
+  // squashed lookup: billows are wider than tall (heaps, not balls); half a tile up, where the lobes
+  // lay in every capture while they drifted
+  let s = textureSampleLevel(tShape, sRep, warpLand(wp) * (vec3f(1.0, 1.35, 1.0) / SHAPE_TILE) + vec3f(0.0, 0.5, 0.0), 0.0);
   let sf = (s.xy * 2.0 - 1.0) * (1.0 / 1.35);
   let A = C.y * mix(0.6, 1.0, sh.z);
   // (the largest lobes are in the large shapes already: the bake grows them on the towers)
@@ -61,7 +62,7 @@ fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
   // (a bubble too small for those boils in turrets half their size)
   let wS = smoothstep(800.0, 350.0, sh.y) * (1.0 - smoothstep(1.4, 2.8, lod));
   if (wS > 0.01) {
-    let st = textureSampleLevel(tShape, sRep, (warpLand(wp) + u.shapeOff) * (vec3f(2.0, 2.7, 2.0) / SHAPE_TILE) + vec3f(0.43, 0.29, 0.71), 0.0).y;
+    let st = textureSampleLevel(tShape, sRep, warpLand(wp) * (vec3f(2.0, 2.7, 2.0) / SHAPE_TILE) + vec3f(0.43, 0.29, 0.71), 0.0).y;
     ds = octave(ds, (st * 2.0 - 1.0) * (320.0 / 1.35), 80.0 * A * wS * mix(0.25, 1.0, onCap(sf.y * 640.0, 160.0)), 80.0 * wS + 4.0);
   }
   // cauliflower everywhere, strongest on the upper parts of the sea and on everything heaped above
@@ -71,7 +72,7 @@ fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
   ds = dome(ds, 64.0 * (1.0 - smoothstep(1.4, 2.8, lod)) * topW * mix(0.4, 1.0, onCap(sf.y * 640.0, 160.0)) * (s.z - 0.3), 96.0);
   ds = dome(ds, 30.0 * (1.0 - smoothstep(0.35, 1.0, lod)) * topW * onDome(s.z) * (s.w - 0.3), 45.0);
   // the finest domes (the detail volume: 128 to 32 m cells, and near the camera 32 to 8 m), only
-  // near the surface (they move it by less than 50 m), drifting and rising with the air; a third
+  // near the surface (they move it by less than 50 m); a third
   // to half as high as they are wide, so the light shows them up close (flatter ones, the near sea
   // read as smooth dough)
   let wF = (1.0 - smoothstep(0.35, 0.8, lod)) * topW * onDome(s.w) * mix(mix(0.45, 1.0, onCap(sf.y * 640.0, 160.0)), 1.0, 1.0 - smoothstep(0.1, 0.35, lod)) * (1.0 - smoothstep(80.0, 140.0, ds));
@@ -102,8 +103,8 @@ fn sceneSDF(wp: vec3f, h: f32, l: i32, lod: f32) -> f32 {
 // edgeW (a few metres, or about a pixel of the trace), and at a surface the detail noise frays it
 // by up to ERODE m (detailW fades it out far away; finer near the camera, nearW). That is only the
 // edge: the light doesn't see it, so anything deeper reads as blur, not form (the domes of
-// cloudSDF carry the form). Inside a cloud near the camera: drifting variations of density, mist
-// streaming past.
+// cloudSDF carry the form). Inside a cloud near the camera: variations of density, mist streaming
+// past as the bird flies.
 const ERODE = 6.0;
 fn profile(x: f32) -> f32 { return CLOUD_EDGE0 + (1.0 - CLOUD_EDGE0) * saturate(x / CLOUD_EDGE_W); }
 // the depth of full density as much cloud as lies between the surface and depth x
@@ -122,20 +123,19 @@ fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f3
   let x = -d;
   if (x <= 0.0) { return 0.0; }
   let amp = ERODE * detailW;
-  // (the mist streams past at twice the drift: detailDrift once more)
   if (x < amp + edgeW) {
     let q = detailAt(wp);
     let dn = textureSampleLevel(tDetail, sRep, q * (1.0 / DETAIL_TILE), 0.0);
     var e = saturate((0.8 - dn.r) / 0.45);
     if (nearW > 0.01) {
-      let dn2 = textureSampleLevel(tDetail, sRep, (q + u.detailDrift) * (4.0 / DETAIL_TILE) + dn.a * 0.35, 0.0);
+      let dn2 = textureSampleLevel(tDetail, sRep, q * (4.0 / DETAIL_TILE) + dn.a * 0.35, 0.0);
       e = mix(e, e * 0.6 + saturate((0.8 - dn2.r) / 0.45) * 0.4, nearW);
     }
     return saturate((x - amp * e) / edgeW) * profile(x);
   }
   var dens = saturate(x / edgeW) * profile(x);
   if (nearW > 0.01) {
-    let dn = textureSampleLevel(tDetail, sRep, (detailAt(wp) + u.detailDrift) * (2.0 / DETAIL_TILE), 0.0);
+    let dn = textureSampleLevel(tDetail, sRep, detailAt(wp) * (2.0 / DETAIL_TILE), 0.0);
     dens *= mix(1.0, 0.25 + 1.1 * dn.r * dn.r + 0.3 * dn.g, nearW);
   }
   return dens;

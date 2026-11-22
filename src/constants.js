@@ -9,7 +9,7 @@ import { DEG, norm, rotation } from './math.js';
 const SUN_ELEV = 5.0 * DEG;
 const SUN_AZIM = 0.0;          // the sun sits toward -Z
 export const SUN_DIR = norm([Math.sin(SUN_AZIM) * Math.cos(SUN_ELEV), Math.sin(SUN_ELEV), -Math.cos(SUN_AZIM) * Math.cos(SUN_ELEV)]);
-export const WIND = [3.2, 0, 1.4];    // m/s, slow drift of the billows (the clouds gently evolve)
+export const WIND = [3.2, 0, 1.4];    // m/s: the high layers drift with it (render/frame.js); the clouds hold still
 export const WIND_ANG = Math.atan2(WIND[2], WIND[0]);
 export const SHAPE_N = 128, DETAIL_N = 64;
 export const SHAPE_TILE = 5120, DETAIL_TILE = 512;   // m: the noise volumes tile over these

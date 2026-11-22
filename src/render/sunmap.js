@@ -11,11 +11,12 @@
 // light diffuses through a point's own cloud (lightPath follows it), and its shadow is what other
 // clouds cast. The bake (shaders/volumes.js) walks each ray from the sun once, so a texel costs a
 // step or a few near a surface, not a march of its own; the map holds the billows a texel can (the
-// turrets and the larger domes), and those drift with the wind, so it is baked again all the time,
-// a slab of SLAB columns a frame, all of it while there is no map (the first frame). Past its valid
-// window (fading over its last 1.5 km) the light takes the march's own steps and the shadow
-// volume. Memory: 14 MB (r16float), and under 1 MB of buffers. The cost: 0.11–0.15 ms a frame
-// (NVIDIA laptop), the first frame's whole map 18–30 ms.
+// turrets and the larger domes). The clouds hold still, so it is baked once where it lies: when
+// its window moves (the camera wandered ~2 km off), a slab of SLAB columns a frame, all of it while
+// none of it is valid (the first frame, a jump). Past its valid window (fading over its last 1.5 km)
+// the light takes the march's own steps and the shadow volume. Memory: 14 MB (r16float), and
+// under 1 MB of buffers. The cost (NVIDIA laptop): 0.11–0.15 ms a frame while it bakes (128 frames
+// after the window moved), the first frame's whole map 18–30 ms.
 
 import { SM_NA, SM_NV, SM_NW, SM_PIECES } from '../constants.js';
 import { buffer, dispatch, enc, texture } from './gpu.js';
@@ -33,9 +34,8 @@ const stage = buffer(SM_ROW * 4 * SLAB * SM_NV);
 const tails = buffer(SLAB * rays() * SM_PIECES * 8), segs = buffer(SLAB * rays() * SM_NW * 8);
 
 // one slab: the march past the window in pieces, the stretches, the scan along each ray
-function bakeSlab(camPos, O, common) {
+function bakeSlab(O, common) {
   const W = SUNMAP;
-  if (W.cursor === 0) place(W, camPos);
   const { U, S } = slabUniforms(W, O), groups = Math.ceil(U.nRays / 64);
   const vals = Object.assign({}, common, U, { bSmTail: tails, bSmSeg: segs });
   dispatch(P.sunTail, vals, [groups, SLAB, SM_PIECES]);
@@ -45,12 +45,14 @@ function bakeSlab(camPos, O, common) {
   W.cursor += SLAB;
   if (W.cursor >= SM_NA) { W.cursor = 0; W.valid = [W.K0, W.K0 + SM_NW, W.A0, W.A0 + SM_NA]; W.cycles++; }
 }
-// Once a frame (render/frame.js), once the clipmaps it reads have settled. common: the frame's cloud
-// uniforms (the billows' drift).
+// Once a frame (render/frame.js), once the clipmaps it reads have settled: a slab while the window is
+// being baked; between bakes, whether the camera wandered off. common: the frame's cloud uniforms.
 export function refreshSunMap(camPos, O, common) {
   if (LEVELS.some(L => L.pending || !L.valid)) return;
-  const n = SUNMAP.valid ? 1 : (SM_NA - SUNMAP.cursor) / SLAB;
-  for (let k = 0; k < n; k++) bakeSlab(camPos, O, common);
+  const W = SUNMAP;
+  if (W.cursor === 0 && !place(W, camPos) && W.valid) return;
+  const n = W.valid ? 1 : (SM_NA - W.cursor) / SLAB;
+  for (let k = 0; k < n; k++) bakeSlab(O, common);
 }
 // render-space uniforms of the lookups (chunks/cloud.wgsl, sunMapAt)
 export const sunMapUniforms = O => Object.assign({ tSunMap: T.sunMap }, lookupUniforms(SUNMAP, O));

@@ -66,12 +66,12 @@ test('every texel of the window is written by one ray: the height band\'s, wrapp
 
 test('the window follows the camera, and keeps valid only what it shares with the old one', () => {
   const W = newWindow();
-  place(W, [0, 2000, 0]);
+  assert.equal(place(W, [0, 2000, 0]), true);
   W.valid = [W.K0, W.K0 + SM_NW, W.A0, W.A0 + SM_NA];
   const before = [W.A0, W.K0];
-  place(W, [500, 2000, -500]);           // (a little way: it stays)
+  assert.equal(place(W, [500, 2000, -500]), false);    // (a little way: it stays)
   assert.deepEqual([W.A0, W.K0], before);
-  place(W, [5000, 2000, -9000]);         // (farther: it moves, its first column a whole slab)
+  assert.equal(place(W, [5000, 2000, -9000]), true);   // (farther: it moves, its first column a whole slab)
   assert.notDeepEqual([W.A0, W.K0], before);
   assert.equal(mod(W.A0, W.slab), 0);
   assert.equal(mod(W.K0, 2), 0);
