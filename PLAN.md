@@ -70,14 +70,15 @@ tools/light/reference.js --shade`). Before it the near shaded sea was navy and f
    Shimmer at rest down in every view (`start` 0.048 → 0.040%, `tower` 0.111 → 0.101%). Flights
    identical (only the bird's light from below changed in the probe). Cost (`node tools/cost.js
    --against e43f53a`: interleaved A B B A A B, a view at a time, 200 frames, NVIDIA laptop): the
-   trace +6 to +11% (`start` +7, `sun` +6, `side` +11, `tower` −1, `high2` +7, `close` +7; the
-   openness's seven reads a lit sample near the surface); two pages at a time, as `npm run shot`
-   renders them, it read +8 to +12% (`tower` +11): they share the GPU. The lit map 0.03–0.04 ms
-   once a window (~2 km of flight), 170 KB.
+   trace +2 to +11%, ~+5% on average (`start` +6, `sun` +2, `side` +11, `tower` +3, `high2` +5,
+   `close` +5; a second run of the tool read up to 4% otherwise a view; the openness's seven reads
+   a lit sample near the surface); two pages at a time, as `npm run shot` renders them, it read +8
+   to +12% (`tower` +11): they share the GPU. The lit map 0.03–0.04 ms once a window (~2 km of
+   flight), 170 KB.
 4. The author (2026-11-22): between the shade's colours (A as now, B the tints off, C the
    saturation on the sun's light alone) they barely see a difference: A stays (the violet on the
    sides turned from the sun is the nearest to lavender; B and C only take blue out). `under` and
-   the bird in shade stay as they are, physically right. The trace's +6–11% a frame stays (dynamic
+   the bird in shade stay as they are, physically right. The trace's ~+5% a frame stays (dynamic
    resolution takes it; leg 12's devices will say more). Noted for leg 9: flying through dark
    clouds the screen turns bright (step 1).
 

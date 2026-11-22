@@ -12,7 +12,7 @@ import { labelFolder } from '../tools/labels.js';
 import { compareLevels, difference } from '../tools/checks.js';
 import { whyStopped } from '../tools/browser.js';
 import { describeDifference, parseArgs as flightArgs } from '../tools/flights.js';
-import { describeRows, parseArgs as costArgs, runOrder, summarize } from '../tools/cost.js';
+import { describeRows, ownWorktrees, parseArgs as costArgs, runOrder, summarize } from '../tools/cost.js';
 import { VIEWS } from '../tools/views.js';
 
 test('arguments: options with or without "=", flags, and the compare pair', () => {
@@ -157,7 +157,8 @@ test('the cost tool: its arguments, its runs in turn, and what it makes of them'
   assert.deepEqual(a.views.map((v) => v.name), ['tower', 'start']);
   assert.deepEqual([a.rounds, a.frames, a.against, a.width, a.height, a.scale], [2, 50, 'HEAD~1', 960, 540, 0.5]);
   assert.equal(costArgs([]).views.length, 6);
-  assert.throws(() => costArgs(['--rounds', '0']), /--rounds/);
+  // (one run a side has no spread to tell drift from a change by)
+  assert.throws(() => costArgs(['--rounds', '1']), /--rounds must be a whole number from 2/);
   assert.throws(() => costArgs(['--size', '960']), /--size/);
   assert.throws(() => costArgs(['--views', 'nowhere']), /unknown view/);
   assert.throws(() => costArgs(['--bogus', '1']), /unknown option --bogus/);
@@ -178,4 +179,8 @@ test('the cost tool: its arguments, its runs in turn, and what it makes of them'
   assert.match(lines[0], /trace 100\.0 → 120\.0 \+20% \(±0\/8%\)/);
   assert.doesNotMatch(lines[0], /post/);
   assert.match(lines.at(-1), /the trace: start \+20%/);
+  // (of git's worktrees, only those a run of the tool made: the ones it may remove)
+  const list = 'worktree C:/repo\nHEAD abc\nbranch refs/heads/main\n\nworktree C:/Users/x/AppData/Local/Temp/fas-cost-a1B2c3/tree\nHEAD def\ndetached\n\n'
+    + 'worktree /tmp/fas-cost-zz9/tree\nHEAD 123\ndetached\n\nworktree C:/elsewhere/fas-cost-x/tree2\nHEAD 456\n';
+  assert.deepEqual(ownWorktrees(list), ['C:/Users/x/AppData/Local/Temp/fas-cost-a1B2c3/tree', '/tmp/fas-cost-zz9/tree']);
 });
