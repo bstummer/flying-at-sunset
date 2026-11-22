@@ -61,14 +61,19 @@ tens of metres, and it is that card.
 2. The first tens of metres, where the medium is thin (its profile, the erosion): shreds and holes
    around the camera that let the lit tops and the sky through, the fog brighter toward the sun;
    going in and coming out as a passage, not a cut.
-3. The camera at a cloud's edge, only partly in it: it looks weird (the author, 2026-11-22). A
-   view there first (half the frame in cloud, half looking out), to see what does. The first
-   suspect, from the code: `inCloud` is one number for the whole frame (the density at the
-   camera's point, full some 15 m under a surface, smoothed over a third of a second), and by it
-   every ray's cloud within 160 m of the camera is thinned (to a fifth at the lens), all shade in
-   view loses its blue and its saturation, and the whole frame's exposure rises, the open half's
-   too. (The mist puffs take the density where they float: none outside the cloud.) The second:
-   the surface that cuts through the camera is crisp to 2 m, a hard line across the view.
+3. The camera at a cloud's edge, only partly in it: what lies behind the fog is grainy in flight
+   (the author; known issues have the reproduction, the numbers and what was ruled out). First
+   the instruments, since a still and the shimmer at rest are blind to it: a view `edge` at that
+   pose, and beside the shimmer a measure of flicker in flight (frames a step apart, `keep` and
+   `every` hand them over: the share of pixels that change where the far clouds are). Then the
+   camera's own cloud marched smoothly: finer optical steps until the ray first leaves cloud, or
+   each step's density from the distances at its ends, as lightPath counts a step's part inside,
+   so the last step out is cut at the surface. Only rays that start in cloud pay: `--profile`
+   there. Then what is left over the sky and the horizon (the jittered start, the exit).
+   Apart from the grain, `inCloud` is one number for the whole frame (the density at the camera's
+   point, full some 15 m under a surface): by it every ray's cloud within 160 m is thinned, all
+   shade in view loses its tints and the whole frame's exposure rises, the open half's too
+   (toward the sun it washes out: yaw 0.35 at that pose, against 70 m higher).
 4. Deep inside a tower: slow variations, the mist streaming past. Stills can't judge it: the motion
    strip, then the author's eyes.
 5. `skim`'s pose over the billows' top (not the sea's top, 170 m under them there), so the view
@@ -612,9 +617,34 @@ they hold until the author says otherwise.
   mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays low);
   the mist streams past only as the bird flies. `under` (an anvil's underside) is dark navy now: right
   for shade at sunset, but judge it against its brief.
-- **At a cloud's edge**, the camera only partly in it, the view looks weird (the author,
-  2026-11-22). No view shows it yet, so what looks weird isn't pinned down; what treats the frame
-  as in cloud is one number for all of it (`inCloud`, render/probe.js: leg 9, step 3).
+- **Seen through a cloud's edge, the picture is grainy in flight** (the author, 2026-11-22:
+  pixelated, like noise that changes as you move, at the clouds' edges; leg 9, step 3). With the
+  camera in a billow's edge, looking out (`?pose=0,1400,0,-1.0,-0.03,0`; from 1470 m the same
+  view is clear), all that lies behind the fog flickers. Over six frames a step apart in flight
+  (960×540 at 0.5, NVIDIA), the share of pixels changing by more than 6 levels from one to the
+  next: 6.4% over the far clouds at the horizon, 10.2% over a ridge a few km off, 3.6% over the
+  sky; from 70 m higher 2.3, 1.7 and 1.1%; held still 0.1% (the shimmer at rest, 0.004%, can't
+  see it). A single trace frame is grainy all over there: the fog's transmittance over the sky
+  has an SD of 4% of its mean.
+  - The cause found: the camera's own cloud is marched in steps of 0.45–2 optical depths, each
+    jittered by a quarter. That suits a cloud entered from outside (its surface refined, opaque
+    in a few steps), but here it sets the transmittance of all that lies behind: the history
+    averages it at rest and can't in flight. With at most 0.1 a step until the ray first leaves
+    cloud (an experiment, not kept) the ridge fell to 1.8%, the clear view's level, the horizon
+    to 5.4% and the sky to 2.9%; the fog also let 7–12% more through (coarse steps overstate it).
+  - Not the cause of the grain, each tried alone: the depth the TAAU gets (one weighted depth a
+    pixel: over the sky the fog's own, tens of metres, so those pixels count as moving fast;
+    taken from what lies beyond the camera's cloud: 6.6, 10.3, 3.8%); the march's step limit
+    (3×: identical); the exposure's gain in cloud (5.0, 9.7, 2.8%, in a darker frame); the
+    density variations near the camera (a frame's grain unchanged).
+  - Open: the rest over the horizon and the sky (the march's start, jittered 0.8–4 m from the
+    camera; the last step out of the cloud, not cut at the surface).
+  - **Far clouds as outlines** in the same view: under the fog's orange veil a far tower has the
+    luminance of the sky behind it (183 against 172 levels) and only its warmer rim shows. It
+    holds still, at the normal exposure, with the shade's tints kept, with 3× the steps, and
+    with no light reused from the fog's last sample in the next cloud (after the fog T < 0.65,
+    the rule for deep samples): no defect of its own was found; it goes with the veil's
+    brightness and colour (leg 9, steps 1–2).
 - **`giant` and `close` miss their briefs** (presets.js, clearOf): `giant` stands 62 km from its
   tower (25 km clear of every tower: in a crowd, far out), which fills about an eighth of the
   frame's height where it should dominate. `close` stands 17.4 km from the tower `tower` sees from 9.4 km
