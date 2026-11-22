@@ -20,6 +20,8 @@ export function presetPose(pre) {
     sun: { y: sea0 + 900, yaw: 0.0, gamma: -0.06 },
     away: { y: sea0 + 900, yaw: PI, gamma: -0.06 },
     side: { y: sea0 + 850, yaw: PI / 2, gamma: -0.05 },
+    // (in the billows, which rise 300-380 m over the sea's top here: the skim flight dives through
+    // them, tools/flights.js; the skim view looks from just over them, tools/views.js)
     skim: { y: sea0 + 170, yaw: 0.35, gamma: -0.03 },
     high: { y: 6200, yaw: -0.4, gamma: -0.25 },
     bank: { y: sea0 + 1000, yaw: 0.6, gamma: 0, bank: 0.7 },

@@ -118,7 +118,10 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
   m1 /= 9.0;
   m2 /= 9.0;
   let sd = sqrt(max(m2 - m1 * m1, vec4f(0.0)));
-  let dkm = textureLoad(tCurDepth, clamp(vec2i(lpr), vec2i(0), vec2i(u.lowRes) - 1), 0).r;
+  // (the clouds' depth, km, to reproject the history by; and how much light gets through the camera's
+  // own cloud, around it: whatever the depth, that fog lies in front of the high layers)
+  let cdep = textureLoad(tCurDepth, clamp(vec2i(lpr), vec2i(0), vec2i(u.lowRes) - 1), 0).rg;
+  let dkm = cdep.x;
   var prel = dir * dkm * 1000.0 + u.camDelta;
   if (dkm > 5000.0) { prel = dir * 1.0e7; }
   let pc = u.prevVP * vec4f(prel, 1.0);
@@ -144,7 +147,7 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
   }
   let sky = skyColor(dir);
   // high layers: behind the clouds they join the sky, in front of them they veil the clouds
-  let cd = select(dkm * 1000.0, 1.0e9, dkm > 5000.0);
+  let cd = select(select(dkm * 1000.0, 1.0e9, dkm > 5000.0), 0.0, cdep.y < 0.999);
   var t0 = distToHeight(u.camPos.y, dir.y, 6300.0);
   var t1 = distToHeight(u.camPos.y, dir.y, 7700.0);
   var l0 = vec4f(0.0);

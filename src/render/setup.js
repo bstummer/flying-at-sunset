@@ -1,5 +1,5 @@
 // Every pipeline (P), the static textures and buffers (T: the atmosphere's tables, the noise
-// volumes, the cirrus, the high layers, the ambient light, the probe), and generateStatic(): the
+// volumes, the cirrus, the high layers, the ambient light, the probe, the exposure), and generateStatic(): the
 // passes that fill the static textures once the pipelines are compiled (main.js). Other modules add
 // their own to T (render/stream.js, render/targets.js, render/bird.js).
 
@@ -15,7 +15,7 @@ import { FS_TAAU, U_TAAU } from '../shaders/taau.js';
 import { CS_PROBE, U_PROBE } from '../shaders/probe.js';
 import { FS_MIST, U_MIST, VS_MIST } from '../shaders/mist.js';
 import { FS_BIRD, FS_BIRDOVER, U_BIRD, U_BIRDOVER, VS_BIRD } from '../shaders/bird.js';
-import { FS_DOWN, FS_FINAL, FS_RAYBLUR, FS_RAYMASK, FS_UP, U_DOWN, U_FINAL, U_RAYBLUR, U_RAYMASK, U_UP } from '../shaders/post.js';
+import { CS_EXPOSURE, FS_DOWN, FS_FINAL, FS_RAYBLUR, FS_RAYMASK, FS_UP, U_DOWN, U_EXPOSURE, U_FINAL, U_RAYBLUR, U_RAYMASK, U_UP } from '../shaders/post.js';
 
 const F16 = 'rgba16float';
 const ADD = { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor: 'one', dstFactor: 'one' } };
@@ -42,7 +42,7 @@ export const P = {
   litMap: pipeline('lit map', { fs: FS_LITMAP, uniforms: U_LITMAP, targets: ['r16float'] }),
   litMip: pipeline('lit map mip', { fs: FS_MIP, uniforms: U_SIZE, targets: ['r16float'] }),
   bake: pipeline('bake', { fs: FS_BAKE, uniforms: U_BAKE, targets: [...Array(NOUT).fill('r16float'), ...Array(NOUT).fill('rg16float')] }),
-  trace: pipeline('trace', { fs: FS_TRACE, constants: { DBG: params.dbg ? 1 : 0 }, uniforms: U_TRACE, targets: [F16, 'r16float'] }),
+  trace: pipeline('trace', { fs: FS_TRACE, constants: { DBG: params.dbg ? 1 : 0 }, uniforms: U_TRACE, targets: [F16, 'rg16float'] }),
   taau: pipeline('taau', { fs: FS_TAAU, uniforms: U_TAAU, targets: [F16, F16] }),
   probe: compute('probe', { cs: CS_PROBE, uniforms: U_PROBE, writes: ['bProbe'] }),
   bird: pipeline('bird', {
@@ -56,6 +56,7 @@ export const P = {
   birdOver: pipeline('bird over', { fs: FS_BIRDOVER, uniforms: U_BIRDOVER, targets: [F16], blend: BIRD_OVER }),
   down: pipeline('down', { fs: FS_DOWN, uniforms: U_DOWN, targets: [F16] }),
   up: pipeline('up', { fs: FS_UP, uniforms: U_UP, targets: [F16], blend: ADD }),
+  expo: compute('exposure', { cs: CS_EXPOSURE, uniforms: U_EXPOSURE, writes: ['bExpo'] }),
   raymask: pipeline('raymask', { fs: FS_RAYMASK, uniforms: U_RAYMASK, targets: [F16] }),
   rayblur: pipeline('rayblur', { fs: FS_RAYBLUR, uniforms: U_RAYBLUR, targets: [F16] }),
   final: pipeline('final', { fs: FS_FINAL, uniforms: U_FINAL, targets: [CANVAS_FORMAT] }),
@@ -74,6 +75,7 @@ T.cirrus = texture(512, 512, 'rgba8unorm');
 T.layers = texture(1024, 1024, 'rgba8unorm', { mips: 11 });   // seen at grazing angles far away: mipmaps
 T.amb = buffer(3 * 16, GPUBufferUsage.UNIFORM);   // struct Ambient (chunks/ambient.wgsl)
 T.probe = buffer(6 * 16);    // struct Probe (chunks/probe.wgsl)
+T.expo = buffer(16, GPUBufferUsage.UNIFORM);   // struct Exposure (chunks/exposure.wgsl)
 
 export const layerColUniform = new Float32Array([...sunColorAt(6300), ...sunColorAt(7700)]);
 

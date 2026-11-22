@@ -1,4 +1,4 @@
-// One frame, render(time): its passes in order, each group timed (render/timing.js)
+// One frame, render(time, dt): its passes in order, each group timed (render/timing.js)
 //
 // - world: apply what the world's worker sent for the clipmaps (render/stream.js); sunmap: bake a slab
 //   of the sun map (render/sunmap.js), with the billows as they are now; litmap: once a window's bake
@@ -9,8 +9,9 @@
 // - taau: upsampled to full resolution over the sky, the sun's disk, the cirrus and the two high
 //   layers (shaders/taau.js); drifting mist puffs while the camera is in cloud (shaders/mist.js);
 // - bird: its shadow map and mesh, laid over the scene (render/bird.js);
-// - post: bloom (a 7-level chain), sun rays (while the sun is near the view) and the final pass
-//   onto the canvas (shaders/post.js);
+// - post: bloom (a 7-level chain), the exposure from its coarsest level (in the camera's own cloud
+//   it adapts to the frame), sun rays (while the sun is near the view) and the final pass onto the canvas
+//   (shaders/post.js);
 // then the commands are submitted (flush) and the probe and the timestamps read back. The look's
 // tunables, each with its URL parameter, are at the end.
 
@@ -23,7 +24,7 @@ import { layerColUniform, P, T } from './setup.js';
 import { originOf, streamWorld, worldUniforms } from './stream.js';
 import { refreshLitMap, refreshSunMap, sunMapUniforms } from './sunmap.js';
 import { bloomLevels, R } from './targets.js';
-import { inCloud, mapProbe, mistLum, readProbeAsync } from './probe.js';
+import { inCloud, mapProbe, readProbeAsync } from './probe.js';
 import { bird_ } from '../flight/flight.js';
 import { cam } from '../flight/camera.js';
 import { gpuTimer, tBegin, tEnd } from './timing.js';
@@ -41,7 +42,7 @@ function viewProjRot(camR, camU, camF, fovy, aspect) {
   return mat4Mul(perspective(fovy, aspect, 0.05, 1e8), V);
 }
 
-export function render(time) {
+export function render(time, dtFrame) {
   const w = R.w, h = R.h, aspect = w / h;
   // --- dynamic cloud resolution
   R.lowW = Math.max(16, Math.round(w * R.scale)); R.lowH = Math.max(16, Math.round(h * R.scale));
@@ -54,7 +55,8 @@ export function render(time) {
   tEnd();
   const camDelta = sub(cam.pos, cam.prevPos);
   const tanY = Math.tan(cam.fov / 2), tanX = tanY * aspect;
-  const jitter = [halton((frame % 16) + 1, 2) - 0.5, halton((frame % 16) + 1, 3) - 0.5];
+  const jf = frame + JIT;
+  const jitter = [halton((jf % 16) + 1, 2) - 0.5, halton((jf % 16) + 1, 3) - 0.5];
   // the detail volume is looked up turned (DETAIL_ROT): the render origin is turned too and wraps in
   // the turned frame (unturned, an origin snap would make it jump). (Nothing in the clouds drifts:
   // the sun map holds their billows, baked once where it lies, render/sunmap.js.)
@@ -97,8 +99,8 @@ export function render(time) {
   tBegin('trace');
   pass(P.trace, [T.cloudCol, T.cloudDepth], Object.assign({}, common, {
     tSky: T.sky, bAmb: T.amb, res: [R.lowW, R.lowH], jitter, camPos: camR,
-    camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], frame,
-    ambSea, hazeK: HAZE_K, dbgMode: DBG_MODE, inCloud,
+    camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], frame: jf,
+    ambSea, hazeK: HAZE_K, dbgMode: DBG_MODE,
   }), { viewport: [0, 0, R.lowW, R.lowH], load: false });   // (nothing reads past it)
 
   tEnd();
@@ -140,6 +142,9 @@ export function render(time) {
     pass(P.down, [L], { tSrc: src, srcTexel: [1 / src.w, 1 / src.h], clampHi: BLOOM_CLAMP });
     src = L;
   }
+  // (the exposure from the coarsest level, before the finer ones are added onto it; time stopped,
+  // it holds)
+  dispatch(P.expo, { tSrc: src, tCurDepth: T.cloudDepth, lowRes: [R.lowW, R.lowH], bExpo: T.expo, base: EXPOSURE, dt: dtFrame, snap: frame === 0 ? 1 : 0 }, [1]);
   // (added onto each finer level)
   for (let i = bloomLevels.length - 1; i > 0; i--) {
     const S = bloomLevels[i], D = bloomLevels[i - 1];
@@ -168,7 +173,7 @@ export function render(time) {
   const out = { view: context.getCurrentTexture().createView(), w, h };
   pass(P.final, [out], {
     tScene: T.scene, tBloom: bloomLevels[0], tRays: T.rayA,
-    exposure: EXPOSURE * Math.pow(inCloudGain(), inCloud), bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
+    bExpo: T.expo, bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
   });
   tEnd();
   if (gpuTimer) gpuTimer.resolve();
@@ -179,10 +184,6 @@ export function render(time) {
   if (gpuTimer) gpuTimer.map();
   frame++;
 }
-// inside cloud the exposure adapts, as an eye or a camera would: the mist around the camera (the
-// probe's estimate) toward mid-grey, between the normal exposure and eight times it (deep in a
-// tower it is dim)
-function inCloudGain() { return Math.min(Math.max(0.6 / (Math.max(mistLum, 1e-5) * EXPOSURE), 1), 8); }
 // tests: a hook that copies the image out of the canvas texture before it is presented
 let capture = null;
 export function captureNext(fn) { capture = fn; }
@@ -191,6 +192,7 @@ export function captureNext(fn) { capture = fn; }
 const EXPOSURE = params.exp ?? 14.0;
 const TONEMAP = params.tm ?? 1, CONTRAST = params.con ?? 1.0;
 const VIEW = params.view ?? 0, DBG_MODE = params.dbg ?? 0;   // what goes into the final image (1..5), the cloud debug views (1..7)
+const JIT = params.jit ?? 0;   // (the test mode: the frame the jitter sequences start at)
 const HAZE_K = params.haze ?? 2.6e-5;
 const RAYS_K = params.rays ?? 0.18;
 const BLOOM_UP_W = params.bloomw ?? 0.6;                              // weight of each coarser bloom level

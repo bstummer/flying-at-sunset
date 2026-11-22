@@ -7,7 +7,12 @@
 // the detail, which fades with the pixel's footprint); on entry the boundary
 // is found by a few Illinois regula-falsi steps (else far clouds look dark and speckled); inside,
 // steps aim at a fixed optical depth (σ = 0.07/m) but stay fine in the rim (about a pixel wide on
-// the billowy tops); it ends at T < 0.02.
+// the billowy tops); it ends at T < 0.02. The camera's own cloud (a ray that starts in cloud, until
+// it first comes out) is marched first, in a loop of its own: from the camera in fine steps the same
+// for every pixel, the last one cut at the surface, frayed in its first 40 m (shreds and holes),
+// greyed (no shade tints), with variations deep in; how much light gets through it goes out with
+// the depth (the exposure adapts by it, shaders/exposure.wgsl; the high layers lie behind it), and
+// the depth the history is reprojected by is that of what shows through it.
 // Light (sunScatter, shaders/cloud.js, fitted to a Monte Carlo of the medium, tools/light/): all of
 // it, the sky's too, taken as at a cloud's edge LIGHT_SKIN thick, whatever the outline's ramp (the
 // same at any resolution of the trace); lightPath marches 6 growing
@@ -38,7 +43,7 @@ import { U_CLIP, U_CLOUD } from './cloud.js';
 export const U_TRACE = {
   ...U_CLIP, ...U_CLOUD,
   res: 'vec2f', jitter: 'vec2f', tanHalf: 'vec2f',
-  camPos: 'vec3f', frame: 'f32', camRight: 'vec3f', hazeK: 'f32', camUp: 'vec3f', inCloud: 'f32', camFwd: 'vec3f', dbgMode: 'i32',
+  camPos: 'vec3f', frame: 'f32', camRight: 'vec3f', hazeK: 'f32', camUp: 'vec3f', camFwd: 'vec3f', dbgMode: 'i32',
   ambSea: 'vec3f',
 };
 // (the debug views of ?dbg=N are compiled in only when asked for: setup.js sets DBG)

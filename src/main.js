@@ -47,7 +47,7 @@ function loop(now) {
     if (!gpuState.lost) fail('Something went wrong while rendering — ' + (e && e.message || e));
   }
 }
-let held = false, dtMs = 0;   // held: a frame that waits for its world
+let held = false, dtMs = 0, dtStep = 0;   // held: a frame that waits for its world; dtStep: the last step (s)
 function frameStep(now) {
   requestAnimationFrame(loop);
   // (tests: each frame waits for the probe of the last one, as if the GPU were always that quick)
@@ -64,6 +64,7 @@ function frameStep(now) {
     last = t;
     if (TEST) dt = FIXED_DT;
     clock += dt;
+    dtStep = dt;
     if (!resize()) return;   // GPU memory ran out: retrying smaller next frame
     updateInput(dt, clock);
     keepPatch(bird_.pos[0], bird_.pos[2]);
@@ -74,7 +75,7 @@ function frameStep(now) {
     if ((TEST || frame === 0) && worldBusy()) { held = true; return; }
   }
   if (TEST) beforeFrame();
-  render(clock);
+  render(clock, dtStep);
   if (frame === 2 && startWall < 0) { canvas.classList.add('on'); startWall = now; }
   // hint, by the wall clock so it behaves the same at any frame rate: in 1.8 s after the bird
   // shows, out 8.2 s after it came in, or once the visitor has steered a while. Each clock starts
@@ -104,11 +105,12 @@ device.lost.then(async info => {
 document.addEventListener('visibilitychange', () => { last = -1; });
 window.__debug = {
   bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, SUNMAP, worldStats, device, T, readTexture,
-  // (struct Probe and struct Ambient, chunks/probe.wgsl and chunks/ambient.wgsl)
+  // (struct Probe, struct Ambient and struct Exposure, chunks/probe.wgsl, ambient.wgsl and exposure.wgsl)
   probe: async () => {
     const b = Array.from(await readBuffer(T.probe)), a = Array.from(await readBuffer(T.amb));
+    const e = Array.from(await readBuffer(T.expo));
     return { sun: b.slice(0, 4), ambUp: b.slice(4, 7), ambDn: b.slice(8, 11), medium: b.slice(12, 16), mistL: b.slice(16, 19), floorD: b[20],
-      amb: { up: a.slice(0, 3), sunSide: a.slice(4, 7), antiSun: a.slice(8, 11) } };
+      amb: { up: a.slice(0, 3), sunSide: a.slice(4, 7), antiSun: a.slice(8, 11) }, expo: { mean: e[0], adapted: e[1], fog: e[2], exposure: e[3] } };
   },
 };
 // A promise that fails unheard would leave a blank or frozen page: say so instead.

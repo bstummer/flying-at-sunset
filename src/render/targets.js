@@ -32,7 +32,7 @@ function allocate(w, h) {
   // allocates smaller)
   device.pushErrorScope('out-of-memory');
   T.cloudCol = texture(R.lowMaxW, R.lowMaxH, HALF4);
-  T.cloudDepth = texture(R.lowMaxW, R.lowMaxH, 'r16float');
+  T.cloudDepth = texture(R.lowMaxW, R.lowMaxH, 'rg16float');   // (the clouds' depth, and the light through the camera's own cloud)
   T.histA = texture(w, h, HALF4);
   T.histB = texture(w, h, HALF4);
   T.scene = texture(w, h, HALF4);

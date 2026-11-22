@@ -15,7 +15,9 @@ export const VIEWS = [
   { name: 'away', params: { preset: 'away' }, brief: 'The sun behind: faces glowing gold and peach, long shadows across the sea.',
     crops: { bird: [0.42, 0.66, 0.16, 0.16] } },
   { name: 'side', params: { preset: 'side' }, brief: 'The sun to the left: lit and shaded sides, the relief of the sea, cool blue and violet shade.' },
-  { name: 'skim', params: { preset: 'skim' }, brief: 'Just over the cloud tops: billows at every size, crisp where the sun catches them.' },
+  // (the preset's way, 400 m over the sea's top: just over its billows, which rise 300-380 m over it
+  // there; the preset itself lies 170 m over it, in the billows, where the skim flight dives through)
+  { name: 'skim', params: { pose: '0,1493,0,0.35,-0.03,0' }, brief: 'Just over the cloud tops: billows at every size, crisp where the sun catches them.' },
   { name: 'high2', params: { preset: 'high2' }, brief: 'From 5 km up: the sea\'s swells and valleys, heaps and towers from above, haze showing the scale.' },
   { name: 'tower', params: { preset: 'tower' }, brief: 'A big tower from 9 km, sunlit from the side: broad base swelling out of the sea, cauliflower domes, deep folds.',
     crops: { domes: [0.45, 0.02, 0.25, 0.25] } },
@@ -25,6 +27,9 @@ export const VIEWS = [
     crops: { domes: [0.15, 0.1, 0.25, 0.25] } },
   { name: 'under', params: { preset: 'under' }, brief: 'Beneath an overhang, looking up at it: something to fly under.' },
   { name: 'inside', params: { preset: 'inside' }, brief: 'Inside a tower: drifting mist and in-cloud light, not a white wall.' },
+  // (in the first metres of a billow over the start's sea, flying out of it; 70 m higher the view is clear)
+  { name: 'edge', params: { pose: '0,1400,0,-1.0,-0.03,0' }, brief: 'In a billow\'s edge, looking out: a thin fog, the world past it clear and still in flight, not grainy and not washed out.',
+    crops: { horizon: [0.15, 0.29, 0.5, 0.1], ridge: [0.08, 0.46, 0.4, 0.12], sky: [0.3, 0.03, 0.4, 0.15] } },
   { name: 'seed3', params: { seed: '3' }, brief: 'Another world\'s start: the generator, not just the piece\'s seed.' },
   { name: 'geometry', params: { preset: 'side', dbg: '1' }, brief: 'The side view\'s cloud surface as normals: shapes without the light.',
     limits: { shimmerPercent: null } },

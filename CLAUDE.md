@@ -92,8 +92,8 @@ What the author keeps coming back to:
 | `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the screenshot tool's arguments and compares, the cost tool's runs, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
 | `npm run build` | `dist/index.html`. Fails on any other output, or a module from outside `src/`. |
 | `npm run check` | `tools/check-build.js`: one self-contained file within the size budget, and the `src/` lint. |
-| `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
-| `npm run verify` | test + build + check + shot with `--checks` (`tools/checks.js`: streaming, flight, steering, captures that repeat byte for byte, running out of GPU memory, the baked volumes, pointer and keys, errors the tools must hear, what a visitor sees, the benchmark). Args after `--` go to the capture (`npm run verify -- --size 640x360`). About 3–4 min on a desktop GPU. **The definition-of-done command.** |
+| `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `grain.png` and the share where the still differs from itself rendered with other jitter (the grain the history can't average in flight, over the frame and each crop), `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
+| `npm run verify` | test + build + check + shot with `--checks` (`tools/checks.js`: streaming, flight, steering, captures that repeat byte for byte, running out of GPU memory, the baked volumes, pointer and keys, errors the tools must hear, what a visitor sees, the benchmark). Args after `--` go to the capture (`npm run verify -- --size 640x360`). About 10 min on a desktop GPU (the NVIDIA laptop: the views ~4, the checks ~5). **The definition-of-done command.** |
 | `npm run verify:ci` | verify as CI runs it: SwiftShader, 320×180, 8 frames, no measurements. The one to run without a GPU (cloud sessions; `node tools/linux.js npm run verify:ci` on Windows and macOS). |
 | `node tools/screenshot.js --compare A B [--views a,b]` | Before/after sheet `screenshots/compare/A_vs_B.png` with a diff column, per view how many pixels differ and how the measurements changed, and for each view that changed `compare/A_vs_B/<view>.png`: A, B and the diff at full size, then the view's crops zoomed. |
 | `node tools/checks.js [names]` | The behaviour checks alone (`streaming flight steering reproducible out-of-memory volumes pointer-and-keys errors player benchmark`), writing into `screenshots/checks/`. |
@@ -145,7 +145,7 @@ For every change that can affect pixels:
 4. `node tools/screenshot.js --compare before after`, then **open and look at** the images of the
    views that changed (`screenshots/compare/before_vs_after/<view>.png`: full size, crops
    zoomed; the whole sheet is too small to judge a subtle change by), and at the measurements of the
-   views the change touches (`screenshots/after/<view>/`: banding, crops, shimmer, the motion strip).
+   views the change touches (`screenshots/after/<view>/`: banding, crops, shimmer, grain, the motion strip).
 5. **Never claim a visual improvement without looking at the images.** Say what you saw, including what
    got worse. A still can't show motion, the feel of the flight or speed on real hardware: name what you
    couldn't check and leave it to the user.
@@ -263,7 +263,8 @@ The tools rely on these; keep them, or change the tools with them.
   height absolute; radians, yaw 0 toward the sun (−Z), pitch the flight-path angle); the chase camera
   sits a few metres behind it, and the flight goes on from there (`tools/world/pose.js` finds a pose
   looking at a point). `&closeup=right,up,forward`: a camera fixed to the bird.
-  `&keep=K&every=S`: hand over K frames, S frames apart, from the `frames`th on, in
+  `&jit=J`: the jitter sequences start J frames on (the grain measurement: the same render with
+  other noise). `&keep=K&every=S`: hand over K frames, S frames apart, from the `frames`th on, in
   `window.__frames` (the first is `__png`, the same as without them); with `&freeze&dt=0` nothing
   moves but the clouds' jitter (the shimmer measurement).
 - `?bench` (not with `?test`): the benchmark; `&benchSeconds` and `&benchWarmup` per leg (default 8

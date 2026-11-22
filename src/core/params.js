@@ -20,7 +20,9 @@
 //   benchmark  benchSeconds (8), benchWarmup (2): core/benchmark.js
 //   test mode  dt (0.0166), freeze: main.js; frames (24), keep (1), every (1), log, live, script:
 //              core/capture.js; w (960), h (540), scale (0.5): render/targets.js; closeup
-//              (right,up,forward): flight/camera.js; cpuprof: render/timing.js
+//              (right,up,forward): flight/camera.js; cpuprof: render/timing.js; jit (0: the frame
+//              the jitter sequences start at, render/frame.js: two renders of one flight that
+//              differ only in their noise, tools/measure.js)
 
 const flag = { flag: true };
 const text = { read: (raw) => raw, kind: 'text' };
@@ -51,7 +53,7 @@ export const PARAMS = {
   dt: number(0, 1), frames: number(1, 1e6, { whole: true }), keep: number(1, 1000, { whole: true }),
   every: number(1, 1000, { whole: true }), freeze: flag, log: flag, live: flag, script: text,
   w: number(1, 8192, { whole: true }), h: number(1, 8192, { whole: true }), scale: number(0.01, 1),
-  closeup: numbers(3, 3), cpuprof: flag,
+  closeup: numbers(3, 3), cpuprof: flag, jit: number(0, 1023, { whole: true }),
 };
 
 export function parseParams(search) {

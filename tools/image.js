@@ -181,6 +181,38 @@ export function flicker(frames, { threshold = 4 } = {}) {
   return { percent: (100 * flickering) / n, heat };
 }
 
+// How much pairs of frames differ: `heat` holds each pixel's largest channel difference over the
+// pairs, `percent` the share of pixels differing by `threshold` or more, as a mean over the pairs,
+// and `regions` the same within each region ({ name: [x, y, w, h] } as fractions of the frame from
+// its top left). (The grain: two renders of one flight whose jitter differs, tools/measure.js.)
+export function pairDiff(pairs, { threshold = 4, regions = {} } = {}) {
+  const { width, height } = pairs[0][0];
+  const n = width * height;
+  const heat = new Float32Array(n);
+  const boxes = Object.entries(regions).map(([name, [x, y, w, h]]) => ({
+    name, x0: Math.round(x * width), y0: Math.round(y * height), x1: Math.round((x + w) * width), y1: Math.round((y + h) * height), hits: 0,
+  }));
+  let hits = 0;
+  for (const [{ data: a }, { data: b }] of pairs) {
+    for (let i = 0; i < n; i++) {
+      const c = 4 * i;
+      const d = Math.max(Math.abs(a[c] - b[c]), Math.abs(a[c + 1] - b[c + 1]), Math.abs(a[c + 2] - b[c + 2]));
+      if (d > heat[i]) heat[i] = d;
+      if (d < threshold) continue;
+      hits++;
+      const x = i % width;
+      const y = (i - x) / width;
+      for (const r of boxes) if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) r.hits++;
+    }
+  }
+  const share = (count, area) => (area > 0 ? (100 * count) / (area * pairs.length) : 0);
+  return {
+    percent: share(hits, n),
+    regions: Object.fromEntries(boxes.map((r) => [r.name, share(r.hits, (r.x1 - r.x0) * (r.y1 - r.y0))])),
+    heat,
+  };
+}
+
 // A dimmed grey copy of `base` with every pixel whose heat reaches `threshold` in magenta, grown
 // to its four neighbours so single pixels show, and fainter tints for heat under the threshold.
 export function heatImage(base, heat, threshold) {

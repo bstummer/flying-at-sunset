@@ -9,7 +9,8 @@
 // Capture: each view of tools/views.js in the page's test mode, two at a time, into
 // screenshots/<label>/ (a reused label replaces its capture): <view>.png, contact-sheet.png,
 // info.json, and the view's measurements in <view>/ (tools/measure.js: its render runs on for the
-// motion strip, and once more held still for the shimmer; --no-measurements leaves them out).
+// motion strip, once more held still for the shimmer, and once more with other jitter for the
+// grain; --no-measurements leaves them out).
 // Refuses a build older than its sources (npm run shot builds first). --profile adds ?cpuprof's
 // per-pass GPU times; --checks then runs tools/checks.js into <label>/checks/ (npm run verify).
 // Exits non-zero on any problem a view or check reports (tools/browser.js).
@@ -22,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { assertFreshBuild, launch, pool, ROOT, testRender } from './browser.js';
 import { diffImage, tile } from './image.js';
 import { defaultLabel, gitDescribe, labelFolder } from './labels.js';
-import { describeMeasurements, describeWarning, measurementChanges, measureView, motionParams, shimmerParams, zoomCrops } from './measure.js';
+import { describeMeasurements, describeWarning, grainParams, measurementChanges, measureView, motionParams, shimmerParams, zoomCrops } from './measure.js';
 import { decodeDataUrl, decodePng, encodePng } from './png.js';
 import { findView, VIEWS } from './views.js';
 
@@ -72,8 +73,14 @@ async function capture(args) {
           const held = await testRender(browser, { ...params, ...shimmerParams() }, { read: frames });
           result.problems.push(...held.problems.map((p) => ({ ...p, kind: `${p.kind}, frames held still` })));
           result.consoleWarnings.push(...held.warnings);
-          if (held.read && r.read) {
-            const m = measureView({ motion: r.read.map(decodeDataUrl), still: held.read.map(decodeDataUrl), crops: view.crops, limits: view.limits, dir: join(outDir, view.name) });
+          const other = await testRender(browser, { ...params, ...grainParams() });
+          result.problems.push(...other.problems.map((p) => ({ ...p, kind: `${p.kind}, other jitter` })));
+          result.consoleWarnings.push(...other.warnings);
+          if (held.read && r.read && other.png) {
+            const m = measureView({
+              motion: r.read.map(decodeDataUrl), still: held.read.map(decodeDataUrl), grain: decodePng(other.png),
+              crops: view.crops, limits: view.limits, dir: join(outDir, view.name),
+            });
             Object.assign(result, { measurements: m.measurements, warnings: m.warnings, files: m.files.map((f) => `${view.name}/${f}`) });
           }
         }
@@ -434,7 +441,7 @@ export function planCapture(args) {
   for (const key of ['test', 'w', 'h', 'frames', 'scale', 'seed']) {
     if (key in extra) throw new Error(`--query can't set ${key}: use --${{ w: 'size', h: 'size' }[key] ?? key}${key === 'test' ? ' (always on)' : ''}`);
   }
-  for (const key of ['keep', 'every', 'freeze', 'dt']) {
+  for (const key of ['keep', 'every', 'freeze', 'dt', 'jit']) {
     if (key in extra) throw new Error(`--query can't set ${key}: the measurements use it`);
   }
   return {

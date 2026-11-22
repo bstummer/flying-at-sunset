@@ -82,39 +82,64 @@ tools/light/reference.js --shade`). Before it the near shaded sea was navy and f
    resolution takes it; leg 12's devices will say more). Noted for leg 9: flying through dark
    clouds the screen turns bright (step 1).
 
-**Leg 9: in cloud and at its edge.** `inside` and `skim` are flat cards, brown and mauve grey:
-(124,98,80) and (136,116,116), SD 3.2 and 8.1 over the frame (both brown, (135,106,89) and
-(113,85,66), until leg 8 took the warm bounce off where the sea below lies in shadow). In the
-`skim` flight (a dive held from 170 m over the sea's top) the bird is in cloud 36% of the 15 s
-and never deeper than 32 m; the other four flights never enter one. So what a visitor skimming
-the tops meets every few seconds is a cloud's first tens of metres, and it is that card.
-1. The exposure in cloud by what the frame shows (the bloom chain's coarsest level is close to its
-   average, on the GPU already), not by the probe's estimate: that runs brighter than what the
-   trace draws, the gain stays low, hence the brown. And the other way (the author, 2026-11-22):
-   flying through dark clouds the screen turns bright. In a cloud in shadow the estimate is low,
-   the gain goes to its 8×, and as one number for the frame it brightens what lies past the fog
-   too (step 3).
-2. The first tens of metres, where the medium is thin (its profile, the erosion): shreds and holes
-   around the camera that let the lit tops and the sky through, the fog brighter toward the sun;
-   going in and coming out as a passage, not a cut.
-3. The camera at a cloud's edge, only partly in it: what lies behind the fog is grainy in flight
-   (the author; known issues have the reproduction, the numbers and what was ruled out). First
-   the instruments, since a still and the shimmer at rest are blind to it: a view `edge` at that
-   pose, and beside the shimmer a measure of flicker in flight (frames a step apart, `keep` and
-   `every` hand them over: the share of pixels that change where the far clouds are). Then the
-   camera's own cloud marched smoothly: finer optical steps until the ray first leaves cloud, or
-   each step's density from the distances at its ends, as lightPath counts a step's part inside,
-   so the last step out is cut at the surface. Only rays that start in cloud pay: `--profile`
-   there. Then what is left over the sky and the horizon (the jittered start, the exit).
-   Apart from the grain, `inCloud` is one number for the whole frame (the density at the camera's
-   point, full some 15 m under a surface): by it every ray's cloud within 160 m is thinned, all
-   shade in view loses its tints and the whole frame's exposure rises, the open half's too
-   (toward the sun it washes out: yaw 0.35 at that pose, against 70 m higher).
-4. Deep inside a tower: slow variations, the mist streaming past. Stills can't judge it: the motion
-   strip, then the author's eyes.
-5. `skim`'s pose over the billows' top (not the sea's top, 170 m under them there), so the view
-   shows what its brief asks; the `skim` flight starts there too, and its log changes once.
-   Touches the trace near the camera and the probe (the bird's in-cloud test): flights compared.
+**Leg 9, done (2026-11-22)** (`screenshots/l9-before`, HEAD 13e949c with `?jit` patched in for the
+grain, → `l9-after`; the skim flight as a 12 s strip, scratch). Before it `inside` and `skim` were
+flat cards, brown and mauve grey ((124,98,80) and (136,116,116)), each starting dark while the
+exposure ramped up from nothing; seen from a billow's edge (`edge`, new) the far towers were outlines
+under an orange veil, and the picture grainy in flight.
+1. The exposure from the frame (shaders/exposure.wgsl, after the bloom chain's down passes; bExpo,
+   which the final pass reads): the log-mean luminance of the chain's coarsest level, and how much
+   of the frame is the fog of the camera's own cloud (the trace's second target, step 3: the light
+   that gets through it, over a 24 × 14 grid), each adapted at 2/s, the first frame adapted. The gain
+   (e^−2.3 over the mean)^0.5, between 1 and 4, to the power of the fog's share. Outside cloud the
+   exposure is 14 as before; `inside` gets 3.3× ((124,98,80) → (174,142,122), tan-peach), the old
+   `skim` pose 3×, `edge` 1.26× (37% of it fog), where the probe's point at the camera made
+   it all fog. The square root keeps a cloud in shadow darker than a sunlit one (the author: flying
+   through dark clouds turned the screen bright, at the old 8×); a higher target (−1.8, −1.3) put
+   `inside` at (190,156,132), the cap: a little lighter, not kept. The probe's estimate of the mist
+   lights only the bird now; `inCloud` (the point) only the camera's shake and the mist puffs, and
+   it starts at the first reading (a flight that starts in cloud doesn't fly in).
+2. The first tens of metres: the bubble of thin density around the camera (0.22× within 12 m, all
+   of it by 160 m) is gone: crossing a surface it took ~2.8 optical depths out of the view at once,
+   a cut. The camera's own cloud frays in its first 40 m instead (`fray`, trace.wgsl: the detail
+   volume's Worley noise, 16–64 and 4–16 m cells, about 60% holes at the surface, 20% 20 m in): from
+   `edge` the sky's blue and the ridge show through a peach veil, where without it the whole frame
+   is veiled orange. 15–28 m under a flat top (the skim flight's first 4 s) the fog stays even: in
+   fog lit evenly, density doesn't show (every ray comes to the fog's colour), and that deep, at a 5°
+   sun, the light is all diffusion. What it shows: warmer and brighter toward the sun, the sun's
+   disc through thin fog, the edge of a cloud's shadow in the mist as a shaft from the sun.
+3. The grain. The instruments: the view `edge` (the pose of the known issue, crops over the horizon,
+   the ridge and the sky), and the grain (tools/measure.js, `grain.png`): the still against itself
+   rendered with its jitter sequences 8 frames on (`?jit`): whatever moves moves alike in both,
+   only the noise the history can't average in flight differs. The cure: the camera's own cloud is
+   marched first, in a loop of its own (trace.wgsl), from the camera (no jittered start) in steps of
+   0.12 optical depths, the same for every pixel, until the ray first comes out, that last step's
+   part past the surface taken back (by the distances at its ends, `exitCut`); then the main loop,
+   as before, from there. `edge`'s grain 6.5 → 2.1% (the ridge 17 → 2.4%, the sky 0.18 → 0%, the
+   horizon 4.9 → 4.2%: what is left lies on silhouettes, as in every view at a 12-frame history:
+   `tower` 6.5%, `close` 8.2%); its shimmer at rest 0.002 → 0.036% (the far rims show through the
+   fog now). `inCloud` no longer reaches the trace: in the camera's own cloud the shade's tints and
+   saturation are off, its variations on. Outside cloud every view is as before (within a level,
+   on under 0.1% of the pixels: the tints' arithmetic). Two faults on the way, fixed: reprojected by the fog's
+   tens of metres, the far towers' silhouettes behind it got dark fringes in flight (the depth for
+   the history is now that of what shows through the fog, the sky's where only sky does); and so
+   marked, a fog pixel put the two high layers in front of the fog (a white streak toward the sun:
+   the fog lies in front of them, by the trace's second target). The far towers have their form
+   back, no longer outlines.
+4. Deep inside a tower: the variations of density and the mist puffs as they were; the motion strip
+   shows faint puffs drifting and the brightness changing slowly over a tan card. For the author's
+   eyes.
+5. `skim`'s view from 400 m over the sea's top (just over the billows there, 21 m by the probe;
+   `pose`, tools/views.js): into the sun over the tops, billows at every size, the near ones in
+   blue shade, the lit tops crisp. The preset and its flight stay in the billows: from over them a
+   held dive skims along 19–133 m above for 15 s and never enters (the flight check wants it in).
+   Flights identical (all five).
+   Cost (`node tools/cost.js --against HEAD`, interleaved A B B A A B, 200 frames, NVIDIA laptop):
+   the trace −4 to +2% (`start` −2, `sun` −1, `side` −3, `tower` −1, `high2` −4, `close` −1, `edge`
+   +2, `inside` −2, `skim` −1); the exposure pass ~0.01 ms a frame (`post`); the mist puffs drawn
+   from `inside`'s first frame, `taau` +7% there. Carried through the main loop, the camera's own
+   cloud had cost the trace +16–17% in every view (decisions). The views' capture (`npm run shot`)
+   155 → 240–350 s: a third render a view, for the grain. `npm run verify` 580 s.
 
 **Leg 10: distance.**
 1. A coarser level of the sun map for what lies past its window (known issues): the far sea
@@ -546,6 +571,26 @@ they hold until the author says otherwise.
 - **The in-cloud mist's variations near every cloud** (within 900 m of the camera, before the legs):
   near surfaces fogged.
 
+### In cloud
+
+- **Grain measured by frames a step apart in flight** (leg 9, the plan's first instrument): the
+  share of pixels changing from one frame to the next mixes the grain with all that moves (the
+  cirrus drifting, the camera's shake in cloud, every edge): with the grain gone from the difference
+  images, `edge`'s sky read 9.6 → 11%. And over the motion strip's 2 s the bird leaves the billow in
+  its first quarter second. The grain is the still against itself rendered with other jitter.
+- **Shreds and holes deep in the fog** (leg 9): 15–28 m under a flat top the fog looks the same with
+  them or without: in fog lit evenly, density doesn't show (each ray comes to the fog's own colour),
+  and that deep at a 5° sun the light is all diffusion, so holes in the light march would light no
+  pockets either. They show only where the outside lies behind them, near the surface.
+- **A larger step budget for rays that start in cloud** (leg 9, up to 120 steps more): renders
+  identical; the dark fringes on far silhouettes seen through the fog were the history's depth.
+- **The camera's own cloud in the main loop** (leg 9: a flag per ray, its fine steps, the fray, the
+  tints and the depth by it): the trace +18–22% in views that never enter cloud (`start`, `side`,
+  `close`), +16–17% of it the flag's state and branches in the hottest loop, whatever they did;
+  in a loop of its own before the main one, −4 to +2%. **The exit cut for every cloud** (each
+  step's part past a surface taken back where a ray comes out): +3%, and it moved rims by a level
+  or two, nothing the measures saw; kept in the camera's own cloud alone.
+
 ### Colour, haze and tone
 
 - **The shade's colour and the film's saturation** (before leg 2's light, and leg 2): saturation in
@@ -661,40 +706,16 @@ they hold until the author says otherwise.
   tower's lie within a trace pixel (60–80 m), where a real edge's wisps and the profile both are: a
   fringe outside the surface failed (decisions). What might: thin cloud by the pixel's footprint
   (the sub-pixel wisps' average) where the outline ramps up.
-- **Inside cloud** is a uniform wall (warm brown since leg 7 lit it, `inside`; the medium's profile
-  reaches 40 m in, and the camera sits hundreds of metres deep), even with the exposure adapting to the
-  mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays low);
-  the mist streams past only as the bird flies. `under` (an anvil's underside) is navy since leg 8:
+- **Inside cloud**, deep in a tower (`inside`), is an even tan card ((174,142,122) since leg 9, the
+  exposure adapting to the frame: 3.3×): the fog there is lit evenly by diffusion, so its density
+  doesn't show; in motion faint mist puffs drift past and the brightness changes slowly (the
+  author's eyes). The puffs and the camera's shake still go by `inCloud`, the density at the
+  camera's point. Where the camera is in cloud, the history reprojects the fog by the depth of what
+  shows through it (far clouds, or the sky): its own shreds near the camera may smear in motion.
+  Skimming a top (the skim flight at ~5.5 s), a lighter band with a hard upper edge crosses the
+  lower frame: the billow's top just under the camera, seen edge-on (before leg 9 too). `under` (an anvil's underside) is navy since leg 8:
   the sea beneath lies in the anvil's shadow for tens of km at a 5° sun, so nothing warm comes up.
   Kept: physically right (the author, 2026-11-22).
-- **Seen through a cloud's edge, the picture is grainy in flight** (the author, 2026-11-22:
-  pixelated, like noise that changes as you move, at the clouds' edges; leg 9, step 3). With the
-  camera in a billow's edge, looking out (`?pose=0,1400,0,-1.0,-0.03,0`; from 1470 m the same
-  view is clear), all that lies behind the fog flickers. Over six frames a step apart in flight
-  (960×540 at 0.5, NVIDIA), the share of pixels changing by more than 6 levels from one to the
-  next: 6.4% over the far clouds at the horizon, 10.2% over a ridge a few km off, 3.6% over the
-  sky; from 70 m higher 2.3, 1.7 and 1.1%; held still 0.1% (the shimmer at rest, 0.004%, can't
-  see it). A single trace frame is grainy all over there: the fog's transmittance over the sky
-  has an SD of 4% of its mean.
-  - The cause found: the camera's own cloud is marched in steps of 0.45–2 optical depths, each
-    jittered by a quarter. That suits a cloud entered from outside (its surface refined, opaque
-    in a few steps), but here it sets the transmittance of all that lies behind: the history
-    averages it at rest and can't in flight. With at most 0.1 a step until the ray first leaves
-    cloud (an experiment, not kept) the ridge fell to 1.8%, the clear view's level, the horizon
-    to 5.4% and the sky to 2.9%; the fog also let 7–12% more through (coarse steps overstate it).
-  - Not the cause of the grain, each tried alone: the depth the TAAU gets (one weighted depth a
-    pixel: over the sky the fog's own, tens of metres, so those pixels count as moving fast;
-    taken from what lies beyond the camera's cloud: 6.6, 10.3, 3.8%); the march's step limit
-    (3×: identical); the exposure's gain in cloud (5.0, 9.7, 2.8%, in a darker frame); the
-    density variations near the camera (a frame's grain unchanged).
-  - Open: the rest over the horizon and the sky (the march's start, jittered 0.8–4 m from the
-    camera; the last step out of the cloud, not cut at the surface).
-  - **Far clouds as outlines** in the same view: under the fog's orange veil a far tower has the
-    luminance of the sky behind it (183 against 172 levels) and only its warmer rim shows. It
-    holds still, at the normal exposure, with the shade's tints kept, with 3× the steps, and
-    with no light reused from the fog's last sample in the next cloud (after the fog T < 0.65,
-    the rule for deep samples): no defect of its own was found; it goes with the veil's
-    brightness and colour (leg 9, steps 1–2).
 - **`giant` and `close` miss their briefs** (presets.js, clearOf): `giant` stands 62 km from its
   tower (25 km clear of every tower: in a crowd, far out), which fills about an eighth of the
   frame's height where it should dominate. `close` stands 17.4 km from the tower `tower` sees from 9.4 km
@@ -765,15 +786,15 @@ they hold until the author says otherwise.
   the pixels) but the light doesn't (5.6%): L1's gives the domes less relief. Levers: blending
   (+12–18%, decisions), the handover farther out (L0's window reaches ~14 km), what in the light
   follows the level (the light march's first steps and the billows read the level's distance).
+- **The grain** (tools/measure.js, since leg 9): at the still, 12 frames in, 1–8% of a frame
+  differs by 4 levels or more from the same still rendered with other jitter (`tower` 6.5%, `close`
+  8.1%, `away` 6.6%, `geometry` 14%), on lit fine detail and silhouettes: a young history in flight.
+  No limit yet: a change in it is a question for `grain.png`.
 - **Sunlit rims**: with nothing moving 0.02–0.10% of a frame flickers (`geometry` 0.29%; leg 3 halved
   it: strides no longer hop over crests by the jitter), along tower silhouettes against the sky and
   backlit rims, most toward the sun (`sun`). The history blends at half the rate where the image
   holds still. The slower blend may lag or smear in slow motion: for the author's eyes. The cloud
   scale, the TAAU clamp and blend rate, and the approach's floor (trace.wgsl) are the levers.
-- The `skim` view (170 m over the sea's top) shows nothing but haze: the billows rise higher than that
-  there, so the bird is inside them. Its brief wants billows up close; a pose a few hundred metres
-  higher would show them. Its flight (a dive held from there) is in cloud 36% of the time, never
-  deeper than 32 m: what skimming the tops looks like.
 - Values JS and WGSL both keep as literals of their own: the sun-colour table's 750 m steps, the high layers' heights, the offsets of struct Probe's fields read back (CLAUDE.md §8 wants them from `constants.js`).
 - A WebGPU validation error shows no note (left out: a harmless one on a browser never tried would stop
   the piece); the tools hear every one.

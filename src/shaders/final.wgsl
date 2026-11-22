@@ -1,7 +1,8 @@
 #include "chunks/common.wgsl"
 #include "chunks/nan.wgsl"
+#include "chunks/exposure.wgsl"
 
-// The final image: bloom and sun rays added, exposure and contrast, the tone curve (tm 1: filmic,
+// The final image: bloom and sun rays added, the exposure (bExpo, shaders/exposure.wgsl) and contrast, the tone curve (tm 1: filmic,
 // hue-preserving through the mid-tones, only the brightest faces rolling off toward cream as on
 // film, with a golden-hour split tone; 0: ACES), vignette, sRGB and grain, its rows turned
 // top-down for the canvas; view 1..5 shows what goes into it
@@ -21,17 +22,18 @@ fn toSRGB(c: vec3f) -> vec3f { return mix(c * 12.92, 1.055 * pow(c, vec3f(1.0 / 
   // the canvas's rows run top-down: count them from the bottom, as every texture is laid out
   let frag = vec2f(pos.x, u.res.y - pos.y);
   let uv = frag / u.res;
+  let exposure = bExpo.exposure;
   if (u.view == 1) { return vec4f(vec3f(textureSampleLevel(tDbg, sLin, uv, 0.0).a), 1.0); }
-  if (u.view == 2) { return vec4f(toSRGB(saturate(textureSampleLevel(tDbg, sLin, uv, 0.0).rgb * u.exposure * 0.5)), 1.0); }
+  if (u.view == 2) { return vec4f(toSRGB(saturate(textureSampleLevel(tDbg, sLin, uv, 0.0).rgb * exposure * 0.5)), 1.0); }
   if (u.view == 3) { let d = textureSampleLevel(tDbg2, sNear, uv * u.dbgScale, 0.0).r; return vec4f(vec3f(saturate(log2(1.0 + d) / 8.0)), 1.0); }
-  if (u.view == 4) { return vec4f(toSRGB(saturate(textureSampleLevel(tRays, sLin, uv, 0.0).rgb * u.rayCol * u.exposure)), 1.0); }
-  if (u.view == 5) { return vec4f(toSRGB(saturate(textureSampleLevel(tBloom, sLin, uv, 0.0).rgb * u.exposure * 0.25)), 1.0); }
+  if (u.view == 4) { return vec4f(toSRGB(saturate(textureSampleLevel(tRays, sLin, uv, 0.0).rgb * u.rayCol * exposure)), 1.0); }
+  if (u.view == 5) { return vec4f(toSRGB(saturate(textureSampleLevel(tBloom, sLin, uv, 0.0).rgb * exposure * 0.25)), 1.0); }
   var c = textureSampleLevel(tScene, sLin, uv, 0.0).rgb;
   if (isnan3(c)) { c = vec3f(0.0); }
   let bloom = textureSampleLevel(tBloom, sLin, uv, 0.0).rgb;
   c = c * (1.0 - u.bloomMix) + bloom * u.bloomScale;   // energy-conserving mix with the normalised bloom
   c += textureSampleLevel(tRays, sLin, uv, 0.0).rgb * u.rayCol;
-  c *= u.exposure;
+  c *= exposure;
   // gentle contrast around middle grey (pre-curve)
   let lc = max(luma(c), 1e-6);
   c *= pow(lc / 0.18, u.contrast - 1.0);

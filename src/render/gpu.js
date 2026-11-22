@@ -102,7 +102,7 @@ const texKind = kind => TEX_KINDS[kind] ? ['texture', ...TEX_KINDS[kind]]
 // every storage buffer, by its WGSL name: its WGSL type (structs are declared by the shaders that
 // use them); `uniform`: a shader that only reads it binds it as a uniform buffer (the trace reads
 // the ambient light in its hottest loop)
-const BUFFERS = { bAmb: { type: 'Ambient', uniform: true }, bProbe: { type: 'Probe' }, bBub: { type: 'array<vec4f>' }, bTsv: { type: 'array<u32>' }, bSunMap: { type: 'array<u32>' },
+const BUFFERS = { bAmb: { type: 'Ambient', uniform: true }, bExpo: { type: 'Exposure', uniform: true }, bProbe: { type: 'Probe' }, bBub: { type: 'array<vec4f>' }, bTsv: { type: 'array<u32>' }, bSunMap: { type: 'array<u32>' },
   bSmTail: { type: 'array<vec2f>' }, bSmSeg: { type: 'array<vec2f>' } };
 const BINDING = {};
 [...Object.keys(TEXTURES), ...Object.keys(BUFFERS)].forEach((n, k) => { BINDING[n] = 16 + k; });
