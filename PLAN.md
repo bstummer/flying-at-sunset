@@ -5,7 +5,119 @@ what was tried and failed, and why, and what is still open. Keep it short and cu
 that fails goes in the decisions with why and when (evidence for later, not a rule); a fixed issue
 comes out. How things work belongs in the module headers, how to work in CLAUDE.md.
 
-## Next: the cloud review of 2026-11-20, in legs
+## Next: legs 8–12, from the known issues (2026-11-22)
+
+The known issues below, checked on HEAD (8a4dacb) against a capture of every view (960×540, NVIDIA
+laptop), the scripted flights and the world tools, and put in the order the images ask for.
+`screenshots/` isn't kept: the numbers here (sRGB means over a region of a still) are what is left
+of that capture. As in legs 1–7, each step: a before/after capture of the views named (CLAUDE.md
+§4), `--profile` where the trace or a bake changes, flights compared where the flight or the world
+changes, then a line here on what held (and in the decisions on what failed). The author judges
+after each leg; legs 8 and 9 are mostly taste.
+
+**First, from the author**: `?bench` on the branch's preview
+(https://bstummer.github.io/flying-at-sunset/cloud-improvement/?bench) on a phone and on an
+integrated GPU, and the page opened once in Safari and in Firefox. Every budget below is one NVIDIA
+laptop's in Chrome; if a phone can't hold the piece, leg 12 comes first.
+
+**Leg 8: the shade.** Since leg 7 much of the near sea lies in cast shadow, rightly, and there the
+light is the sky's alone: navy and flat. The near shaded sea is (41,49,73) in `start`'s lower
+right, (46,49,66) in `side`, (46,51,71) in `giant`'s foreground: luminance ~50 with an SD of 3.5–6
+over large parts of those frames, 26–33% of the lit faces beside it (146–195); `down`'s
+(65,74,92), SD 1.8; all of `under` (60,54,61). Leg 2's lavender grey at 45% was a tower's own
+shade, which the light diffusing through its body fills. With it go `under`, the bird in shade,
+the blotchy shaded sea, the darkest folds (the darkest 1% of `tower` and of `close`: luminance 54)
+and the sunlit turret tops whose base melts into the shade.
+1. A reference for the shade, as leg 2's for the sun (tools/light/): the Monte Carlo under the
+   sky's dome (the sky view's radiance at a 5° sun) and beside sunlit cloud (a deck below, a lit
+   wall), for a top in cast shadow, a fold and an overhang's underside: what each sends against a
+   lit face. The reference knows the sun alone, so the shade has no target but the reviews'
+   "40–50%, luminous lavender grey".
+2. The light from the sunlit cloud around, by where it is lit. `ambSea` (frame.js) is one constant,
+   a deck lit at 5° everywhere, added at 0.4 and 0.15 of its weight on a cloud's sides and at up to
+   half on its bellies (trace.wgsl), though much of the near sea is in shadow now, and a lit flank
+   beside a shaded heap sends it nothing. The sun map and the shadow volume know where the tops
+   are lit: a coarse map of how much sunlit cloud lies around and below a point in place of the
+   constant, the bird's too (the probe's `ambDn`).
+3. Form without the sun: the sky's light by how open the sky is at more than one scale (the
+   distance field over tens and hundreds of metres; now one tap ~22 m up and one ~55 m up and back
+   toward the camera, only while T > 0.45), and by where in the sky it comes from (the horizon
+   toward the sun is its brightest part), so creases and crests read in shade. The decisions hold
+   the guard rails: a floor on the occlusion made gravel, a facing over 15 m pumice, the sky ×1.95
+   milk.
+4. With the author: `under` against its brief, the bird in shade (`giant`, `close`), the exposure
+   and the lit faces' level (known issues).
+   Cost: taps per lit sample. Under +8% of the trace over the six views, else taken from the
+   samples that reuse the last one's light.
+
+**Leg 9: in cloud and at its edge.** `inside` and `skim` are flat brown cards: (135,106,89) and
+(113,85,66), SD 3.5 and 4.9 over the frame. In the `skim` flight (a dive held from 170 m over the
+sea's top) the bird is in cloud 36% of the 15 s and never deeper than 32 m; the other four flights
+never enter one. So what a visitor skimming the tops meets every few seconds is a cloud's first
+tens of metres, and it is that card.
+1. The exposure in cloud by what the frame shows (the bloom chain's coarsest level is close to its
+   average, on the GPU already), not by the probe's estimate: that runs brighter than what the
+   trace draws, the gain stays low, hence the brown.
+2. The first tens of metres, where the medium is thin (its profile, the erosion): shreds and holes
+   around the camera that let the lit tops and the sky through, the fog brighter toward the sun;
+   going in and coming out as a passage, not a cut.
+3. Deep inside a tower: slow variations, the mist streaming past. Stills can't judge it: the motion
+   strip, then the author's eyes.
+4. `skim`'s pose over the billows' top (not the sea's top, 170 m under them there), so the view
+   shows what its brief asks; the `skim` flight starts there too, and its log changes once.
+   Touches the trace near the camera and the probe (the bird's in-cloud test): flights compared.
+
+**Leg 10: distance.**
+1. A coarser level of the sun map for what lies past its window (known issues): the far sea
+   without the billows' shadows, far towers with stair-stepped tops and blobs (`seed3`, ~40 km).
+   First where each comes from (`?dbg=3`: the shadow volume's own channel, or the other clouds'),
+   then a level sized to reach it: 4× coarser each way it covers 64 × 80 km in ~4 MB. The shadow
+   volume stays for what lies past that.
+2. The handover at 7–10 km moved out (`levelAt`, chunks/clip.wgsl; L0's window reaches ~14 km): the
+   one lever on the lattice not tried. `away`'s middle distance, `--profile`.
+3. Silver linings: thin cloud by the pixel's footprint where the outline ramps up, inside the
+   surface (the fringe outside it failed, decisions), so a backlit tower 10–30 km off blazes at
+   its edge: `anvil`'s top has no rim at all, `sun`'s right tower a hair.
+4. The haze toward the sun: `high2`'s sea is a grey veil, (111,109,115), as `anvil`'s and `seed3`'s
+   low sea. A row of `?haze` values for the author; the decisions' milky veils are the limit on
+   the other side.
+
+**Leg 11: tower shapes** (the world: the fingerprint recorded again, flights compared).
+1. The instruments: the mushroom measure (leg 6's scratch script) and a count of knobs into
+   stats.js; and two views that miss their briefs (known issues): `giant` and `close`, their poses
+   found again, `close` up a flank from below.
+2. Popcorn far away: every bubble over ~2 km carries the same 1280 and 640 m lobes (90% and 70% of
+   their cells filled), and its liveliness moves their height only between 0.6 and 1 (cloudSDF's
+   A), so a tower 20–60 km off is rows of beads (`high2`'s right tower, `away`'s horizon, `start`'s
+   right tower). Old parts smooth and young ones boiling (the liveliness over its whole range), the
+   lobes' size by the bubble's billow scale; spheres of power-law sizes failed (decisions).
+3. Mushrooms and knobs by their causes (known issues; catalog.js still shows a wide top on a
+   narrow column among the twelve tallest, and small balls perched on most heads): a column
+   widening with the shear it stands in, the smallest crowns taken into their heads.
+4. Other seeds' starts (known issues): the spawn draw scores sites, not the towers that grew in
+   view. Low: only `?seed` reaches them.
+
+**Leg 12: reach, before `main`** (the branch is 28 commits ahead of what is published).
+1. The devices' numbers (above), and what they ask for: the phones' resolution cap and cloud
+   scale, the budgets.
+2. `bakeCost` (render/stream.js) from the device's own GPU times where it has timestamp queries; it
+   is one NVIDIA laptop's constants.
+3. The textures and buffers made once at the start: a note in place of blank frames when one
+   fails, and what a small device could go without (about 130 MB of volumes and tables that never
+   shrink, and 40–80 MB of targets by the canvas: counted from the formats, not measured).
+4. The stall where the bird outruns its patch of domes (core/world.js): a check that flies it
+   there at top speed, then what the check asks for.
+5. The values JS and WGSL both keep as literals into constants.js; tools/linux.js tried (Docker
+   wasn't running on 2026-11-22 either).
+
+Not in a leg: the drift (the author's: nothing has to, for now); the shimmer at sunlit rims
+(0–0.11% a view in this capture, `geometry` 0.35%: within the limits, and each lever left costs
+5–46% of the trace, decisions); the cirrus and the high layers' tiling (seen in no capture);
+`dropAdrift` (by design); the far
+flat lenses (real ones look so; `seed3` has one); an isolated ball against the light's reference
+(the trace can't see how little cloud lies behind a billow).
+
+## Done: the cloud review of 2026-11-20, legs 1–7
 
 A review against the state of the art (Guerrilla's Nubis³, Hillaire 2016 and 2020, Wrenninge's
 octaves) found the architecture right: a CPU world, distance-field clipmaps and procedural detail are
@@ -487,14 +599,18 @@ they hold until the author says otherwise.
   tower's lie within a trace pixel (60–80 m), where a real edge's wisps and the profile both are: a
   fringe outside the surface failed (decisions). What might: thin cloud by the pixel's footprint
   (the sub-pixel wisps' average) where the outline ramps up.
-- **Inside cloud** is a uniform wall (mauve grey, `inside`; the medium's profile reaches 40 m in,
-  and the camera sits hundreds of metres deep), even with the exposure adapting to the
+- **Inside cloud** is a uniform wall (warm brown since leg 7 lit it, `inside`; the medium's profile
+  reaches 40 m in, and the camera sits hundreds of metres deep), even with the exposure adapting to the
   mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays low);
   the mist streams past only as the bird flies. `under` (an anvil's underside) is dark navy now: right
   for shade at sunset, but judge it against its brief.
-- **`close` nearly repeats `tower`**: since the tower heads are rounder (2026-11) the first spot
-  clear of the tower's bubbles (presets.js, clearOf) is near `tower`'s pose, so both frame the same
-  flank; neither looks up a flank from below. A view of its own would need another spot or tower.
+- **`giant` and `close` miss their briefs** (presets.js, clearOf): `giant` stands 62 km from its
+  tower (25 km clear of every tower: in a crowd, far out), which fills about an eighth of the
+  frame's height where it should dominate. `close` stands 17.4 km from the tower `tower` sees from 9.4 km
+  (the first air clear of the heaps at 1100 m over the sea lies that far out) and frames all of
+  it; neither looks up a flank from below.
+- **The shade on the near sea** is navy and flat (2026-11-22; leg 8 has the numbers): since leg 7
+  much of it lies in cast shadow, lit by the sky alone, at a quarter to a third of the lit faces.
 - **Near the camera** the sea into the sun is still soft, glowing mush (`start` lower left, `seed3`),
   and the shaded sea seen from above blotchy (`giant`'s foreground): the light there is diffusion
   and sky light, smooth over tens of metres. **Into the sun** the sea's tops were pale cream, lit by
@@ -539,7 +655,8 @@ they hold until the author says otherwise.
 - The world is drawn so the start looks good (the spawn draw); other places can be emptier: about 30%
   of the world is calm air with only the billowy sea and its heaps. The draw doesn't promise towers in
   view for every seed: **seed 5 starts with none** within 50 km (the piece's seed 7 has two above 8 km;
-  `tests/world.test.js` holds it to one).
+  `tests/world.test.js` holds it to one). Of seeds 1–12, four (4, 5, 8, 11) have no tower of any
+  height within 20 km, and 4 and 11 only three within 40 km (stats.js; seed 7: 13 and 41).
 - **A lattice at the level handovers** (~7–10 and ~40–55 km: `away`'s middle distance, `anvil`'s far
   sea): pixels dither between two levels; the history averages it at rest, 12-frame captures show
   it. At 40–55 km fainter since leg 4: the levels' shapes agree to ~0.1 km (p50), and what is left
@@ -554,10 +671,9 @@ they hold until the author says otherwise.
   scale, the TAAU clamp and blend rate, and the approach's floor (trace.wgsl) are the levers.
 - The `skim` view (170 m over the sea's top) shows nothing but haze: the billows rise higher than that
   there, so the bird is inside them. Its brief wants billows up close; a pose a few hundred metres
-  higher would show them.
+  higher would show them. Its flight (a dive held from there) is in cloud 36% of the time, never
+  deeper than 32 m: what skimming the tops looks like.
 - Values JS and WGSL both keep as literals of their own: the sun-colour table's 750 m steps, the high layers' heights, the offsets of struct Probe's fields read back (CLAUDE.md §8 wants them from `constants.js`).
 - A WebGPU validation error shows no note (left out: a harmless one on a browser never tried would stop
   the piece); the tools hear every one.
-- Nothing publishes until main's first verified build makes the "latest" release; until then every
-  deploy stops before publishing and the old site stays up.
 - `tools/linux.js` is untried (Docker wasn't running).
