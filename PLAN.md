@@ -2,8 +2,8 @@
 
 What a session needs beyond [CLAUDE.md](CLAUDE.md) (the vision, the rules, how to work a request):
 what was tried and failed, and why, and what is still open. Keep it short and current: an approach
-that fails goes in the decisions with why; a fixed issue comes out. How things work belongs in the
-module headers.
+that fails goes in the decisions with why and when (evidence for later, not a rule); a fixed issue
+comes out. How things work belongs in the module headers, how to work in CLAUDE.md.
 
 ## Next: the cloud review of 2026-11-20, in legs
 
@@ -255,229 +255,179 @@ once the march has left the point's own cloud):
 
 ## Decisions: what failed, and why
 
-Worth knowing before tuning again.
+What was tried and didn't work, why, and when. **A decision is evidence, not a rule**: when its
+cause no longer holds (the code it was tried on has changed since), try again; that is what the
+cause and the time are for. *Before the legs* means before the review's legs (2026-11-20 on): the
+light and the medium then were the ones legs 2–5 rebuilt (the light march, the diffusion fitted to
+a Monte Carlo, the medium's profile), and the world the one legs 4 and 6 changed, so a verdict on
+light or colour from then is the likeliest to have gone stale. The author's own words are taste:
+they hold until the author says otherwise.
 
-- **The sun map, first tries** (leg 7). The optical depth stored and interpolated: a shadow's edge
-  is sharper than a texel, and between a texel at τ 0 and one at 10 the light came out where a tenth
-  of the way was, a staircase (`tower`'s cast shadow); the light that gets through is stored now.
-  The cloud's edge blurred over 64 m (two texels) to smooth it: a sun ray passing over a heap's top
-  runs within that blur for hundreds of metres at 5°, so every cloud cast its shadow as if 30 m
-  taller, ~350 m longer, and the near sea went dark (`start`, `side`, `down` against the fine
-  march); 10 m now. The lookup snapped to the texel toward the sun inside a cloud (the one behind may
-  lie past its shaded side, in its shadow): blocks with straight edges near the camera (`away`);
-  shifted a texel instead. One walk a ray toward the sun, its texture reads one after another: two
-  columns took as long as eight (0.3 ms), the GPU waiting; three passes now, each over many
-  invocations. A step's share inside cloud from its distance and slope took a bound beside a
-  distance for a steep slope (a point 70 m clear counted as half inside: `side` 12% darker); the
-  slope is capped at 1, as a distance's is.
+### The world
 
-- **A smooth "sand dune" sea**: billow strength tied to restlessness (≈ 0 over most of the sea) and
-  ridged noise (`1 − |n|`) for the rolling mounds made smooth hills with sharp crest lines. The sea
-  always overturns: billow strength ~1 everywhere; billow noise `|n|` (rounded tops, creases).
-- **Billow shells**: bulges far flatter than wide (shell ≈ 1/6 of the sphere radius) read as smooth
-  swells; ~1/3–1/2 of the radius for the large octaves reads as cauliflower. A sparse sphere field leaves
-  bare pits between bulges; dense everywhere looks like sponge; dense large and looser small, with the
-  small octaves lower and fading with distance, looks like cauliflower.
-- **Crisp rims cost nothing**; a generous billow bound (`shellOf`) costs ~10–20% of the trace
-  (460a + 150 cost ≈ 10% more than 400a + 120, with no visible difference).
-- **Dirty brown blotches** under bulges: the warm sea bounce at full weight on downward facets; halved.
-- **Inversion strength against restlessness** decides everything about towers: too strong in moderately
-  restless air → towers only at I ≈ 1 (too few, too small); too weak overall → "foam walls" of medium
-  heaps. Current: cap = 0.2·e^(−2.6·I).
-- **Equilibrium level** with I^1.5 kept almost all towers mid-level; I^0.5 with `deep` 0.65–1 lets
-  giants reach the ceiling often.
-- **Subsidence** weaker than now (SUB_R 2.0, half the effects) → walls of medium towers; the current
-  strength spaces them.
-- **The start's clearance** as a radius (2·P·1.7 + 2.5 km) emptied 10–20 km; now only bubbles near the
-  start column are dropped. A huge tower right ahead of the start blocks the sunset and looks dull
-  (backlit): the spawn draw puts strong cells to the right of the sun.
-- **Shards and teardrops**: small bubbles in coarse volumes (512 m cells) become polyhedral fragments →
-  `minBR` 200/900 m, and small bubbles dropped whole (a per-piece size filter left heads floating
-  without their wakes).
-- **Pyramids and spires on heaps**: 2D domes steeper than the slope limit get raised into cones; domes
-  are at most h/r ≈ 0.65.
-- **Heaps at the slope limit** (2026-11): a heap grown on another came down to the sea wherever it
-  reached past its parent (h/r up to 2), and the profile drops most of its height in its outer third
-  (the steepest flank 2.3–3.1 × h/r): 40% of heaps met the volumes' slope limit, which cut them into
-  flat faces with straight corners (a box in `side`). Now a heap is widened, not lowered, until its
-  steepest flank is under 1.8 (none reaches the limit), and heaps blend over 0.25h + 40 m (a saddle,
-  not a V a cell wide). Rounding the narrow valleys' floor changed nothing there; a slope limit over
-  16 directions neither (the limiter wasn't what showed).
-- **The bubble budget**: the bake loops over every gathered bubble per texel; 14 times as many bubbles
-  (a first try) would have been a disaster: prune, minimum sizes, one wake lump for small bubbles. Now
-  ≈ 5,600 bubbles in a 120 km box around the start, per bake block at most ≈ 1,800 of the 4096 cap.
-- **The coarse level** must take bubbles from coarse cells (`gatherBubbles(..., coarse)`), or the first
-  frame grows everything in full across 524 km.
-- **The distance-volume bakes as compute shaders** (a slice an invocation, also with each workgroup
-  loading the bubbles into shared memory once): no faster than the fragment pass that writes 8
-  slices at once, often slower (L1 1.3–5×, L2 from 2× slower to 2× faster as the clocks drifted): it
-  looks at each bubble once for all 8. The shadow volume (one long march a texel, no bubbles) is
-  ~2.5× faster as compute, and is one now.
-- **The clipmap levels in one stacked 3D texture and a 2D array of column maps** (a level picked by
-  index, no branches in the trace): the trace 5–7% slower, and the stacked z coordinate shifts the
-  filtering (up to 10 levels on some pixels). The branches cost nothing measurable.
-- **The ambient light as a read-only storage buffer in the trace**: ~4% slower than the same buffer
-  bound as a uniform buffer (Chrome on Windows, FXC): `uniform` in `render/gpu.js`'s BUFFERS.
-- **Timing on this laptop GPU**: its clocks drift between runs (the same bake 2× apart), and a
-  page that waited idle before its frames runs them slower. Compare builds interleaved, A B B A, over
-  a few hundred frames, never two separate captures.
-- **Tests compare the world's sums, not a hash**: Math.sin, exp and pow round their last bit
-  differently between Node versions (the recorded hash was off on Node 24 while every part agreed to
-  12 digits).
-- **The light balance** (sun against sky, 2026-11): sky light ×1.95 plus a warm sea fill in every
-  direction made shade nearly as bright as sunlit faces (a milky, flat look; the darkest 1% at sRGB
-  80–105). At a 5° sun the sky gives a sunlit face's light /20–40; the sky now enters at ×1. Deep
-  scattering must scale with how squarely the sun enters the surface (`facing`), or grazing-lit tops
-  glow as brightly as faces turned to the sun (flat lit areas).
-- **The shadow volume as one channel through everything**: counted from the light march's end, the
-  cloud a texel sits in included, it gave backlit towers dark faces, but as a plain e^−τ it blacked
-  out the inside of clouds (light diffuses through one body of cloud, ~1/(1+0.11τ)). Two channels:
-  that cloud, and the clouds beyond. Its own-cloud channel in 768 × 360 m texels banded shaded tower
-  faces: the trace's march now follows its own cloud to 6.3 km through the large shapes. Long point
-  steps can't carry other clouds' shadows (they hit or miss a tower by the jitter: speckled, weak
-  cast shadows); those stay the volume's (200–320 m steps), from 1.4 km on.
-- **Soft rims**: a 30–80 m linear density ramp, erosion as a share of it, σ = 0.035/m: near clouds
-  out of focus (not the trace's resolution: a full-resolution trace looked the same). Now σ 0.07, a
-  ramp about a trace pixel wide on the tops, erosion a fixed depth. A 2-pixel ramp instead of 1.25
+- **A smooth "sand dune" sea** (before the legs, the author): billow strength tied to restlessness
+  (≈ 0 over most of the sea) and ridged noise (`1 − |n|`) made smooth hills with sharp crests. The
+  sea always overturns: strength ~1 everywhere, `|n|` (rounded tops, creases).
+- **The air's levers on towers** (before the legs): an inversion too strong in moderately restless
+  air left towers only at I ≈ 1 (too few, too small), too weak "foam walls" of medium heaps; an
+  equilibrium level by I^1.5 kept almost every tower mid-level (I^0.5 with `deep` lets giants reach
+  the ceiling); subsidence weaker than now (SUB_R 2.0, half the effects) made walls of medium towers.
+- **A continuous buoyancy at the equilibrium level** (leg 6): tops flatter than 0.45 15 → 13–14%
+  however it was shaped (no head near `el` was flat), and the big pulses overshot into heads of
+  4 km radius (a 13–15 km slab over `start`), or with less energy below `el`, 10% fewer towers over
+  6 km. **Ice tied to the column's life**: no change, the wide tops sit under 8 km.
+- **Rounder heads** (before the legs): rounder everywhere, the sea's heaps grew taller and steeper,
+  into the slope limit's boxes (`geometry`'s pointed cube); crowns rooted into the head they burst
+  from became narrow columns (battlements in `high2`, polyhedra in the coarse volume); pressed very
+  round (stable air at a fifth), a head under the ceiling turned a pill with sky beneath it (`seed3`).
+- **Heaps at the slope limit** (before the legs): 2D domes steeper than the volumes' slope limit
+  came out cones; a heap grown on another came down to the sea past its parent (h/r up to 2), its
+  profile dropping most of its height in its outer third, and 40% of heaps met the limit, cut into
+  flat faces with straight corners (a box in `side`). Rounding the narrow valleys' floor, or a
+  limiter over 16 directions, changed nothing: the limiter wasn't what showed.
+- **Shards and floating heads** (before the legs): small bubbles in 512 m cells became polyhedral
+  fragments; dropping small pieces one by one left heads floating without their wakes.
+- **The start's clearance as a radius** (2·P·1.7 + 2.5 km, before the legs) emptied 10–20 km. A
+  huge tower right ahead of the start blocks the sunset and is dull, backlit.
+- **The bubble budget** (before the legs): the bake loops over every gathered bubble per texel; a
+  first try with 14 times as many bubbles would have swamped it (stats.js prints the load).
+
+### The billows and the edge
+
+- **Billows of spheres** (before the legs, the author: "a 3D render of foam and clay"): four sphere
+  lattices made every bulge a ball with its own highlight (bubble wrap on tower walls, balls under
+  overhangs), and detail only on the 640 m lobes' caps left the near sea smooth dough. Near the
+  camera (80 and 40 m) a sphere clipped to its shell, with crisp rims, is a flat disc glowing evenly
+  (bokeh).
+- **Billows without a lattice** (leg 6): spheres of power-law sizes, sparse and clustered, as much
+  surface covered: the near sea smooth swells with lone small balls (`start`, `down`); milder, still
+  smoother, with compact puffs floating over heaps (`giant`), the far grape texture unchanged.
+- **Billows of one size on every bubble** (before the legs, the author: "puffs all one size"): a
+  400 m crown carried lobes as big as a 4 km head's, one stamped texture. Without the 640 m turrets
+  a surface reads as smooth dough (`start`'s near sea, `side`); a billow scale for heaps by their
+  height took the heaps' turrets: dough again.
+- **Shells and density** (before the legs): bulges far flatter than wide (shell ≈ 1/6 of the radius)
+  read as smooth swells, 1/3–1/2 as cauliflower; a sparse field leaves bare pits, dense everywhere
+  sponge; dense large and looser small, the small lower and fading with distance, cauliflower.
+- **Paraboloid domes** (before the legs) read as gentle hills, no outline against the dome behind.
+- **Taller 320 and 160 m domes** (×2, before the legs): bubble wrap on towers a few km off
+  (`close`); without `dome`'s fade, lit balls floating over the sea.
+- **The finest domes clustered on the turrets' caps near the camera** (before the legs): the near
+  sea went doughy (`away`, `side`); unclustered past ~1.5–5 km they read as a carpet (frogspawn).
+- **Fewer billows under bellies and overhangs** (by the large shapes' slope, before the legs): flat
+  shelves where the slope steps between the volume's layers, and big lobes turned smooth boulders.
+- **The largest lobes in cloudSDF** (2560 m cells, before the legs): their 500 m in the skip bound
+  cost the trace 40–80% near towers; on the sea they raised new towers before the camera, on
+  fragments balls floating in the sky.
+- **Erosion as form** (before the legs): 30 m of noise eaten into the edge read as out of focus,
+  frozen and at full resolution alike, because the light never sees it; form belongs in the
+  distance field, where the light march and the sky taps see it.
+- **Soft rims** (before the legs, σ 0.035/m): a 30–80 m ramp, erosion as a share of it: near clouds
+  out of focus (a full-resolution trace looked the same). An outline of 2 pixels instead of 1.25
   hardly calms the shimmer and gives the softness back.
-- **Near-camera sphere octaves** (80 and 40 m): with crisp rims each bulge clipped to its shell is a
-  flat round disc that glows evenly (bokeh); taller shells are still discs. The domes of the detail
-  volume carry that scale now. Fine billows on their parents' caps (onCap) beat popcorn.
-- **Fold occlusion** (one tap up and back toward the camera): a 0.2 floor turns shade into gravel;
-  0.4. A tap straight up can't tell a fold from a wall (it lands on a vertical wall).
-- **TAAU at rest**: a wider clamp box alone barely calms crisp rims; the blend rate is what flickers
-  (a rim pixel swinging ~150 levels × α 0.05). Halving α at rest did it.
-- **Tried, no visible gain, not kept**: the HG + Draine droplet phase (Jendersie & d'Eon 2023) for
-  single scattering (deep scattering and the glare dominate); jitter animated by position (Jimenez;
-  the screen-door is something else, see known issues, and shimmer rose a little); sharper TAAU by
-  the nearest sample (resolution isn't what limits the look; motion smear can't be judged in stills).
-- **Aerial perspective per channel** (the horizon sky × (1 − T) per colour): toward the sun all sank
-  into blue, though that sky is golden because its blue was lost on the long path. The veil's amount
-  is now the transmittance's luminance; the cloud's own light still loses blue first.
-- **Exposure 17, or ACES alone**: washes the glow toward the sun into a milky veil (16.5 too); the
-  tone curve is hue-preserving through the mid-tones (golden-hour peach), the brightest highlights
-  per channel (cream).
-- **Billows of spheres** (2026-11, the author: "a 3D render of foam and clay"): four sphere lattices
-  made every bulge big enough to see a ball with its own highlight (bubble wrap on tower walls,
-  balls hanging under overhangs), and detail only on the caps of the 640 m lobes left the near sea
-  smooth dough. Now the two big lattices are bent out of round in the bake (the turrets sparse, of
-  many sizes) and domes push the surface out below them, down to 8 m; every octave grows everywhere,
-  more on the tops of the one before.
-- **Paraboloid domes** read as gentle hills, without outlines against the dome behind (soft, out of
-  focus); sphere caps give each an edge.
-- **Erosion as form**: 30 m of noise eaten into the edge near the camera (and a 14–30 m ramp) read as
-  out of focus, frozen and at full trace resolution alike, because the light never sees it. Form
-  belongs in the distance field, where the light march (from 10 m now, the view's detail in its
-  first three steps) and the sky-light taps (10 m) see it; erosion only frays the edge.
-- **How squarely a face meets the sun, over 15 m**: every small crease went dark (pumice); over the
-  first ~50 m of the light march (light spreads that far inside cloud). The diffusion floor on faces
-  turned from the sun: 0.35 made shade brown; 0.1.
-- **Fewer billows under bellies and overhangs** (by the large shapes' vertical slope, from the
-  clipmap): the slope steps between the volume's texel layers (flat shelves stacked on tower faces)
-  and big lobes turned smooth boulders; reverted. The balls under overhangs went with the spheres.
-- **Tone curve per channel from the mid-tones up** (2026-11): sunlit orange came out tan, sandstone
-  (lit faces at sRGB 200,165,127, saturation 0.35).
-- **The light march's jitter** (2026-11): each step at a random point per pixel flipped in and out of
-  a bulge beside the path from pixel to pixel: the screen-door on near clouds (the IGN pattern; at a
-  5° sun the 60–800 m steps and the 1.2 km steps through the large shapes decide lit or shadowed).
-  Every step now at its middle, the same for every pixel; no contour rings showed. Averaging each
-  step's occupancy (half at the surface) instead darkened the sea's lit tops: the path skims them,
-  and the air just above counted as cloud.
-- **Diffusion by the small-scale facing** (over 60 m) darkened every crease (solid, like dough) and
-  still lit a tower's far side orange (brown shade). Now mostly by the side of the large shape (over
-  400 m); deep inside, neutral.
-- **Saturation in the final pass** turned the golden haze toward the sun into an orange dust band:
-  it is in the clouds' own light now (CLOUD_SAT). Shade tinted ×1.45 blue with ×1.3 saturation was
-  navy at a fifth of the lit side (reviews: luminous lavender grey, 40–50%); now ×1.2 (AMB_K, 1.4 then,
-  went back to 1 once diffusion lit the shade: leg 2). Lifted further (×1.28, AMB_K 1.55), the shade turned periwinkle and the lit
-  towers lost their folds (`tower`'s lit face: luminance SD 36 → 18).
-- **The in-cloud mist's density variations near every cloud** (its first 120 m, within 900 m of the
-  camera) made near surfaces fog: now only while the camera is in cloud.
-- **Taller 320 and 160 m domes** (×2): bubble wrap on towers a few km off (`close`); only the detail
-  volume's domes are taller. Taller domes without `dome`'s fade grew lit balls floating over the sea.
-- **The largest lobes in cloudSDF** (2560 m cells): their 500 m in the skip bound cost the trace
-  40–80% near towers; grown on the sea they raised new towers before the camera, on fragments balls
-  floating in the sky. Now baked into the clipmaps, well above the sea and near massive bubbles.
-- **A fringe outside the surface for silver linings** (thin cloud 40 m out, lit forward, integrated
-  along the approach strides): rays toward the sun skim the sea's tops through it for kilometres:
-  glowing veils, and capped per ray, sheets with hard edges, like film.
-- **Blending the clipmap levels over a handover** instead of the dither: no lattice, but the trace
-  12–18% slower in every view (also over 7–10 km alone, also reading the second level only near a
-  surface). The dither stays.
-- **Billows of one size on every bubble** (2026-11, the author: "puffs all one size"): the 1280 and
-  640 m octaves grew alike on a 4 km head and on a crown of 400 m, which became a ball of the
-  lobes' size: one stamped texture. Now each tower bubble carries its billow scale and liveliness
-  (world/cells.js), baked beside the distance; lobes and turrets only where they fit. Without the
-  turrets (640 m) a surface reads as smooth dough (`start`'s near sea, `side`): a small bubble
-  gets turrets of half the size instead, and the sea keeps all its octaves. A billow scale for
-  heaps by their height took the heaps' turrets: dough again.
-- **The billow scale in the distance volume** (rg16float): the trace 2–12% slower from the format
-  alone (the empty-space skipping reads it everywhere); a volume of its own, read only where
-  billows are built. Blended over a distance that grew with the level's cell size, the levels
-  disagreed and the handover lattice grew stronger (`side`): the same 250 m in every level.
-- **Rounder heads** (2026-11): weakly stable air pressed almost every stopped head to a flat disc
-  (stacked hats, loaves). Rounder everywhere, the heaps on the sea grew taller and steeper and the
-  slope limit cut them into boxes (`geometry`'s pointed cube): only tower heads are rounder, and
-  the test that makes a pulse a tower is unchanged. Crowns rooted down into the head they burst
-  from (to stop balls perching) became narrow columns: flat-topped battlements (`high2`) and
-  polyhedra in the coarse volume. Pressed very round (stable air at a fifth of now) a head stopped
-  under the ceiling turned a pill with sky beneath it (`seed3`).
-- **The finest domes clustered on the turrets' caps near the camera**: the near sea went doughy
-  (`away`, `side`); they cluster only from ~1.5–5 km on, where they read as a carpet (frogspawn).
-- **The haze in the sun's path and the sky** (2026-11: the trace's haze, 2.6e-5/m over 6 km, as
-  aerosol in the atmosphere's tables and the sun's colour): the sun at the sea's height ×0.27,
-  toward the sun a white veil over half the frame, milky everywhere even at ×2–2.5 exposure. The
-  veil stays the trace's alone.
-- **Other clouds' shadow on the diffusion as e^−τ** (one rule for a heap 500 m off and 2 km off):
-  every heap's shadow a hard blot of paint (`side`, `start`); light diffusing under a surface fills a
-  small shadow. Clouds nearby take the direct light; the diffusion only those past ~100 m thin.
-- **An all-or-nothing choice in the diffusion** (which step the path leaves its cloud in, the slope
-  it crosses there, own cloud or another): flat blots with hard edges across the heap tops (`down`,
-  "decals"). A constant slant for light from far off instead: milky, the relief gone. Smooth weights.
-- **Column data per light-march step** (the review's bug 8): +10–13% of the trace (A B B A, column
-  data alone as much: the samples take the detail branches more often), the change hard to see.
-- **The approach's floor at two trace pixels everywhere** (leg 3): shimmer at rest less than half,
-  but the trace +27–46% (grazing rays over the sea take every step that small). Only near a surface,
-  by how deep a stride can miss (2d plus two outline widths), nearly as much for +8–10%; with half
-  an outline's margin instead, +17%. **More refinement at the entry** (6 Illinois steps, not 3):
-  shimmer a further 10–20% down for +5% of the trace. **The detail and the strides following a finer
-  trace** (lod and the approach's floor by its own pixel, at 1920×1080): `tower`'s lit face in finer
-  cauliflower and shimmer 0.3× leg 2's rather than 0.45×, but the trace +30% against leg 2 (the
-  domes reaching twice as far +8%, the strides +10%), where capped at a 270-row trace's pixel it
-  costs +11%, as at 960×540. The lever, if the author would trade resolution for it: `pixC`.
-- **Stand-ins for a tower's small bubbles in the coarsest level** (leg 4: those under its 900 m
-  merged into a few ellipsoids over what they reach, as wide as the volume they fill allows): their
-  towers in L2 at 0.69–0.79 of their height in L1 instead of 0.68–0.73, the cloud +0.3–0.6%, but
-  L2's bubbles a block +12–30% (wider still, at least 1.1 km, about the same). Each tower's head
-  (≥ 900 m) already stands there; what is left is L2's 2 km columns shaving a 1 km head.
-- **Small domes widened to 0.6 of a cell in the coarse levels** (L0's share, not 0.9): L0 against L1
-  |Δ| p90 66 → 48 m, but across a hard switch the render barely changed (`away` 5.6 → 5.4% of the
-  pixels differ by more than 2 levels), and coarser cells hold narrower domes as facets.
-- **The light from the finer level across a handover** (the light march and the sky taps in L0
-  where the dither gave the sample L1): the grain at 7–10 km as strong or stronger: the light point
-  lies on the coarser level's surface, a little inside or outside the finer one.
-- **A thinner edge** (leg 5: 30% of the density at the surface, full 60 m in): the near rims glowed
-  most, but side-lit heaps turned soft pillows (their domes' shading flat, `start` right of the
-  bird) and `close`'s domes washed out: a dome of 20–60 m lets the light through it. 65% over 30 m
-  kept the domes and hardly lit the rims; 50% over 20 m, the rims less than over 40 m for the same
-  softening. The edge's thinness and the domes' crispness are one lever: only the author can set it
-  (CLOUD_EDGE0, CLOUD_EDGE_W).
-- **A continuous buoyancy at the equilibrium level** (leg 6, the review's step: it jumped from
-  +0.3·bmax to −0.03 there): tops flatter than 0.45 15 → 13–14% however it was shaped, since no
-  tower's head near `el` was flat; but the big pulses (3.5 km bubbles) overshot further and settled
-  into heads of 4 km radius, a 13–15 km slab over `start`, or (with less energy below `el`) 10%
-  fewer towers over 6 km. Not kept: the flat heads were those pressed by the air far past `el`.
-  **Ice tied to the column's life** (the review's suspect for mushrooms): no change, the wide tops
-  sit under 8 km.
-- **Billows without a lattice** (leg 6): spheres of power-law sizes (many small, few large), a few
-  candidates a cell kept by a slow field (sparse, clustered), as much surface covered as the
-  lattice's: the near sea turned smooth swells with lone small balls on them (`start`, `down`'s
-  bare heaps). Milder (one a cell but anywhere in it, power-law sizes over a floor, half of them
-  with a smaller one on its upper side): the near sea still smoother, the small ones floating over
-  heaps as compact puffs (`giant`), the far towers' grape texture unchanged (`high2`). The lattice,
-  bent by the warp, stays; the octaves already put small on big (onCap).
-- **CLOUD_SAT 1** (2026-11): lit faces tan (saturation 0.40 → 0.31). **The sky light's tints off**: the
-  shade neutral grey (saturation 0.08), on the way to brown. Both stay.
+- **A thinner edge** (leg 5): 30% of the density at the surface, full 60 m in: the near rims glowed,
+  but side-lit heaps turned soft pillows and `close`'s domes washed out (a 20–60 m dome lets the
+  light through); 65% over 30 m kept the domes and hardly lit the rims. The edge's thinness and the
+  domes' crispness are one lever, the author's (CLOUD_EDGE0, CLOUD_EDGE_W).
+
+### The light
+
+- **The light balance** (before leg 2's light): sky ×1.95 and a warm sea fill in every direction made
+  shade nearly as bright as sunlit faces (milky, flat; the darkest 1% at sRGB 80–105). At 5° the
+  sky gives a lit face's light /20–40. Light not scaled by how squarely the sun enters lit grazed
+  tops as brightly as faces turned to it. The sea's warm bounce at full weight on downward facets:
+  dirty brown blotches.
+- **The scale of a surface's facing** (before leg 2's light; its rebuild kept the principle): over
+  15 m every small crease went dark (pumice); the diffusion by the facing over 60 m darkened every
+  crease (dough) and lit a tower's far side orange (brown shade); a diffusion floor of 0.35 on faces
+  turned from the sun made shade brown.
+- **The light march's jitter** (before the legs): each step at a random point per pixel flipped in
+  and out of a bulge beside the path: the screen-door on near clouds. Averaging each step's
+  occupancy instead darkened the sea's lit tops (the path skims them; the air above counted).
+- **One channel for all the cloud toward the sun** (before the legs, the shadow volume): e^−τ
+  through the cloud a point is in blacks out the inside of clouds, as light diffuses through one
+  body (~1/(1+0.11τ)): its own cloud and the others are two channels since. Its own channel in
+  768 × 360 m texels banded shaded tower faces; march steps hundreds of metres long hit or miss
+  other clouds by the jitter (speckled, weak cast shadows).
+- **Other clouds' shadow on the diffusion as e^−τ** (leg 2): one rule for a heap 500 m off and
+  2 km off made every heap's shadow a hard blot of paint (`side`, `start`): light diffusing under
+  a surface fills a small shadow.
+- **An all-or-nothing choice in the diffusion** (leg 2: which step the path leaves its cloud in,
+  the slope there, own cloud or other): flat blots with hard edges across the heap tops (`down`,
+  "decals"); a constant slant for light from far off: milky, the relief gone.
+- **Column data per light-march step** (leg 2): +10–13% of the trace, the change hard to see.
+- **The light from the finer level across a handover** (leg 4): the grain at 7–10 km as strong or
+  stronger: the light point lies on the coarser level's surface, inside or outside the finer one.
+- **The sun map, first tries** (leg 7): the optical depth interpolated between texels put a
+  shadow's edge where a tenth of the way to the deep one was, a staircase (store the light that gets
+  through); the cloud's edge blurred over 64 m, at 5° a ray passing over a heap's top runs within
+  the blur for hundreds of metres: shadows as if from clouds 30 m taller, the near sea dark; the
+  lookup snapped to a texel: blocks near the camera; a step's share inside from a distance and its
+  slope took a bound beside a distance for a steep slope (cap the slope at 1).
+- **Fold occlusion** (before leg 2's light): a tap up and back toward the camera; a 0.2 floor turned
+  shade into gravel; a tap straight up can't tell a fold from a wall.
+- **A fringe outside the surface for silver linings** (before the legs, thin cloud 40 m out, lit
+  forward): rays toward the sun skim the sea's tops through it for kilometres (glowing veils; capped
+  per ray, sheets with hard edges, like film).
+- **The in-cloud mist's variations near every cloud** (within 900 m of the camera, before the legs):
+  near surfaces fogged.
+
+### Colour, haze and tone
+
+- **The shade's colour and the film's saturation** (before leg 2's light, and leg 2): saturation in
+  the final pass turned the golden haze toward the sun into an orange dust band; shade ×1.45 blue at
+  ×1.3 saturation was navy at a fifth of the lit side (reviews: luminous lavender grey, 40–50%);
+  lifted further (×1.28, AMB_K 1.55) periwinkle, and the lit towers lost their folds (`tower`'s
+  luminance SD 36 → 18). Leg 2: CLOUD_SAT 1 made lit faces tan (saturation 0.40 → 0.31); the sky
+  light's tints off, the shade neutral grey, on the way to brown.
+- **Aerial perspective per channel** (before the legs): toward the sun all sank into blue, though
+  that sky is golden because its blue was lost on the long path.
+- **The haze in the sun's path and the sky** (leg 2, as aerosol in the atmosphere's tables): the sun
+  at the sea's height ×0.27, a white veil over half the frame toward the sun, milky even at ×2–2.5
+  exposure.
+- **Exposure and the tone curve** (before the legs): exposure 17 (16.5 too), or ACES alone, washed
+  the glow toward the sun into a milky veil; a curve per channel from the mid-tones up made sunlit
+  orange tan, sandstone (sRGB 200,165,127).
+
+### The trace and its cost
+
+- **The approach's floor at two trace pixels everywhere** (leg 3): shimmer at rest halved, the trace
+  +27–46% (grazing rays over the sea take every step that small); near a surface only, nearly as
+  much for +8–10%. Six refinement steps at the entry, not three: shimmer 10–20% down for +5%. The
+  detail and the strides following a finer trace (1920×1080): finer cauliflower and less shimmer
+  for +30%; capped at a 270-row trace's pixel, +11%. The lever, if the author would trade
+  resolution for it: `pixC`.
+- **A generous billow bound** (before the legs): `shellOf` 460a + 150 cost ~10% more than 400a + 120,
+  no visible difference. Crisp rims cost nothing.
+- **TAAU at rest** (before the legs): a wider clamp box alone barely calms crisp rims; the blend rate
+  is what flickers (a rim pixel swinging ~150 levels × α 0.05).
+- **Blending the clipmap levels over a handover** instead of the dither (before the legs): no
+  lattice, but the trace 12–18% slower in every view, also blending over 7–10 km alone, also
+  reading the second level only near a surface.
+- **The clipmap levels in one stacked 3D texture** and a 2D array of column maps (before the legs):
+  the trace 5–7% slower, the stacked z shifting the filtering (up to 10 levels).
+- **The billow scale in the distance volume** (rg16float, before the legs): the trace 2–12% slower
+  from the format alone (the empty-space skip reads it everywhere); blended over a distance growing
+  with the cell size, the levels disagreed and the handover lattice grew (`side`).
+- **Stand-ins for a tower's small bubbles in the coarsest level** (leg 4): their towers in L2 at
+  0.69–0.79 of their height in L1 (0.68–0.73 without), L2's bubbles a block +12–30%.
+- **Small domes widened to 0.6 of a cell in the coarse levels** (leg 4): L0 against L1 |Δ| p90
+  66 → 48 m, the render across a hard switch barely changed; coarser cells hold narrower domes as
+  facets.
+- **Tried, no visible gain** (before the legs): the HG + Draine droplet phase (deep scattering and
+  the glare dominate); jitter animated by position (Jimenez; shimmer rose a little); sharper TAAU by
+  the nearest sample (motion smear can't be judged in stills).
+
+### The GPU
+
+- **The distance-volume bakes as compute shaders** (before the legs): no faster than the fragment
+  pass writing 8 slices at once, often slower: it looks at each bubble once for all 8. The shadow
+  volume (one long march a texel) is ~2.5× faster as compute.
+- **Long serial work in few invocations** (leg 7, the sun map's walk a ray): two columns took as long
+  as eight (0.3 ms), the GPU waiting on one texture read after another; spread over many
+  invocations, it costs by the work.
+- **The ambient light as a read-only storage buffer in the trace** (before the legs): ~4% slower than
+  a uniform buffer (Chrome on Windows, FXC).
 
 ## Known issues and ideas
 

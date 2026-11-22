@@ -331,9 +331,12 @@ Smooth before sharp: dynamic resolution keeps the GPU under 12.5 ms a frame wher
 timestamp queries, else it aims at the display's frame rate by frame times (`render/resolution.js`),
 and detail gives way first. Phones get a lower resolution cap and cloud scale. Real computers and
 phones report through the benchmark (`?bench`, §3); the numbers in hand are in PLAN.md (known issues). CI's
-SwiftShader timings are only relative. Watch the CPU too: the world generator runs in a worker, but the
-page applies what it sends within a budget of main-thread and estimated GPU time (`render/stream.js`):
-a hitch in the benchmark is a question for that budget.
+SwiftShader timings are only relative. To compare two builds on one machine, run them interleaved
+(A B B A A B, the older one in a git worktree) over a few hundred frames each (`--profile --frames
+200`): the NVIDIA laptop's clocks drift between runs (the same bake 2× apart, separate captures
+±25%), and a page that waited idle runs its frames slower. Watch the CPU too: the world generator
+runs in a worker, but the page applies what it sends within a budget of main-thread and estimated GPU
+time (`render/stream.js`): a hitch in the benchmark is a question for that budget.
 
 ## 10. Definition of done
 
@@ -346,7 +349,7 @@ a hitch in the benchmark is a question for that budget.
 - The before/after `--compare` sheet has been opened and reviewed, and you can say what changed.
 - Something new worth watching has a view in `tools/views.js`.
 - This file is updated if the structure, commands, conventions or contract changed.
-- PLAN.md is updated: an approach that failed goes in its decisions, with why; what is still open in
+- PLAN.md is updated: an approach that failed goes in its decisions, with why and when; what is still open in
   its known issues; what got fixed comes out. Commit and push only when the user asks; pushing to
   `main` publishes the piece.
 
