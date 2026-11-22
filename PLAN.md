@@ -76,7 +76,8 @@ tools/light/reference.js --shade`). Before it the near shaded sea was navy and f
 4. The author (2026-11-22): between the shade's colours (A as now, B the tints off, C the
    saturation on the sun's light alone) they barely see a difference: A stays (the violet on the
    sides turned from the sun is the nearest to lavender; B and C only take blue out). `under` and
-   the bird in shade stay as they are, physically right. Noted for leg 9: flying through dark
+   the bird in shade stay as they are, physically right. The trace's +8–12% a frame stays (dynamic
+   resolution takes it; leg 12's devices will say more). Noted for leg 9: flying through dark
    clouds the screen turns bright (step 1).
 
 **Leg 9: in cloud and at its edge.** `inside` and `skim` are flat cards, brown and mauve grey:
