@@ -61,9 +61,17 @@ tens of metres, and it is that card.
 2. The first tens of metres, where the medium is thin (its profile, the erosion): shreds and holes
    around the camera that let the lit tops and the sky through, the fog brighter toward the sun;
    going in and coming out as a passage, not a cut.
-3. Deep inside a tower: slow variations, the mist streaming past. Stills can't judge it: the motion
+3. The camera at a cloud's edge, only partly in it: it looks weird (the author, 2026-11-22). A
+   view there first (half the frame in cloud, half looking out), to see what does. The first
+   suspect, from the code: `inCloud` is one number for the whole frame (the density at the
+   camera's point, full some 15 m under a surface, smoothed over a third of a second), and by it
+   every ray's cloud within 160 m of the camera is thinned (to a fifth at the lens), all shade in
+   view loses its blue and its saturation, and the whole frame's exposure rises, the open half's
+   too. (The mist puffs take the density where they float: none outside the cloud.) The second:
+   the surface that cuts through the camera is crisp to 2 m, a hard line across the view.
+4. Deep inside a tower: slow variations, the mist streaming past. Stills can't judge it: the motion
    strip, then the author's eyes.
-4. `skim`'s pose over the billows' top (not the sea's top, 170 m under them there), so the view
+5. `skim`'s pose over the billows' top (not the sea's top, 170 m under them there), so the view
    shows what its brief asks; the `skim` flight starts there too, and its log changes once.
    Touches the trace near the camera and the probe (the bird's in-cloud test): flights compared.
 
@@ -604,6 +612,9 @@ they hold until the author says otherwise.
   mist (the probe's estimate runs brighter than what the trace draws there, so the gain stays low);
   the mist streams past only as the bird flies. `under` (an anvil's underside) is dark navy now: right
   for shade at sunset, but judge it against its brief.
+- **At a cloud's edge**, the camera only partly in it, the view looks weird (the author,
+  2026-11-22). No view shows it yet, so what looks weird isn't pinned down; what treats the frame
+  as in cloud is one number for all of it (`inCloud`, render/probe.js: leg 9, step 3).
 - **`giant` and `close` miss their briefs** (presets.js, clearOf): `giant` stands 62 km from its
   tower (25 km clear of every tower: in a crowd, far out), which fills about an eighth of the
   frame's height where it should dominate. `close` stands 17.4 km from the tower `tower` sees from 9.4 km
