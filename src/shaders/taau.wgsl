@@ -90,7 +90,7 @@ fn highLayer(k: i32, dir: vec3f, tL: f32, behind: vec3f) -> vec4f {
   return vec4f(c * a, a);
 }
 
-struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
+struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f, @location(2) fog: f32 }
 @fragment fn fs(@builtin(position) pos: vec4f) -> Out {
   let uv = pos.xy / u.res;
   let ndc = uv * 2.0 - 1.0;
@@ -119,12 +119,19 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
   m2 /= 9.0;
   let sd = sqrt(max(m2 - m1 * m1, vec4f(0.0)));
   // (the clouds' depth, km, to reproject the history by; and how much light gets through the camera's
-  // own cloud, around it: whatever the depth, that fog lies in front of the high layers)
+  // own cloud, here and its range around: whatever the depth, that fog lies in front of the high layers)
   let ip = clamp(vec2i(lpr), vec2i(0), vec2i(u.lowRes) - 1);
   let cdep = textureLoad(tCurDepth, ip, 0).rg;
   var dkm = cdep.x;
+  var fogLo = cdep.y;
+  var fogHi = cdep.y;
   for (var y = -1; y <= 1; y++) {
-    for (var x = -1; x <= 1; x++) { dkm = min(dkm, textureLoad(tCurDepth, clamp(ip + vec2i(x, y), vec2i(0), vec2i(u.lowRes) - 1), 0).r); }
+    for (var x = -1; x <= 1; x++) {
+      let d = textureLoad(tCurDepth, clamp(ip + vec2i(x, y), vec2i(0), vec2i(u.lowRes) - 1), 0).rg;
+      dkm = min(dkm, d.x);
+      fogLo = min(fogLo, d.y);
+      fogHi = max(fogHi, d.y);
+    }
   }
   var prel = dir * dkm * 1000.0 + u.camDelta;
   if (dkm > 5000.0) { prel = dir * 1.0e7; }
@@ -136,6 +143,7 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
   // one jittered sample for the frames until the history has more; the first frame keeps its own
   // sample, which the slow blend carries for many frames)
   var res = select(cur, mix(m1, cur, 0.5), u.histFrames > 0.5);
+  var fog = cdep.y;
   if (valid > 0.5) {
     let hist = sampleHist(puv);
     // how far the history lies from where it would at infinity, in pixels: the parallax of the
@@ -158,7 +166,16 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
     // (and over the history's first 8 frames, their plain mean: from the start the first frame's one
     // sample would linger for seconds at the slow rate)
     let alpha = max(mix(0.035, 0.38, saturate(motion / 12.0)) * (0.55 + 0.45 * wcur), select(0.0, 1.0 / (u.histFrames + 1.0), u.histFrames < 8.0));
-    res = mix(hc, cur, alpha);
+    // the camera's own fog the history holds, against the range of it around now: past it by more
+    // than a drift through thin fog, the history is stale, and gives way to the neighbourhood's mean
+    // (a jittered sample there was grain while the fog cleared). Out of a cloud's edge, the fog it
+    // held lingered on the far clouds' outlines, where the clamp box spans cloud and sky: a pale rim
+    // for a second, as nothing moves there to quicken the blend. At the shreds' edges the range
+    // spans them.
+    let hFog = textureSampleLevel(tHistFog, sLin, puv, 0.0).r;
+    let stale = saturate(8.0 * (max(max(fogLo - hFog, hFog - fogHi), 0.0) - 0.06));
+    res = mix(mix(hc, m1, stale), cur, alpha);
+    fog = mix(mix(hFog, cdep.y, stale), cdep.y, alpha);
   }
   let sky = skyColor(dir);
   // high layers: behind the clouds they join the sky, in front of them they veil the clouds
@@ -176,5 +193,5 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
   if (t1 > 0.0) { if (t1 < cd) { frontL = l1.rgb; frontT = 1.0 - l1.a; } else { back = back * (1.0 - l1.a) + l1.rgb; } }
   if (t0 > 0.0) { if (t0 < cd) { frontL = l0.rgb + frontL * (1.0 - l0.a); frontT *= 1.0 - l0.a; } else { back = back * (1.0 - l0.a) + l0.rgb; } }
   // (the scene's alpha: how much sky shows past the clouds, the sun rays' mask)
-  return Out(res, vec4f(frontL + frontT * (back * res.a + res.rgb), res.a));
+  return Out(res, vec4f(frontL + frontT * (back * res.a + res.rgb), res.a), fog);
 }

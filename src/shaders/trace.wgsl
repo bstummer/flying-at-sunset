@@ -82,10 +82,11 @@ struct Out { @location(0) col: vec4f, @location(1) depth: vec2f }
 
 // The camera's own cloud, where a ray starts in cloud: marched in a loop of its own, before the
 // clouds past it (carried through the main loop, its state and branches cost every ray 16-17%), from
-// the camera in steps of OWN_TAU optical depths, the same for every pixel (in a cloud entered from
-// outside, steps of up to 2 optical depths, each jittered, are averaged by the history at rest;
-// through the camera's cloud they set how much of all behind it shows, and in flight that was grain
-// over everything), each step's part past a surface taken back, until the ray is clear of cloud.
+// the camera in steps of OWN_TAU optical depths (shorter in the thin ramp at the surface), the same
+// for every pixel (in a cloud entered from outside, steps of up to 2 optical depths, each jittered,
+// are averaged by the history at rest; through the camera's cloud they set how much of all behind
+// it shows, and in flight that was grain over everything), each step's part past a surface taken
+// back, until the ray is clear of cloud.
 const OWN_TAU = 0.12;
 const OWN_CLEAR = 12.0;   // m
 // How much of a cloud's edge at depth x (m) is there, at p: wisps of the detail volume's Worley noise
@@ -187,6 +188,8 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
     var dA = -1.0;
     var tE = 0.0;
     var wS = 0.0;        // how much the cloud it went back into is lit as a surface seen from outside
+    var dLast = dCam;    // the distance at the last sample in cloud, and where (how fast a ray goes in)
+    var tLast = 0.0;
     var sTau = 0.0;      // the last step: its optical depth, the light it added, the distance at its start
     var sL = vec3f(0.0);
     var sD = 0.0;
@@ -238,7 +241,15 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
       // the main loop draws past there, so no seam shows between them)
       let dens = densityFromSDF(d, wp, 1.0, edgeW, 1.0 - smoothstep(150.0, 900.0, t)) * select(fray(wp, -d), 1.0, out);
       let sigma = dens * SIGMA;
-      let dt = clamp(OWN_TAU / max(sigma, 1e-4), 0.5, 6.0 + t * 0.02);
+      // (in the erosion's ramp, where the density rises over edgeW, steps of 0.4 of it where the ray
+      // goes into or out of the cloud as fast as it goes on, up to 0.8 where it runs along the surface:
+      // the fog is thin there, and the same long steps for every pixel stepped over its rises or onto
+      // them, a lattice of straight-edged bands across the camera's fog. 0.4 of it everywhere cost the
+      // trace a third more in cloud; uncapped along the surface, the lattice stayed)
+      let rate = clamp(abs(d - dLast) / max(t - tLast, 0.25), 0.5, 1.0);
+      dLast = d;
+      tLast = t;
+      let dt = clamp(OWN_TAU / max(sigma, 1e-4), 0.5, select(6.0 + t * 0.02, 0.4 * edgeW / rate + 0.02 * t, -d < ERODE + edgeW));
       if (dens > 0.003) {
         // (light made afresh once every 0.4 optical depths, at the sample itself, seen from inside: no
         // outline's ramp to map onto a skin)

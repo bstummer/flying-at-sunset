@@ -109,8 +109,8 @@ export function render(time, dtFrame) {
   const curVP = viewProjRot(cam.right, cam.up, cam.fwd, cam.fov, aspect);
   const readA = frame % 2 === 0;
   const sunDisk = scl(sunColorAt(cam.pos[1]), 1 / (PI * 0.0052 * 0.0052) * 0.9);
-  pass(P.taau, [readA ? T.histB : T.histA, T.scene], {
-    tCur: T.cloudCol, tCurDepth: T.cloudDepth, tHist: readA ? T.histA : T.histB, tSky: T.sky, tCirrus: T.cirrus,
+  pass(P.taau, [readA ? T.histB : T.histA, T.scene, readA ? T.fogB : T.fogA], {
+    tCur: T.cloudCol, tCurDepth: T.cloudDepth, tHist: readA ? T.histA : T.histB, tHistFog: readA ? T.fogA : T.fogB, tSky: T.sky, tCirrus: T.cirrus,
     lowRes: [R.lowW, R.lowH], lowTex: [R.lowMaxW, R.lowMaxH], res: [w, h], jitter,
     camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY],
     prevVP: prevVP || curVP, camDelta, histFrames: R.histFrames, sunDir: SUN_DIR, camPos: camR,

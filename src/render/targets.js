@@ -12,7 +12,7 @@ import { T } from './setup.js';
 export const R = { w: 0, h: 0, lowW: 0, lowH: 0, lowMaxW: 0, lowMaxH: 0, scale: TEST ? (params.scale ?? 0.5) : 0.5, histFrames: 0 };
 const HALF4 = 'rgba16float';
 export const bloomLevels = [];
-const SIZED = ['cloudCol', 'cloudDepth', 'histA', 'histB', 'scene', 'rayA', 'rayB'];
+const SIZED = ['cloudCol', 'cloudDepth', 'histA', 'histB', 'fogA', 'fogB', 'scene', 'rayA', 'rayB'];
 // the size-dependent targets of other modules (render/bird.js): their keys in T, and how to make
 // them for a canvas of w × h, in the same error scope as these
 const others = [];
@@ -35,6 +35,8 @@ function allocate(w, h) {
   T.cloudDepth = texture(R.lowMaxW, R.lowMaxH, 'rg16float');   // (the clouds' depth, and the light through the camera's own cloud)
   T.histA = texture(w, h, HALF4);
   T.histB = texture(w, h, HALF4);
+  T.fogA = texture(w, h, 'r8unorm');   // (the camera's own fog the history holds)
+  T.fogB = texture(w, h, 'r8unorm');
   T.scene = texture(w, h, HALF4);
   for (const make of others) make(w, h);
   // bloom chain

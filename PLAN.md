@@ -183,7 +183,27 @@ under an orange veil, and the picture grainy in flight.
    `inside` +3%; elsewhere the same.
 8. The author (2026-11-23): not fixed: what they see flying into an edge wasn't what step 7 found
    (it was never reproduced). P now copies the moment's pose as a view (CLAUDE.md §3, the deployed
-   page too): the next session asks for one taken right where it looks wrong.
+   page too), and they sent three, each flying out of a cloud's edge. There: a pale yellow-green
+   rim a few pixels wide along every far cloud's outline against the sky, for about a second after
+   the camera leaves the fog (before leg 9 too; step 6's blend by parallax made it a little
+   stronger). Not the trace (its frames are clean): the history. In the fog it learned "fog over
+   sky" at each pixel; out of it, at a silhouette the clamp box spans cloud and sky, so the stale
+   fog passed it, and far clouds have no parallax to quicken the blend. Now the TAAU keeps beside
+   the history how much of the camera's fog it holds (an r8 target at full resolution, blended as
+   the history is), and where that lies more than 0.06 outside the fog the 3×3 around sees now,
+   the history gives way to the neighbourhood's mean (decisions). And a lattice in the camera's fog,
+   new in leg 9: straight-edged bands and stair-steps across it (`?view=1` shows them in the
+   transmittance, faint in the image), as the camera moves a lattice crawling over the sky. The own
+   loop's unjittered steps, up to 6 m where the fog is thin and the same for every pixel, stepped
+   over the erosion's rises (4 m) or onto them: in that ramp, steps of 0.4 of it where a ray goes
+   into the cloud or out, 0.8 where it runs along the surface. Views `exit` and `exitsun` hold two of
+   the moments. Grain over the strip: `exit` 0.90 → 0.77%, `exitsun` 1.44 → 1.12, `edge` 0.42 → 0.37,
+   `entry` 0.67 → 0.62; out of cloud identical. `entry`'s lit cloud through the shreds brighter and
+   more whole (the long steps had counted fog where a ray only grazed it); `edge`'s shimmer at rest
+   0.007 → 0.021% (a few more dots on the lit tower, a few in the near fog). The far clouds just
+   out of the fog are a little softer for a second (the mean the history took while it cleared).
+   Cost: the trace in cloud (each view's first 30 frames) `edge` +3%, `entry` +6%, `exit` +7%,
+   `exitsun` +19%, `inside` 0; out of cloud the same. The TAAU +4–8% (0.01 ms a frame).
 
 **Leg 10: distance.**
 1. A coarser level of the sun map for what lies past its window (known issues): the far sea
@@ -624,6 +644,17 @@ they hold until the author says otherwise.
   fog and crisp surface, as much without the fray past the first air. Not the cause (each changed
   nothing): the own loop's step cap (240 or 2000), a softer threshold for the shreds, the camera's
   cloud ramping in over its first 8 m, finer steps in its holes.
+- **The stale fog in the history, given way otherwise** (leg 9, step 8): toward each frame's
+  jittered sample by how stale it is (×6), the rim gone, but the grain while the fog clears doubled
+  (`exit`'s neighbour 1.23 → 2.70%), ×3 still +60%; toward the neighbourhood's mean with no
+  threshold, `edge`'s world soft (its fog drifts a little each frame); half mean and half sample,
+  a faint rim for a few frames.
+- **The lattice in the camera's fog, cheaper** (leg 9, step 8): steps of 0.4 of the erosion's ramp
+  everywhere in it, the trace in cloud +16% (`exit`) to +33% (`exitsun`); within 60 m alone or
+  while the fog in front is thin, about as much (the steps go to thin fog near the camera); growing
+  faster with the distance (0.03–0.05 per m), or uncapped where a ray runs along the surface, the
+  lines back, faint. The erosion's mean at 4 points along a long step (a few texture reads instead of
+  steps): the lines stayed.
 - **Grain measured at the still alone** (leg 9, step 3): 12 frames in the history is young (1–8% of
   every view, after 2 s of straight flight 0.13–0.58%), and the bird flies straight: it read the
   start, and missed turns and dives. Over the motion strip since step 6.
@@ -773,6 +804,8 @@ they hold until the author says otherwise.
   author's eyes). The puffs and the camera's shake still go by `inCloud`, the density at the
   camera's point. Where the camera is in cloud, the history reprojects the fog by the depth of what
   shows through it (far clouds, or the sky): its own shreds near the camera may smear in motion.
+  Out of a cloud's edge the far clouds are a little soft for about a second (the history took the
+  neighbourhood's mean while the fog cleared, and sharpens at the rate at rest; leg 9, step 8).
   The shreds' edge seen nearly edge-on, a metre under a top (`entry`'s crop), is stippled at the
   trace's pixel: it may shimmer in motion (the author's eyes). `under` (an anvil's underside) is navy since leg 8:
   the sea beneath lies in the anvil's shadow for tens of km at a 5° sun, so nothing warm comes up.
