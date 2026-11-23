@@ -277,7 +277,7 @@ The tools rely on these; keep them, or change the tools with them.
   and 2). `window.__BENCH__` = `{ done, summary, legs }` once it ends; `#bench` holds the summary.
 - Globals: `window.__done`, `__error` (also shown in `#note`), `__frame`, `__png`, `__frames`, `__gpu` (with
   `?cpuprof`: per-pass GPU times summed over the run), `__log`, `__debug` (`bird`, `cam`, `R`,
-  `seaTopAt`, `cloudTopAt`, `towersNear`, `input`, `DR`, `LEVELS`, `TSVL`, `SUNMAP`, `worldStats`, `device`, `T`,
+  `seaTopAt`, `cloudTopAt`, `towersNear`, `input`, `DR`, `LEVELS`, `TSVL`, `SUNMAPS`, `worldStats`, `device`, `T`,
   `readTexture(texture, z, nz)`, `probe()`), `__BENCH__`. Elements: `#view` (the canvas, class `on`
   once shown), `#hint` (class `on`), `#touch`, `#note`, `#stats`, `#bench`.
 - Only `render/targets.js` opens out-of-memory error scopes (the out-of-memory check counts on it).

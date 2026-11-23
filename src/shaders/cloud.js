@@ -47,9 +47,12 @@ export const U_CLIP = {
 export const U_CLOUD = {
   tsvA: 'vec4f',        // shadow volume: the same as lvA
   tsvV: 'vec4f',
-  smA: 'vec4f',         // the sun map (render/sunmap.js): along the sun's way, the scale and offset of the
-  smB: 'vec4f',         //   texture's x, across it of its y; its height's (z, wrapped) scale, offset and the sun's slope
+  smA: 'vec4f',         // the sun map's fine level (render/sunmap.js): along the sun's way, the scale and offset of the
+  smB: 'vec4f',         //   texture's x, across it of its y; its height's (z, wrapped) scale, offset, the sun's slope, half a texel's z
   smV: 'vec4f',         //   its valid window (along: min, max; across: min, max)
+  smCA: 'vec4f',        // the same of its coarse level
+  smCB: 'vec4f',
+  smCV: 'vec4f',
   litA: 'vec4f',        // the lit map (render/sunmap.js): render space along the sun's way and across it of its first edge, 1 / its extent each way
   warpPh: 'vec4f',      // phases of the billow warp at the render origin
   warpPh2: 'vec2f',

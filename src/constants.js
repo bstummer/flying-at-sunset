@@ -41,12 +41,21 @@ export const CLIP_LEVELS = [
   { cell: 512, cellV: 256, nz: 56, maxD: 4000, minBR: 200, lod: 1 },
   { cell: 2048, cellV: 512, nz: 32, maxD: 12000, minBR: 900, lod: 2 },
 ];
-// The sun map's grid (render/sunmap.js): texels SM_DA m across the sun's way, SM_DV m apart in
-// height along its rays and SM_DW m along them; SM_NA, SM_NV, SM_NW of each (its height band from
-// SM_H0 up, above the ceiling); the march past it in SM_PIECES pieces
-export const SM_DA = 64, SM_DV = 32, SM_DW = 320, SM_NA = 256, SM_NV = 440, SM_NW = 64, SM_H0 = 300, SM_PIECES = 7;
+// The sun map's grids (render/sunmap.js), a fine level and a coarse one around it: texels `da` m
+// across the sun's way, `dv` m apart in height along its rays and `dw` m along them; SM_NA, `nv`,
+// SM_NW of each (the height band from SM_H0 up, above the ceiling); the first clipmap level its
+// bake reads, `lv0` (the coarse level's texels need no L0, whose window, moving with the camera,
+// made what it baked depend on where the camera was); how far (texels along, across) the camera
+// may wander before its window moves, `steps` (~2 km; the coarse one's ~5 and 4 km); the columns
+// across baked a frame while it moves, `slab` (the whole window in SM_NA / slab frames); the march
+// past each in SM_PIECES pieces
+export const SM_NA = 256, SM_NW = 64, SM_H0 = 300, SM_PIECES = 7;
+export const SM_GRIDS = [
+  { da: 64, dv: 32, dw: 320, nv: 440, lv0: 0, steps: [6, 32], slab: 2 },
+  { da: 256, dv: 128, dw: 1280, nv: 112, lv0: 1, steps: [4, 16], slab: 1 },
+];
 // what the shaders get from here: render/gpu.js declares these in front of each
 export const FOR_SHADERS = {
   CLOUD_TOP, SIGMA, CLOUD_EDGE0, CLOUD_EDGE_W, SHAPE_TILE, DETAIL_TILE, DETAIL_ROT, RG, RT, RAY_S, RAY_H, MIE_S, MIE_A, MIE_H, OZO_A,
-  SM_DA, SM_DV, SM_DW, SM_NA, SM_NV, SM_NW, SM_PIECES,
+  SM_NA, SM_NW, SM_PIECES,
 };

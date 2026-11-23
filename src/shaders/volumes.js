@@ -20,7 +20,7 @@ export const U_TSV = {
 };
 export { default as CS_TSV } from './tsv.wgsl';
 
-// The sun map (render/sunmap.js), a slab of its columns across the sun's way at a time, in three
+// The sun map (render/sunmap.js), a slab of a level's columns across the sun's way at a time, in three
 // passes, each spread over many invocations (one walk a ray, its texture reads one after another,
 // kept the GPU waiting: two columns took as long as eight): the march past the window in pieces
 // (sunmap-tail.wgsl), the stretch from each texel to the next (sunmap.wgsl), then a scan along each
@@ -29,6 +29,8 @@ export { default as CS_TSV } from './tsv.wgsl';
 export const SM_ROW = 64;
 export const U_SUNMAP = {
   ...U_CLIP, ...U_CLOUD,
+  grid: 'vec3f',        // the level's texels: across the sun's way, apart in height, along it (m)
+  lv0: 'i32',           // the first clipmap level it reads
   a0: 'i32',            // the slab's first column, from the window's first
   slab: 'i32',          // its columns
   nRays: 'i32',         // the rays through it that cross the map's height band
@@ -39,6 +41,7 @@ export const U_SUNMAP = {
 };
 export const U_SUNSCAN = {
   slab: 'i32', nRays: 'i32',
+  nv: 'i32',            // the level's rays in its height band
   row: 'i32',           // SM_ROW
   vb: 'i32',            // the height slot of the slab's first ray
   k0m: 'i32',           // the texture column of the window's first texel along the sun's way

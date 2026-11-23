@@ -206,11 +206,36 @@ under an orange veil, and the picture grainy in flight.
    `exitsun` +19%, `inside` 0; out of cloud the same. The TAAU +4–8% (0.01 ms a frame).
 
 **Leg 10: distance.**
-1. A coarser level of the sun map for what lies past its window (known issues): the far sea
-   without the billows' shadows, far towers with stair-stepped tops and blobs (`seed3`, ~40 km).
-   First where each comes from (`?dbg=3`: the shadow volume's own channel, or the other clouds'),
-   then a level sized to reach it: 4× coarser each way it covers 64 × 80 km in ~4 MB. The shadow
-   volume stays for what lies past that.
+1. Done (2026-11-23; `screenshots/l10-before` → `l10-after`). Where the far blobs came from
+   (`?dbg=3` split by channel, and each channel turned off): the shadow volume's other clouds,
+   its 768 m texels, past the sun map's window (8 km off the camera across the sun's way, 8 km away
+   from the sun, 12 km toward it), so in most of every view's middle distance; its own channel
+   (a cloud's body past 6.3 km) hardly shows, and `seed3`'s far sea lies in its towers' real
+   shadow. With the shadow volume in the sun map's place near the camera, `side`'s sea showed the
+   same blobs. Now the sun map has a coarse level around the fine one (render/sunmap.js): texels
+   256 m across, 128 m up, 1280 m along the sun's rays, over 65 × 82 km (33 km away from the sun,
+   49 km toward it), 3.7 MB, baked from L1 and L2; the light takes the clouds past ~1.4 km from it
+   where the fine level fades, the shadow volume past it. The judge: the fine level stretched over
+   82 × 65 km (a reference build, 230 MB), the mean distance from it in sRGB levels, before → after:
+   `side` 2.29 → 1.99, `high2` 1.65 → 1.45 (the right tower's lit blobs gone, the heaps below it
+   lit as there), `close` 1.76 → 1.67, `start` 0.83 → 0.81, `giant` 0.18 → 0.16, `sun` 0.55 →
+   0.54, `seed3` 1.00 → 0.99; `anvil` 1.68 → 1.71 and `away` 0.59 → 0.62 a hair farther. Pixels
+   changed (> 2 levels): `high2` 6.8%, `side` 5.1%, `close` 4.2%, `start` 2.3%, `away` 2.1%,
+   `anvil` 1.4%; the near views as before (`inside`, `geometry`, `down` identical, `under` within 3
+   levels). Grain over the strip up where far towers now have shadows (`start`'s tower 0.44 →
+   0.54%, `sun`'s rim 0.51 → 0.63, `high2` 0.24 → 0.27): the reference has more (0.95, 1.06,
+   0.27), the true shading's own structure, which the jitter moves; four taps a lookup the same.
+   What is left of the gap to the reference: far towers' lobes shaded by the lobes beside them
+   toward the sun, within ~1.4 km (known issues). On the way, a fault in both levels' march past
+   their window (the streaming check found it once the coarse window moved in its flight): a ray
+   whose end lay over 600 m inside a cloud was taken as deep in the sea, dark past it, and past
+   the march's first 1.5 km every cloud counted as another's; a window ending inside a tower
+   shadowed the texels in it toward the camera with the rest of that tower (up to 0.36 of a texel
+   column's light against a window ending a few texels farther). Each ray now first steps out of
+   its own cloud by its distance. Failed on the way (decisions). Cost (`node tools/cost.js`, 200
+   frames): the trace −1 to 0%; the bake ~45 ms more in the first frame (the fine level's 20–35),
+   ~0.18 ms a frame for 4 s each time the coarse window moves (every ~5 km). The trace binds 16
+   sampled textures now, core WebGPU's limit a stage.
 2. The handover at 7–10 km moved out (`levelAt`, chunks/clip.wgsl; L0's window reaches ~14 km): the
    one lever on the lattice not tried. `away`'s middle distance, `--profile`.
 3. Silver linings: thin cloud by the pixel's footprint where the outline ramps up, inside the
@@ -591,6 +616,17 @@ they hold until the author says otherwise.
   15 m every small crease went dark (pumice); the diffusion by the facing over 60 m darkened every
   crease (dough) and lit a tower's far side orange (brown shade); a diffusion floor of 0.35 on faces
   turned from the sun made shade brown.
+- **The sun map's coarse level, first tries** (leg 10, against a reference with the fine level
+  over 82 × 65 km): its stretches in four steps a texel as the fine level's (320 m each): where a
+  ray passed 30 m over a billow a step counted a fifth of itself inside (an optical depth of ~4.5),
+  and lit faces and the far sea came out mottled with shadow (`side` 2.98 levels from the
+  reference, the shadow volume 2.29; steps of 80 m since). The clouds within ~1.4 km from it too, as
+  the fine level gives them: its texels sit inside a tower's body, so a side lit at a grazing angle
+  took the body beside it toward the sun for its own cloud and lost its shadow (the march's steps
+  see some of it). Four taps a lookup, as the fine level's: the trace +8–11%, one the same to the
+  eye and in the grain. Against its window's differences after a move (the march past it, found
+  above): the march's first 4 km in steps of 80 m as the window's stretches, its rays not bent
+  with the planet, L2 alone: none changed them.
 - **The light march's jitter** (before the legs): each step at a random point per pixel flipped in
   and out of a bulge beside the path: the screen-door on near clouds. Averaging each step's
   occupancy instead darkened the sea's lit tops (the path skims them; the air above counted).
@@ -768,11 +804,18 @@ they hold until the author says otherwise.
   third): worth a place in stats.js if this is worked on again.
 - **Close-up surfaces** of towers can look blotchy in low sun (`close`): since leg 7 not from other
   clouds (the sun map casts their shadows as streaks, where they belong) but from the lumps' own
-  shade, the light march's first ~90 m. **Past the sun map's window** (8 km across the sun's way,
-  8 km away from it, 12 km toward it) the shadow volume's 768 × 360 m texels still decide: distant
-  towers (`seed3`, ~40 km) show stair-stepped tops and blob-shaped patches, and the far sea misses
-  the billows' shadows the near sea has (a fade over 1.5 km at the window's edge). A coarser level
-  of the map would reach them: the memory (14 MB a level) and the bake are what it costs.
+  shade, the light march's first ~90 m. **Past the sun map's fine level** (8 km across the sun's
+  way, 8 km away from it, 12 km toward it; since leg 10 its coarse level beyond, the shadow
+  volume's 768 × 360 m texels past 33 and 49 km) far towers' lobes are not shaded by the lobes
+  beside them toward the sun: within ~1.4 km the fine level's texels see that (the march's three
+  long steps barely do; the coarse level's sit inside the tower's body). A reference with the fine
+  level everywhere (82 × 65 km, 230 MB) gives far towers more contrast, shaded lobes with lit
+  rims (`seed3`'s and `high2`'s towers, `side`'s middle tower in its own body's shadow), and more
+  grain in flight (`start`'s tower 0.95%, now 0.54). Levers: a level between the two (128 m across,
+  7 MB, and the trace's textures at the limit: two levels in one texture), the march's steps there.
+  Within a window the map's rays run straight in height, the march past it bends them with the
+  planet from where it starts: over the coarse level's 49 km toward the sun a cloud 40 km off
+  shades as if ~130 m taller (the fine level's 12 km: ~10 m).
 - **The clouds hold still** (2026-11-22, the author: nothing has to drift, for now): the billows and
   the detail drifted with the wind and rose (frame.js until leg 7), and the sun map holds the
   billows. Drift brought back, the map has to be baked all the time (0.11–0.15 ms a frame, and it
@@ -892,6 +935,8 @@ they hold until the author says otherwise.
   holds still. The slower blend may lag or smear in slow motion: for the author's eyes. The cloud
   scale, the TAAU clamp and blend rate, and the approach's floor (trace.wgsl) are the levers.
 - Values JS and WGSL both keep as literals of their own: the sun-colour table's 750 m steps, the high layers' heights, the offsets of struct Probe's fields read back (CLAUDE.md §8 wants them from `constants.js`).
+- The trace binds 16 sampled textures (since leg 10, the sun map's coarse level), core WebGPU's
+  limit a stage: another needs two of them in one texture.
 - A WebGPU validation error shows no note (left out: a harmless one on a browser never tried would stop
   the piece); the tools hear every one.
 - `tools/linux.js` is untried (Docker wasn't running).

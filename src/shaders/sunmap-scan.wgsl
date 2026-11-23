@@ -9,7 +9,7 @@
   let i = i32(g.y);
   if (i >= u.slab || j >= u.nRays) { return; }
   let nw = i32(SM_NW);
-  let nv = i32(SM_NV);
+  let nv = u.nv;
   let at = i * u.nRays + j;
   var t0 = vec2f(0.0);
   let np = i32(SM_PIECES);

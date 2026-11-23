@@ -388,7 +388,12 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
       var c: vec3f;
       if (u.dbgMode == 1) { c = vec3f(0.08) + vec3f(1.0, 0.85, 0.6) * max(dot(nrm, u.sunDir), 0.0) + vec3f(0.1, 0.15, 0.3) * (nrm.y * 0.5 + 0.5); }
       else if (u.dbgMode == 2) { c = vec3f(exp(-lightTau(wp, h, d, lv, C, bs, lod + 0.5))); }
-      else { let f = tsvTau(wp, h); c = vec3f(exp(-f.x - mix(f.y, sunMapAt(wp.xz, h, 0.0), sunMapW(wp.xz)))); }
+      else {
+        let f = tsvTau(wp, h);
+        let wF = sunMapW(wp.xz);
+        let wC = (1.0 - wF) * sunMapCW(wp.xz);
+        c = vec3f(exp(-f.x - f.y * (1.0 - wF - wC) - sunMapAt(wp.xz, h, 0.0) * wF - sunMapCAt(wp.xz, h, 0.0) * wC));
+      }
       return Out(vec4f(c * 0.12, 0.0), vec2f(t * 0.001, tOwn));
     }
     let dens = densityFromSDF(d, wp, detailW, edgeW, 0.0);

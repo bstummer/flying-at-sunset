@@ -476,11 +476,14 @@ const readLevels = async () => {
       out[name + (c ? L.second ?? ' beyond' : '')] = { gi: L.gi, gj: L.gj, step: L.step, pending: L.pending, valid: L.valid, mean: base64(mean), col: col && base64(col) };
     });
   }
-  // (the sun map: its window, and per texel column along the sun's way and across it, all heights,
-  // the mean of the light it lets through)
-  const W = D.SUNMAP, t = D.T.sunMap, sm = await D.readTexture(t, 0, t.d), mean = new Float64Array(t.w * t.h);
-  for (let k = 0; k < sm.length; k++) mean[k % (t.w * t.h)] += sm[k] / t.d;
-  const sun = { K0: W.K0, A0: W.A0, steps: W.steps, valid: W.valid, nw: t.w, na: t.h, mean: base64(mean) };
+  // (the sun map's levels: each one's window, and per texel column along the sun's way and across
+  // it, all heights, the mean of the light it lets through)
+  const sun = [];
+  for (const [W, t] of [[D.SUNMAPS[0], D.T.sunMap], [D.SUNMAPS[1], D.T.sunMapC]]) {
+    const sm = await D.readTexture(t, 0, t.d), mean = new Float64Array(t.w * t.h);
+    for (let k = 0; k < sm.length; k++) mean[k % (t.w * t.h)] += sm[k] / t.d;
+    sun.push({ K0: W.K0, A0: W.A0, steps: W.steps, valid: W.valid, nw: t.w, na: t.h, mean: base64(mean) });
+  }
   const b = D.bird;
   return { pose: [...b.pos, b.yaw, b.gamma, b.bank], levels: out, sun };
 };
@@ -525,32 +528,41 @@ async function checkStreaming(browser, { fail, note, problems, outDir }) {
     if (!(r.volumeMax <= VOLUME_TOLERANCE[name])) fail(`${name}: the volume differs from a fresh start's by up to ${r.volumeMax.toFixed(2)} (mean over a texel column) at cell ${r.worst.join(', ')}`);
     lines.push(`${name} ${r.volumeMax.toFixed(2)}`);
   }
-  // (the sun map, where both are valid: the same light, but where the march past its window starts
-  // elsewhere, through coarser cloud)
-  const sa = flown.read.sun, sb = fresh.read.sun;
-  if (!sa.valid || !sb.valid) fail('sun map: not baked after the flight');
-  else if (Math.abs(sa.K0 - sb.K0) > sa.steps[0] + 2 || Math.abs(sa.A0 - sb.A0) > sa.steps[1] + 2) {
-    fail(`sun map: its window stayed at texel ${sa.K0}, ${sa.A0}; a fresh start there places it at ${sb.K0}, ${sb.A0}`);
-  } else {
-    const r = compareSunMaps(sa, sb);
-    if (!(r.max <= SUN_TOLERANCE)) fail(`sun map: the light differs from a fresh start's by up to ${r.max.toFixed(3)} (mean over a texel column) at texel ${r.worst.join(', ')}`);
-    lines.push(`sun map ${r.max.toFixed(3)} (${r.compared} columns)`);
-  }
+  // (each level of the sun map, where both are valid: the same light, but where the march past its
+  // window starts elsewhere, through coarser cloud)
+  flown.read.sun.forEach((sa, k) => {
+    const sb = fresh.read.sun[k], name = ['sun map', 'sun map coarse'][k];
+    if (!sa.valid || !sb.valid) fail(`${name}: not baked after the flight`);
+    else if (Math.abs(sa.K0 - sb.K0) > sa.steps[0] + 2 || Math.abs(sa.A0 - sb.A0) > sa.steps[1] + 2) {
+      fail(`${name}: its window stayed at texel ${sa.K0}, ${sa.A0}; a fresh start there places it at ${sb.K0}, ${sb.A0}`);
+    } else {
+      const r = compareSunMaps(sa, sb);
+      if (!(r.max <= SUN_TOLERANCE[k])) fail(`${name}: the light differs from a fresh start's by up to ${r.max.toFixed(3)} (mean over a texel column) at texel ${r.worst.join(', ')}`);
+      lines.push(`${name} ${r.max.toFixed(3)} (${r.compared} columns)`);
+    }
+  });
   const d = difference(decodePng(flown.png), decodePng(fresh.png));
   note(`flown to ${flown.read.pose.slice(0, 3).map((v) => (v / 1000).toFixed(1)).join(', ')} km; volumes differ from a fresh start's by at most: ${lines.join(', ')}`);
   note(`images: mean ${d.mean.toFixed(2)} levels, ${(100 * d.over16).toFixed(1)}% of pixels more than 16 levels off (a flown page has 480 frames of history behind it, a fresh one 12)`);
   if (d.mean > 8 || d.over16 > 0.12) fail(`the streamed world looks different from a fresh start: mean ${d.mean.toFixed(2)}, ${(100 * d.over16).toFixed(1)}% more than 16 levels off`);
 }
 
-// Two pages' sun maps (readLevels().sun) where both are valid but for a texel at their edges:
-// { compared, max, worst }. Texel (K mod nw, A mod na) holds world texel K along the sun's way, A across.
-const SUN_TOLERANCE = 0.05;
+// Two pages' sun maps (readLevels().sun) where both are valid as the lookups read them (a texel in
+// from the window's edge away from the sun, three toward it, two across: render/sungrid.js,
+// lookupUniforms): { compared, max, worst }. Texel (K mod nw, A mod na) holds world texel K along
+// the sun's way, A across.
+// Most each level's may differ (the mean light over a texel column, 0..1): where its window ends
+// the march past it takes over from the window's stretches (points 200 m apart against steps of
+// 80 m), and from the coarse level's, 49 km toward the sun, it crosses L1's edge within ~15 km: a
+// window that ends elsewhere sees a little other light there. After 8 km of flight the fine level's
+// differ by up to ~0.007, the coarse level's by ~0.045 (p99 0.018).
+const SUN_TOLERANCE = [0.05, 0.08];
 export function compareSunMaps(a, b) {
   const [ma, mb] = [a.mean, b.mean].map((s) => new Float64Array(Uint8Array.from(Buffer.from(s, 'base64')).buffer));
   const mod = (x, n) => ((x % n) + n) % n;
   let compared = 0, max = 0, worst = null;
-  for (let K = Math.max(a.valid[0], b.valid[0]) + 1; K < Math.min(a.valid[1], b.valid[1]) - 1; K++) {
-    for (let A = Math.max(a.valid[2], b.valid[2]) + 1; A < Math.min(a.valid[3], b.valid[3]) - 1; A++) {
+  for (let K = Math.max(a.valid[0], b.valid[0]) + 1; K < Math.min(a.valid[1], b.valid[1]) - 3; K++) {
+    for (let A = Math.max(a.valid[2], b.valid[2]) + 2; A < Math.min(a.valid[3], b.valid[3]) - 2; A++) {
       const p = mod(A, a.na) * a.nw + mod(K, a.nw), d = Math.abs(ma[p] - mb[p]);
       compared++;
       if (d > max) [max, worst] = [d, [K, A]];
@@ -614,9 +626,11 @@ async function checkVolumes(browser, { fail, note, problems }) {
         }
         out[name] = { nan, topNeg };
       }
-      // (the sun map: the light that gets through other clouds, 0..1)
-      const sm = await D.readTexture(D.T.sunMap, 0, D.T.sunMap.d);
-      out['sun map'] = { nan: sm.filter((x) => !Number.isFinite(x)).length, outside: sm.filter((x) => x < 0 || x > 1).length, baked: !!D.SUNMAP.valid };
+      // (the sun map's levels: the light that gets through other clouds, 0..1)
+      for (const [name, W, t] of [['sun map', D.SUNMAPS[0], D.T.sunMap], ['sun map coarse', D.SUNMAPS[1], D.T.sunMapC]]) {
+        const sm = await D.readTexture(t, 0, t.d);
+        out[name] = { nan: sm.filter((x) => !Number.isFinite(x)).length, outside: sm.filter((x) => x < 0 || x > 1).length, baked: !!W.valid };
+      }
       for (const [name, L] of [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]]]) {
         const c = await D.readTexture(L.col);
         let bad = 0, sunk = 0, lowest = Infinity;

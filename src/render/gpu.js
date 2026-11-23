@@ -84,7 +84,7 @@ const SAMPLER_NAMES = Object.keys(SAMPLERS);
 // filtered) or 'depth'; and every storage texture a compute shader writes (oX: its format). A
 // pipeline binds those its shaders mention.
 const TEXTURES = {
-  tTrans: '2d', tMS: '2d', tSky: '2d', tShape: '3d', tDetail: '3d', tTsv: '3d', tSunMap: '3d', tLit: '2d',
+  tTrans: '2d', tMS: '2d', tSky: '2d', tShape: '3d', tDetail: '3d', tTsv: '3d', tSunMap: '3d', tSunMapC: '3d', tLit: '2d',
   tVol0: '3d', tVol1: '3d', tVol2: '3d', tBs0: '3d', tBs1: '3d', tBs2: '3d', tCol0: '2d', tCol1: '2d', tCol2: '2d', tCol: '2d',
   tCirrus: '2d', tLayers: '2d', tCur: '2d', tCurDepth: '2d', tHist: '2d', tHistFog: '2d', tSrc: '2d', tBird: 'raw', tScene: '2d',
   tBloom: '2d', tRays: '2d', tDbg: '2d', tDbg2: '2d', tShadowMap: 'depth',
