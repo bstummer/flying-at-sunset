@@ -250,7 +250,8 @@ under an orange veil, and the picture grainy in flight.
    0.019, `anvil` 0.033 → 0.039. Pixels changed (> 2 levels): `close` 9.3%, `side` 8.4%, `geometry`
    7.6%, `away` 6.6%, `high2` 4.8%, `down` 4.1%; `under` and `inside` identical. The trace −1 to 0%
    (`node tools/cost.js`, six views).
-3. Silver linings, tried (2026-11-23), not kept: for the author (frame rate). Thin cloud over the
+3. Silver linings, tried (2026-11-23), dropped: the author, shown them beside the current look
+   (`sun`, `anvil`, `start`, `seed3`, `high2`, close-ups), found them not worth the cost. Thin cloud over the
    outline's footprint of far towers (from 4–10 km on, above the sea's heaps) seen against the sun
    (the sun within ~45–70° of the view: lit from the front it softened their cauliflower to
    cotton), the light march thinned alike (else the thin edge is lit as dense cloud: dark). At a
@@ -881,7 +882,8 @@ they hold until the author says otherwise.
   tower's lie within a trace pixel (60–80 m), where a real edge's wisps and the profile both are: a
   fringe outside the surface failed (decisions). Thin cloud over the outline's footprint, the
   light march thinned alike, makes them (leg 10, step 3), for the trace +7% under DXC (Chrome's
-  compiler; +13% under the tools' FXC): for the author.
+  compiler; +13% under the tools' FXC): subtle at full size (`sun`'s towers, `anvil`'s top; barely
+  in `start`, `seed3`, `high2`), the author: not worth it (2026-11-23).
 - **Inside cloud**, deep in a tower (`inside`), is an even tan card ((174,142,122) since leg 9, the
   exposure adapting to the frame: 3.3×): the fog there is lit evenly by diffusion, so its density
   doesn't show; in motion faint mist puffs drift past and the brightness changes slowly (the
