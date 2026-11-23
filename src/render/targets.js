@@ -9,7 +9,7 @@ import { canvas, COARSE } from '../core/page.js';
 import { device, forgetBindGroups, texture } from './gpu.js';
 import { T } from './setup.js';
 
-export const R = { w: 0, h: 0, lowW: 0, lowH: 0, lowMaxW: 0, lowMaxH: 0, scale: TEST ? (params.scale ?? 0.5) : 0.5, histValid: 0 };
+export const R = { w: 0, h: 0, lowW: 0, lowH: 0, lowMaxW: 0, lowMaxH: 0, scale: TEST ? (params.scale ?? 0.5) : 0.5, histFrames: 0 };
 const HALF4 = 'rgba16float';
 export const bloomLevels = [];
 const SIZED = ['cloudCol', 'cloudDepth', 'histA', 'histB', 'scene', 'rayA', 'rayB'];
@@ -48,7 +48,7 @@ function allocate(w, h) {
   T.rayA = texture(rw, rh, HALF4);
   T.rayB = texture(rw, rh, HALF4);
   R.rayW = rw; R.rayH = rh;
-  R.histValid = 0;
+  R.histFrames = 0;
   const gen = ++allocGen;
   device.popErrorScope().then(e => {
     if (gen !== allocGen) return;

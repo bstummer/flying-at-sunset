@@ -120,18 +120,31 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
   let sd = sqrt(max(m2 - m1 * m1, vec4f(0.0)));
   // (the clouds' depth, km, to reproject the history by; and how much light gets through the camera's
   // own cloud, around it: whatever the depth, that fog lies in front of the high layers)
-  let cdep = textureLoad(tCurDepth, clamp(vec2i(lpr), vec2i(0), vec2i(u.lowRes) - 1), 0).rg;
-  let dkm = cdep.x;
+  let ip = clamp(vec2i(lpr), vec2i(0), vec2i(u.lowRes) - 1);
+  let cdep = textureLoad(tCurDepth, ip, 0).rg;
+  var dkm = cdep.x;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) { dkm = min(dkm, textureLoad(tCurDepth, clamp(ip + vec2i(x, y), vec2i(0), vec2i(u.lowRes) - 1), 0).r); }
+  }
   var prel = dir * dkm * 1000.0 + u.camDelta;
   if (dkm > 5000.0) { prel = dir * 1.0e7; }
   let pc = u.prevVP * vec4f(prel, 1.0);
   let puv = pc.xy / pc.w * 0.5 + 0.5;
-  var valid = select(0.0, u.histValid, pc.w > 1e-6);
+  var valid = select(0.0, 1.0, pc.w > 1e-6 && u.histFrames > 0.5);
   valid *= step(0.0, puv.x) * step(puv.x, 1.0) * step(0.0, puv.y) * step(puv.y, 1.0);
-  var res = cur;
+  // (without history where a turn brings in the frame's edge: the neighbourhood's mean, softer than
+  // one jittered sample for the frames until the history has more; the first frame keeps its own
+  // sample, which the slow blend carries for many frames)
+  var res = select(cur, mix(m1, cur, 0.5), u.histFrames > 0.5);
   if (valid > 0.5) {
     let hist = sampleHist(puv);
-    let motion = length((puv - uv) * u.res);
+    // how far the history lies from where it would at infinity, in pixels: the parallax of the
+    // camera's own movement, which one depth a pixel (a weighted mean) can place wrongly (ghosts at
+    // the edges between near and far). A turn, a bank, the camera's shake move the image by a
+    // rotation alone, which reprojects exactly: judged by all the motion, every turn tightened the
+    // clamp and the blend followed each frame's jittered rims (grain at the clouds' edges in flight)
+    let pci = u.prevVP * vec4f(dir * 1.0e7, 1.0);
+    let motion = length((puv - (pci.xy / pci.w * 0.5 + 0.5)) * u.res);
     // the clamp box: tight in motion (no ghosts), wider where the image holds still, so the history
     // settles over the jitter sequence instead of following each frame's crisp rims
     let gam = mix(2.4, 1.25, saturate(motion * 0.5));
@@ -142,7 +155,9 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
     let hc = clamp(hist, lo, hi);
     let fd = lp - lpr;
     let wcur = exp(-2.2 * dot(fd, fd));
-    let alpha = mix(0.035, 0.38, saturate(motion / 12.0)) * (0.55 + 0.45 * wcur);
+    // (and over the history's first 8 frames, their plain mean: from the start the first frame's one
+    // sample would linger for seconds at the slow rate)
+    let alpha = max(mix(0.035, 0.38, saturate(motion / 12.0)) * (0.55 + 0.45 * wcur), select(0.0, 1.0 / (u.histFrames + 1.0), u.histFrames < 8.0));
     res = mix(hc, cur, alpha);
   }
   let sky = skyColor(dir);

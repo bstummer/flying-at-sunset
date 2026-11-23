@@ -115,7 +115,7 @@ under an orange veil, and the picture grainy in flight.
    marched first, in a loop of its own (trace.wgsl), from the camera (no jittered start) in steps of
    0.12 optical depths, the same for every pixel, until the ray first comes out, that last step's
    part past the surface taken back (by the distances at its ends, `exitCut`); then the main loop,
-   as before, from there. `edge`'s grain 6.5 → 2.1% (the ridge 17 → 2.4%, the sky 0.18 → 0%, the
+   as before, from there. `edge`'s grain at the still 6.5 → 2.1% (the ridge 17 → 2.4%, the sky 0.18 → 0%, the
    horizon 4.9 → 4.2%: what is left lies on silhouettes, as in every view at a 12-frame history:
    `tower` 6.5%, `close` 8.2%); its shimmer at rest 0.002 → 0.036% (the far rims show through the
    fog now). `inCloud` no longer reaches the trace: in the camera's own cloud the shade's tints and
@@ -139,7 +139,29 @@ under an orange veil, and the picture grainy in flight.
    +2, `inside` −2, `skim` −1); the exposure pass ~0.01 ms a frame (`post`); the mist puffs drawn
    from `inside`'s first frame, `taau` +7% there. Carried through the main loop, the camera's own
    cloud had cost the trace +16–17% in every view (decisions). The views' capture (`npm run shot`)
-   155 → 240–350 s: a third render a view, for the grain. `npm run verify` 580 s.
+   155 → 240–400 s: a third render a view, for the grain. `npm run verify` 580 s.
+6. The grain at the clouds' edges in flight, the camera outside cloud (the author, 2026-11-23: "still
+   pretty grainy / noisy ... you can see it better in motion"). The grain at the still read the
+   history's youth (12 frames in: 1–8% of every view, after 2 s of straight flight 0.13–0.58%), so
+   it is measured over the motion strip's frames now (2 s), and a view `turn` (`side` flown through
+   the weave) holds a turn. In a dive at frame 120 the sub-pixel jitter and the trace's own
+   sequences gave about half of it each. What helped (shaders/taau.wgsl): the clamp and the blend by
+   the parallax of the camera's movement (where the history lies against where it would at
+   infinity), not by the image's motion: a turn, a bank, the camera's shake are rotations, which
+   reproject exactly, and each had tightened the clamp and quickened the blend, so the history
+   followed each frame's jittered rims; the history reprojected by the nearest depth of the 3×3
+   around (at a silhouette both sides move as the near cloud does; the same depth sorts the high
+   layers, which had flickered on towers' outlines at rest); where a turn leaves a pixel's history
+   off the frame, the neighbourhood's mean to start from; the history's first 8 frames their plain
+   mean (at the slower rate the first frame's one sample had lingered for seconds). Grain in flight
+   (the strip, 4 levels or more): `turn` 1.27 → 0.44%, `away` 1.16 → 0.29, `side` 1.06 → 0.36,
+   `tower` 1.45 → 0.46, `close` 1.74 → 0.97, `start` 0.70 → 0.23, `edge` 0.67 → 0.44, `down` 1.19 →
+   0.73 (its billows crop 0.59 → 0.84: the corner of a dive straight down); at frame 120 weaving
+   about halved, diving a quarter to a half. Shimmer at rest down in every view (`tower` 0.101 →
+   0.015%, `sun` 0.061 → 0.035, `geometry` 0.35 → 0.21). The stills as sharp (1–9% of their pixels
+   move by more than 2 levels: other noise converged otherwise). Left: the strip a turn or a pitch
+   brings in at the frame's edge, near outlines against farther clouds in a dive. Cost: the TAAU
+   +10% (0.012 ms a frame), the trace unchanged.
 
 **Leg 10: distance.**
 1. A coarser level of the sun map for what lies past its window (known issues): the far sea
@@ -573,6 +595,9 @@ they hold until the author says otherwise.
 
 ### In cloud
 
+- **Grain measured at the still alone** (leg 9, step 3): 12 frames in the history is young (1–8% of
+  every view, after 2 s of straight flight 0.13–0.58%), and the bird flies straight: it read the
+  start, and missed turns and dives. Over the motion strip since step 6.
 - **Grain measured by frames a step apart in flight** (leg 9, the plan's first instrument): the
   share of pixels changing from one frame to the next mixes the grain with all that moves (the
   cirrus drifting, the camera's shake in cloud, every edge): with the grain gone from the difference
@@ -620,6 +645,13 @@ they hold until the author says otherwise.
   no visible difference. Crisp rims cost nothing.
 - **TAAU at rest** (before the legs): a wider clamp box alone barely calms crisp rims; the blend rate
   is what flickers (a rim pixel swinging ~150 levels × α 0.05).
+- **Against the grain left in a dive** (leg 9, step 6, `tower` at frame 120, 1.59%): the blend at the
+  rest rate whatever the parallax (1.81%), the clamp as wide as at rest (1.61%), the history
+  reprojected by the first surface a ray enters, not the weighted mean (1.56%). What is left there:
+  the strip the pitch brings in, near outlines. **The neighbourhood's mean on the first frame too**
+  (no history at all): the slow blend kept that soft frame for many frames, the stills softer
+  (`close`'s creases). **The plain mean past 8 frames**: at frame 12 still 1/13, the shimmer at rest
+  up (`start` 0.04 → 0.078%).
 - **Blending the clipmap levels over a handover** instead of the dither (before the legs): no
   lattice, but the trace 12–18% slower in every view, also blending over 7–10 km alone, also
   reading the second level only near a surface.
@@ -786,12 +818,14 @@ they hold until the author says otherwise.
   the pixels) but the light doesn't (5.6%): L1's gives the domes less relief. Levers: blending
   (+12–18%, decisions), the handover farther out (L0's window reaches ~14 km), what in the light
   follows the level (the light march's first steps and the billows read the level's distance).
-- **The grain** (tools/measure.js, since leg 9): at the still, 12 frames in, 1–8% of a frame
-  differs by 4 levels or more from the same still rendered with other jitter (`tower` 6.5%, `close`
-  8.1%, `away` 6.6%, `geometry` 14%), on lit fine detail and silhouettes: a young history in flight.
-  No limit yet: a change in it is a question for `grain.png`.
-- **Sunlit rims**: with nothing moving 0.02–0.10% of a frame flickers (`geometry` 0.29%; leg 3 halved
-  it: strides no longer hop over crests by the jitter), along tower silhouettes against the sky and
+- **The grain** (tools/measure.js, since leg 9): over the motion strip, 0.17–0.97% of a frame
+  differs by 4 levels or more from the same flight rendered with other jitter (`close` 0.97%, `down`
+  0.73, `tower` 0.46, `turn` 0.44, `edge` 0.44; `geometry` 1.8%): the strip a turn or a pitch brings
+  in at the frame's edge, near outlines against farther clouds in a dive. No limit yet: a change in
+  it is a question for `grain.png`. Motion itself (smear, lag in turns) is for the author's eyes.
+- **Sunlit rims**: with nothing moving 0.006–0.035% of a frame flickers (`geometry` 0.21%; leg 3 halved
+  it: strides no longer hop over crests by the jitter; leg 9 halved it again, the high layers sorted
+  by the nearest depth around), along tower silhouettes against the sky and
   backlit rims, most toward the sun (`sun`). The history blends at half the rate where the image
   holds still. The slower blend may lag or smear in slow motion: for the author's eyes. The cloud
   scale, the TAAU clamp and blend rate, and the approach's floor (trace.wgsl) are the levers.

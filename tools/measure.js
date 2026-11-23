@@ -6,12 +6,13 @@
 //   shimmer.png       where the image flickers while nothing moves, in magenta: the flight held and
 //                     the clock stopped (?freeze&dt=0), so only the clouds' jittered trace and its
 //                     temporal upsampling change from frame to frame
-//   grain.png         where the still is grainy, in flight: against the same flight rendered with its
-//                     jitter sequences 8 frames on (?jit), at the same frame. Whatever moves moves
+//   grain.png         where the flight is grainy: the motion strip's frames against the same flight
+//                     rendered with its jitter sequences 8 frames on (?jit). Whatever moves moves
 //                     alike in both; only the noise the history can't average in motion differs
-//                     (the author's "noise that changes as you move", seen through a cloud's edge),
-//                     which the shimmer at rest is blind to, and frames a step apart mix with all
-//                     that moves
+//                     (the author's "noise that changes as you move", at clouds' edges in turns and
+//                     dives), which the shimmer at rest is blind to, and frames a step apart mix
+//                     with all that moves. Over the strip: the still alone, 12 frames in, shows a
+//                     history still young
 //   motion.png        the flight on from the still, a quarter of a second a frame, left to right,
 //                     top to bottom: what a still can't show
 //
@@ -32,20 +33,21 @@ export const MEASURE = {
 
 // Percent of the frame: banded, the share in visible bands (tools/image.js bandedShare);
 // shimmer, the share that flickers by `threshold` levels or more while nothing moves. (grain,
-// the share where two renders of the still differing in their jitter differ by `threshold` or
-// more, over the frame and within each crop, has no limit yet.)
+// the share where two renders of the flight differing in their jitter differ by `threshold` or
+// more, over the strip's frames, the frame and each crop, has no limit yet.)
 export const LIMITS = { bandedPercent: 1, shimmerPercent: 0.5 };
 
 // The URL parameters that make the page hand over what the measurements need: the frames of the
 // motion strip from the still on (the first is the still itself), and the frames held still.
 export const motionParams = () => ({ keep: String(MEASURE.motion.frames), every: String(MEASURE.motion.every) });
 export const shimmerParams = () => ({ freeze: '', dt: '0', keep: String(MEASURE.shimmer.frames) });
-// (and the still again, the jitter sequences started elsewhere)
-export const grainParams = () => ({ jit: String(MEASURE.grain.jit) });
+// (and the strip again, the jitter sequences started elsewhere)
+export const grainParams = () => ({ ...motionParams(), jit: String(MEASURE.grain.jit) });
 
-// `motion`: decoded frames, the still first; `still`: decoded frames held still; `grain`: the still
-// rendered with other jitter (none: not measured); `crops`: { name: [x, y, w, h] } as fractions of
-// the frame; `limits`: the view's own (tools/views.js). Returns { measurements, warnings, files }.
+// `motion`: decoded frames, the still first; `still`: decoded frames held still; `grain`: the motion's
+// frames rendered with other jitter (none: not measured); `crops`: { name: [x, y, w, h] } as
+// fractions of the frame; `limits`: the view's own (tools/views.js). Returns { measurements,
+// warnings, files }.
 export function measureView({ motion, still, grain, crops, limits, dir }) {
   mkdirSync(dir, { recursive: true });
   const files = [];
@@ -62,8 +64,9 @@ export function measureView({ motion, still, grain, crops, limits, dir }) {
   save('motion.png', tile(motion.map((f) => shrink(f, 2)), { columns: 4, gap: 4 }));
 
   const measurements = { bandedPercent: round(bandedShare(first)), shimmerPercent: round(held.percent) };
-  if (grain) {
-    const noisy = pairDiff([[first, grain]], { threshold: MEASURE.grain.threshold, regions: crops ?? { centre: MEASURE.crop.centre } });
+  if (grain?.length) {
+    const pairs = grain.slice(0, motion.length).map((g, k) => [motion[k], g]);
+    const noisy = pairDiff(pairs, { threshold: MEASURE.grain.threshold, regions: crops ?? { centre: MEASURE.crop.centre } });
     save('grain.png', heatImage(first, noisy.heat, MEASURE.grain.threshold));
     measurements.grainPercent = round(noisy.percent);
     measurements.grain = Object.fromEntries(Object.entries(noisy.regions).map(([name, v]) => [name, round(v)]));

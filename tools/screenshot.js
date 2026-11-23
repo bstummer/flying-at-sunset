@@ -73,12 +73,12 @@ async function capture(args) {
           const held = await testRender(browser, { ...params, ...shimmerParams() }, { read: frames });
           result.problems.push(...held.problems.map((p) => ({ ...p, kind: `${p.kind}, frames held still` })));
           result.consoleWarnings.push(...held.warnings);
-          const other = await testRender(browser, { ...params, ...grainParams() });
+          const other = await testRender(browser, { ...params, ...grainParams() }, { read: frames });
           result.problems.push(...other.problems.map((p) => ({ ...p, kind: `${p.kind}, other jitter` })));
           result.consoleWarnings.push(...other.warnings);
-          if (held.read && r.read && other.png) {
+          if (held.read && r.read && other.read) {
             const m = measureView({
-              motion: r.read.map(decodeDataUrl), still: held.read.map(decodeDataUrl), grain: decodePng(other.png),
+              motion: r.read.map(decodeDataUrl), still: held.read.map(decodeDataUrl), grain: other.read.map(decodeDataUrl),
               crops: view.crops, limits: view.limits, dir: join(outDir, view.name),
             });
             Object.assign(result, { measurements: m.measurements, warnings: m.warnings, files: m.files.map((f) => `${view.name}/${f}`) });

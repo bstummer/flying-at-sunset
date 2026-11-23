@@ -113,7 +113,7 @@ export function render(time, dtFrame) {
     tCur: T.cloudCol, tCurDepth: T.cloudDepth, tHist: readA ? T.histA : T.histB, tSky: T.sky, tCirrus: T.cirrus,
     lowRes: [R.lowW, R.lowH], lowTex: [R.lowMaxW, R.lowMaxH], res: [w, h], jitter,
     camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY],
-    prevVP: prevVP || curVP, camDelta, histValid: R.histValid, sunDir: SUN_DIR, camPos: camR,
+    prevVP: prevVP || curVP, camDelta, histFrames: R.histFrames, sunDir: SUN_DIR, camPos: camR,
     sunDisk, cirrusCol: scl(sunColorAt(9800), 1.0), cirrusOff: [fmod(O[0] + time * 6, 32000), fmod(O[2] + time * 2, 32000)],
     tLayers: T.layers, layerOff: [fmod(O[0] + time * WIND[0] * 1.5, 64000), fmod(O[2] + time * WIND[2] * 1.5, 64000)], layerCol: layerColUniform,
   });
@@ -127,7 +127,7 @@ export function render(time, dtFrame) {
   tEnd();
   const histTex = readA ? T.histB : T.histA;
   prevVP = curVP;
-  R.histValid = 1;
+  R.histFrames = Math.min(R.histFrames + 1, 1000);   // (how many frames the history holds)
 
   // --- bird
   tBegin('bird');

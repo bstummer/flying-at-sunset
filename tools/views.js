@@ -15,6 +15,8 @@ export const VIEWS = [
   { name: 'away', params: { preset: 'away' }, brief: 'The sun behind: faces glowing gold and peach, long shadows across the sea.',
     crops: { bird: [0.42, 0.66, 0.16, 0.16] } },
   { name: 'side', params: { preset: 'side' }, brief: 'The sun to the left: lit and shaded sides, the relief of the sea, cool blue and violet shade.' },
+  // (the side view flown through banking turns: its motion strip and grain are the turn's)
+  { name: 'turn', params: { preset: 'side', script: 'weave' }, brief: 'Banking through a turn over the sea: the edges of the clouds and their lit rims steady in motion, not grainy.' },
   // (the preset's way, 400 m over the sea's top: just over its billows, which rise 300-380 m over it
   // there; the preset itself lies 170 m over it, in the billows, where the skim flight dives through)
   { name: 'skim', params: { pose: '0,1493,0,0.35,-0.03,0' }, brief: 'Just over the cloud tops: billows at every size, crisp where the sun catches them.' },

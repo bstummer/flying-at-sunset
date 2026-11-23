@@ -42,18 +42,18 @@ test('the measurements as the tools print them, and how they changed', () => {
 test('the page hands over the frames the measurements need: the strip from the still on, and frames held still', () => {
   assert.deepEqual(motionParams(), { keep: String(MEASURE.motion.frames), every: String(MEASURE.motion.every) });
   assert.deepEqual(shimmerParams(), { freeze: '', dt: '0', keep: String(MEASURE.shimmer.frames) });
-  assert.deepEqual(grainParams(), { jit: String(MEASURE.grain.jit) }, 'the still again, its jitter started elsewhere');
+  assert.deepEqual(grainParams(), { ...motionParams(), jit: String(MEASURE.grain.jit) }, 'the strip again, its jitter started elsewhere');
 });
 
-test('the grain: where the still and the still rendered with other jitter differ, over the frame and each crop', (t) => {
+test('the grain: where the strip and the strip rendered with other jitter differ, over its frames, the frame and each crop', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'flying-measure-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const [w, h] = [40, 20];
   const still = frame(w, h, () => 100);
   const other = frame(w, h, (x, y) => 100 + (x < w / 4 && y < h / 2 ? MEASURE.grain.threshold : 0));
-  const { measurements, files } = measureView({ motion: [still], still: [still, still], grain: other, crops: { corner: [0, 0, 0.25, 0.5], rest: [0.5, 0.5, 0.5, 0.5] }, dir });
-  assert.equal(measurements.grainPercent, 12.5);
-  assert.deepEqual(measurements.grain, { corner: 100, rest: 0 });
+  const { measurements, files } = measureView({ motion: [still, still], still: [still, still], grain: [other, still], crops: { corner: [0, 0, 0.25, 0.5], rest: [0.5, 0.5, 0.5, 0.5] }, dir });
+  assert.equal(measurements.grainPercent, 6.25, 'an eighth of the frame in one pair of two');
+  assert.deepEqual(measurements.grain, { corner: 50, rest: 0 });
   assert.ok(files.includes('grain.png'));
   const none = measureView({ motion: [still], still: [still, still], dir });
   assert.equal(none.measurements.grainPercent, undefined, 'not measured without the other render');
