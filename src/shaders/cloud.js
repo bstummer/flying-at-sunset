@@ -2,7 +2,7 @@
 // (chunks/clip.wgsl, chunks/lobes.wgsl, chunks/cloud.wgsl)
 //
 // - The large shapes (sea relief, heaps, towers) come from the clipmaps (render/stream.js): levelAt
-//   picks a level by distance (dithered handovers at ~7–10 and ~40–55 km; a coarser one outside a
+//   picks a level by distance (dithered handovers at ~10–13 and ~40–55 km; a coarser one outside a
 //   level's valid window), macroAt reads its distance volume, billowAt its billow scale (how big
 //   the billows of the nearest tower bubble are, the sea's elsewhere: read only where billows are
 //   built, never by the empty-space skipping), colAt its column data. The bake

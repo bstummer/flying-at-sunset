@@ -236,8 +236,20 @@ under an orange veil, and the picture grainy in flight.
    frames): the trace −1 to 0%; the bake ~45 ms more in the first frame (the fine level's 20–35),
    ~0.18 ms a frame for 4 s each time the coarse window moves (every ~5 km). The trace binds 16
    sampled textures now, core WebGPU's limit a stage.
-2. The handover at 7–10 km moved out (`levelAt`, chunks/clip.wgsl; L0's window reaches ~14 km): the
-   one lever on the lattice not tried. `away`'s middle distance, `--profile`.
+2. Done (2026-11-23; `l10-after` → `l10b-after`). The handover from L0 to L1 at 10–13 km (it was
+   7–10; L0's window reaches 14 km from the camera even while it shifts). What changes there is
+   mostly the surface, not the light: hard-switched at 7 km against 13 km, the views differ by 0.6
+   to 1.2 levels on average, and the openness, the light march's far steps or its first steps taken
+   from L0 changed that by 0–15% (decisions); L1's billow sizes, from 512 m cells, make rounder,
+   larger domes than L0's at the same place. A near tower in the band showed both, with the dither's
+   lattice between (`side`'s lit tower, 7–10 km off); now it is L0's, crisper, and the band lies on
+   smaller, hazier clouds. Grain over the strip: `side` 0.36 → 0.19%, `turn` 0.46 → 0.30, `sun`
+   0.33 → 0.30, `giant` 0.22 → 0.19, `away` 0.29 → 0.28; up in `close` 0.98 → 1.06 (its tower's
+   near part, L0's finer domes now), `high2` 0.27 → 0.31, `start`'s tower 0.54 → 0.58. Shimmer at
+   rest: `side` 0.013 → 0.006%, `giant` 0.007 → 0.003, `down` 0.008 → 0.003; `close` 0.014 →
+   0.019, `anvil` 0.033 → 0.039. Pixels changed (> 2 levels): `close` 9.3%, `side` 8.4%, `geometry`
+   7.6%, `away` 6.6%, `high2` 4.8%, `down` 4.1%; `under` and `inside` identical. The trace −1 to 0%
+   (`node tools/cost.js`, six views).
 3. Silver linings: thin cloud by the pixel's footprint where the outline ramps up, inside the
    surface (the fringe outside it failed, decisions), so a backlit tower 10–30 km off blazes at
    its edge: `anvil`'s top has no rim at all, `sun`'s right tower a hair.
@@ -748,6 +760,11 @@ they hold until the author says otherwise.
   (no history at all): the slow blend kept that soft frame for many frames, the stills softer
   (`close`'s creases). **The plain mean past 8 frames**: at frame 12 still 1/13, the shimmer at rest
   up (`start` 0.04 → 0.078%).
+- **The light from L0 across the handover at 7–10 km, in parts** (leg 10): with the level switched
+  hard at 7 km against 13 km, the openness (`openLarge`), the light march's long steps or its first
+  six steps read from L0 where it reaches changed the views' difference by 0–15% (`side` 1.19 →
+  1.01 for the first steps, the rest within 0.1): what changes is the surface, L1's billows (since
+  then the handover lies at 10–13 km).
 - **Blending the clipmap levels over a handover** instead of the dither (before the legs): no
   lattice, but the trace 12–18% slower in every view, also blending over 7–10 km alone, also
   reading the second level only near a surface.
@@ -916,13 +933,13 @@ they hold until the author says otherwise.
   view for every seed: **seed 5 starts with none** within 50 km (the piece's seed 7 has two above 8 km;
   `tests/world.test.js` holds it to one). Of seeds 1–12, four (4, 5, 8, 11) have no tower of any
   height within 20 km, and 4 and 11 only three within 40 km (stats.js; seed 7: 13 and 41).
-- **A lattice at the level handovers** (~7–10 and ~40–55 km: `away`'s middle distance, `anvil`'s far
+- **A lattice at the level handovers** (~10–13 and ~40–55 km: `away`'s middle distance, `anvil`'s far
   sea): pixels dither between two levels; the history averages it at rest, 12-frame captures show
   it. At 40–55 km fainter since leg 4: the levels' shapes agree to ~0.1 km (p50), and what is left
-  is L2's 2 km columns. At 7–10 km the shapes agree (across a hard switch the depth differs on 1% of
-  the pixels) but the light doesn't (5.6%): L1's gives the domes less relief. Levers: blending
-  (+12–18%, decisions), the handover farther out (L0's window reaches ~14 km), what in the light
-  follows the level (the light march's first steps and the billows read the level's distance).
+  is L2's 2 km columns. At 10–13 km (since leg 10; 7–10 before) the large shapes agree, but L1's
+  billows, sized from 512 m cells, are rounder and larger than L0's. Levers: blending (+12–18%,
+  decisions), L1's billow sizes nearer L0's (the bake's blend of each bubble's own by how near its
+  surface is, over cells four times as wide).
 - **The grain** (tools/measure.js, since leg 9): over the motion strip, 0.17–0.97% of a frame
   differs by 4 levels or more from the same flight rendered with other jitter (`close` 0.97%, `down`
   0.73, `tower` 0.46, `turn` 0.44, `edge` 0.44; `geometry` 1.8%): the strip a turn or a pitch brings

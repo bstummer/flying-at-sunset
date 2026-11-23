@@ -9,10 +9,13 @@ const LIGHT_REACH = 6277.0; // how far it follows the cloud it is in (the large 
 fn lvMargin(l: i32) -> f32 { return select(select(750.0, 260.0, l == 1), 80.0, l == 0); }   // interpolation error of each level
 
 fn inLv(xz: vec2f, l: i32) -> bool { let v = u.lvV[l]; return xz.x > v.x && xz.y > v.y && xz.x < v.z && xz.y < v.w; }
-// the clipmap level for a sample at distance t (dithered handover); coarser outside a window
+// the clipmap level for a sample at distance t (dithered handover); coarser outside a window. (L0's
+// window reaches 14 km from the camera even while it shifts; L1's billows, from 512 m cells, are
+// rounder and larger than L0's at the same place, and handed over at 7-10 km a near tower's domes
+// changed with a lattice between: farther out the band is smaller and hazier.)
 fn levelAt(xz: vec2f, t: f32, dith: f32) -> i32 {
   var l = 2;
-  if (t < 7000.0 + 3000.0 * dith) { l = 0; } else if (t < 40000.0 + 15000.0 * dith) { l = 1; }
+  if (t < 10000.0 + 3000.0 * dith) { l = 0; } else if (t < 40000.0 + 15000.0 * dith) { l = 1; }
   if (l == 0 && !inLv(xz, 0)) { l = 1; }
   if (l == 1 && !inLv(xz, 1)) { l = 2; }
   return l;
