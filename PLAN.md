@@ -250,12 +250,25 @@ under an orange veil, and the picture grainy in flight.
    0.019, `anvil` 0.033 → 0.039. Pixels changed (> 2 levels): `close` 9.3%, `side` 8.4%, `geometry`
    7.6%, `away` 6.6%, `high2` 4.8%, `down` 4.1%; `under` and `inside` identical. The trace −1 to 0%
    (`node tools/cost.js`, six views).
-3. Silver linings: thin cloud by the pixel's footprint where the outline ramps up, inside the
-   surface (the fringe outside it failed, decisions), so a backlit tower 10–30 km off blazes at
-   its edge: `anvil`'s top has no rim at all, `sun`'s right tower a hair.
-4. The haze toward the sun: `high2`'s sea is a grey veil, (111,109,115), as `anvil`'s and `seed3`'s
-   low sea. A row of `?haze` values for the author; the decisions' milky veils are the limit on
-   the other side.
+3. Silver linings, tried (2026-11-23), not kept: for the author (frame rate). Thin cloud over the
+   outline's footprint of far towers (from 4–10 km on, above the sea's heaps) seen against the sun
+   (the sun within ~45–70° of the view: lit from the front it softened their cauliflower to
+   cotton), the light march thinned alike (else the thin edge is lit as dense cloud: dark). At a
+   fifth of the density over two pixels, `sun`'s towers and `anvil`'s top get a warm rim a few
+   pixels wide on the side toward the sun, the lobes still drawn; at a tenth or a twentieth the
+   rims glow wider, but the edge turns see-through: lobes blur, ghost rings where they overlap.
+   Widening the outline's ramp instead (the light's skin follows it) gave no rim: the light march
+   sees a dense tower. The cost: the trace +12–22% however it was written (the view's density, the
+   ramp, an argument through lightPath, a factor on the light after it, with or without the phase:
+   each +12–14% in `away`, where it changes nothing; a comment +1%): the trace's loop sits at a
+   cliff (registers, the GPU's occupancy), where any term more costs a step. Worth it only with
+   room made in that loop first (decisions).
+4. The haze toward the sun, for the author: `screenshots/haze-row.png` (not kept: made with
+   `node render.mjs`, scratch), `high2`, `anvil`, `seed3` and `start` at `?haze` 1.3, 2.0, 2.6
+   (now), 3.5 and 5 × 10⁻⁵. The veil over the low sea toward the sun changes little over that
+   range (a little clearer, a little milkier): most of it is the atmosphere's own aerosols
+   (`MIE_S`, ×2.2 of Hillaire's clear day, constants.js). A value the author picks goes into
+   `HAZE_K` (render/frame.js).
 
 **Leg 11: tower shapes** (the world: the fingerprint recorded again, flights compared).
 1. The instruments: the mushroom measure (leg 6's scratch script) and a count of knobs into
@@ -639,6 +652,11 @@ they hold until the author says otherwise.
   eye and in the grain. Against its window's differences after a move (the march past it, found
   above): the march's first 4 km in steps of 80 m as the window's stretches, its rays not bent
   with the planet, L2 alone: none changed them.
+- **Anything more in the trace's loop** (leg 10, silver linings): each formulation of a thin edge
+  for far towers seen against the sun (in the view's density, in the outline's ramp, an argument
+  through `lightPath`, a factor on its result) cost the trace +12–14% in a view where it changed no
+  number (`away`), +13–22% where it acted; a comment, +1%. As leg 9's flag in the main loop
+  (+16–17%): the loop sits at a cliff of registers. A feature there needs room made first.
 - **The light march's jitter** (before the legs): each step at a random point per pixel flipped in
   and out of a bulge beside the path: the screen-door on near clouds. Averaging each step's
   occupancy instead darkened the sea's lit tops (the path skims them; the air above counted).
@@ -856,8 +874,9 @@ they hold until the author says otherwise.
 - **Silver linings** of far towers are a pixel wide: a backlit tower's edge 10–20 km off doesn't
   blaze (`sun`'s right tower, `anvil`). Since leg 5 the near sea's rims toward the sun glow; a far
   tower's lie within a trace pixel (60–80 m), where a real edge's wisps and the profile both are: a
-  fringe outside the surface failed (decisions). What might: thin cloud by the pixel's footprint
-  (the sub-pixel wisps' average) where the outline ramps up.
+  fringe outside the surface failed (decisions). Thin cloud over the outline's footprint, the
+  light march thinned alike, makes them (leg 10, step 3), but costs the trace +12–22% (its loop at
+  a cliff of registers): for the author.
 - **Inside cloud**, deep in a tower (`inside`), is an even tan card ((174,142,122) since leg 9, the
   exposure adapting to the frame: 3.3×): the fog there is lit evenly by diffusion, so its density
   doesn't show; in motion faint mist puffs drift past and the brightness changes slowly (the
