@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { assertFreshBuild, launch, pageUrl, pool, ROOT, testRender, until, watchdog, watchPage } from './browser.js';
 import { flyAll, LOG } from './flights.js';
 import { decodePng } from './png.js';
+import { parseParams } from '../src/core/params.js';
 
 const AT_ONCE = 2;
 const LIVE = { test: '', live: '', log: '', w: '64', h: '36', scale: '0.3', dt: '0.05', frames: '100000' };
@@ -26,7 +27,7 @@ export const CHECKS = [
   { name: 'reproducible', what: 'a capture renders the same, byte for byte, every time, and handing over more frames changes it not at all', run: checkReproducible },
   { name: 'out-of-memory', what: 'GPU memory running out at start, on a resize and for good: the page retries smaller, keeps running, or says so', run: checkOutOfMemory },
   { name: 'volumes', what: 'the baked world volumes: no NaNs, no cloud cut off at a volume\'s ceiling, sound column maps, the sun map baked and within 0..1', run: checkVolumes },
-  { name: 'pointer-and-keys', what: 'the pointer leaving levels out; Cmd/Ctrl shortcuts don\'t steer; Meta clears held keys', run: checkPointerAndKeys },
+  { name: 'pointer-and-keys', what: 'the pointer leaving levels out; Cmd/Ctrl shortcuts don\'t steer; Meta clears held keys; P logs the moment\'s pose as a view', run: checkPointerAndKeys },
   { name: 'errors', what: 'the tools hear what nothing on screen shows: a WebGPU validation error, a lost device', run: checkErrors },
   { name: 'player', what: 'as a visitor sees it: the canvas fades in, the steering hint comes and goes, on a desktop, a phone, with ?debug and after a 12 s frame', run: checkPlayer, alone: true },
   { name: 'benchmark', what: '?bench flies its route, measures every leg and ends with a summary to paste', run: checkBenchmark, alone: true },
@@ -280,7 +281,23 @@ async function checkPointerAndKeys(browser, { fail, note, problems }) {
     await waitSim(0.2);
     if ((await input()).keys.length) fail(`tapping Meta should clear held keys: ${JSON.stringify((await input()).keys)}`);
     await page.keyboard.up('ArrowLeft');
-    note(`banks: pointer ${right.bank}° · after it left ${left.bank}° · Cmd + left ${shortcut.bank}° · left ${arrow.bank}°`);
+    // P: the bird's pose of 12 test frames (0.2 s) before the key, so a capture's still lands on the
+    // moment, as a view whose pose the page reads
+    const logged = [];
+    page.on('console', (m) => logged.push(m.text()));
+    await page.keyboard.press('KeyP');
+    const flown = await page.evaluate(() => window.__log.map((row) => [row[0], row[1], row[2], row[3]]));
+    await waitSim(0.2);
+    const entry = logged.find((l) => l.startsWith("{ name: 'new-view', params: { pose: '"));
+    const pose = entry ? parseParams(`?test&pose=${/pose: '([^']*)'/.exec(entry)[1]}`) : null;
+    if (!pose || pose.errors.length || pose.pose.length !== 7) fail(`P should log a view whose pose the page reads, x,y,z,yaw,pitch,bank,speed: ${entry}`);
+    else {
+      const [px, py, pz] = pose.pose;
+      const at = flown.findLast(([, x, y, z]) => Math.hypot(x - px, y - py, z - pz) < 0.2);
+      const lead = at ? flown.at(-1)[0] - at[0] : null;
+      if (lead === null || lead < 0.15 || lead > 0.35) fail(`P's pose should be where the bird flew 0.2 s before the key: ${lead === null ? 'nowhere it flew' : `${lead.toFixed(2)} s before`}`);
+    }
+    note(`banks: pointer ${right.bank}° · after it left ${left.bank}° · Cmd + left ${shortcut.bank}° · left ${arrow.bank}°; P: ${entry}`);
   } finally {
     await live.done();
   }

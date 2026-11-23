@@ -51,7 +51,7 @@ test('a value not of its kind is an error naming it, and is left out', () => {
   const bad = {
     seed: ['abc', '3.5', '1e12'], towers: ['-1', 'many'], frames: ['0', '2.5'], keep: ['0'], every: ['-3'],
     view: ['6', '1.5'], dbg: ['8'], tm: ['2'], bloomw: ['1'], dt: ['-0.1', '2'], w: ['0', '9000'], scale: ['0', '1.5'],
-    pose: ['1,2', '1,,3', '1,2,3,4,5,6,7', 'a,b,c'], closeup: ['1,2', '1,2,3,4'], benchSeconds: ['0'],
+    pose: ['1,2', '1,,3', '1,2,3,4,5,6,7,8', 'a,b,c'], closeup: ['1,2', '1,2,3,4'], benchSeconds: ['0'],
   };
   for (const [name, values] of Object.entries(bad)) {
     for (const raw of values) {

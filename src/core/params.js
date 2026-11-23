@@ -11,7 +11,7 @@
 //   modes      test (core/capture.js); bench (core/benchmark.js) and debug (core/readout.js), both
 //              off in the test mode
 //   the world  seed (7: world/noise.js), towers (1: the density of convective cells, world/cells.js)
-//   the bird   preset (a test view), pose (x,y,z[,yaw,pitch,bank]): where it starts,
+//   the bird   preset (a test view), pose (x,y,z[,yaw,pitch,bank,speed]): where it starts,
 //              flight/presets.js
 //   the look   view (0; 1..5: what goes into the final image), dbg (0; 1..7: the cloud debug views,
 //              also render/setup.js), tm (1: hue-preserving filmic, 0: ACES), con (1: contrast), haze
@@ -45,7 +45,7 @@ const INT32 = 2 ** 31;
 export const PARAMS = {
   test: flag, bench: flag, debug: flag,
   seed: number(-INT32, INT32 - 1, { whole: true }), towers: number(0, 100),
-  preset: text, pose: numbers(3, 6),
+  preset: text, pose: numbers(3, 7),
   view: number(0, 5, { whole: true }), dbg: number(0, 7, { whole: true }), tm: number(0, 1, { whole: true }),
   con: number(0, 10), haze: number(0, 1), exp: number(0, 1e6), rays: number(0, 100),
   bloom: number(0, 1), bloomw: number(0, 0.99), bclamp: number(0, 1e9),

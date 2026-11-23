@@ -102,12 +102,12 @@ export function presetPose(pre) {
   if (!Object.hasOwn(presets, pre)) return { refused: towers.includes(pre) ? `this world has no place for the preset "${pre}"` : `no preset "${pre}"` };
   return presets[pre];
 }
-// the bird b at a preset's pose p (presetPose), then at ?pose ([x, y, z, yaw, pitch, bank])
+// the bird b at a preset's pose p (presetPose), then at ?pose ([x, y, z, yaw, pitch, bank, speed])
 export function placeBird(b, p, pose) {
   if (p) {
     b.pos = [p.x || 0, p.y, p.z || 0];
     b.yaw = p.yaw; b.gamma = p.gamma; b.bank = p.bank || 0;
     if (p.speed) b.speed = p.speed;
   }
-  if (pose) { b.pos = [pose[0], pose[1], pose[2]]; b.yaw = pose[3] || 0; b.gamma = pose[4] || 0; b.bank = pose[5] || 0; }
+  if (pose) { b.pos = [pose[0], pose[1], pose[2]]; b.yaw = pose[3] || 0; b.gamma = pose[4] || 0; b.bank = pose[5] || 0; if (pose[6]) b.speed = pose[6]; }
 }

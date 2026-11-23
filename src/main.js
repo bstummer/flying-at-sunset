@@ -3,7 +3,8 @@
 // translucent paper, a gentle glider.
 //
 // The start, the main loop (frameStep: input, flight, camera and the world's windows, then the
-// frame), the steering hint, a lost device and window.__debug. The imports run in the order things
+// frame), the steering hint, a lost device, window.__debug, and P (the pose of the moment, as a view).
+// The imports run in the order things
 // are set up (CLAUDE.md §6): the world's worker starts first and grows the world around the start
 // while the GPU device comes and the shaders compile. The first frame, and in the test mode every
 // frame, waits for what it asked the world's worker for; in the test mode each also waits for the
@@ -69,6 +70,7 @@ function frameStep(now) {
     updateInput(dt, clock);
     keepPatch(bird_.pos[0], bird_.pos[2]);
     updateFlight(bird_, params.freeze ? 0 : dt, clock, input, probeData);
+    recordPose(clock);
     updateCamera(dt, frame === 0, clock, R.w / R.h, inCloud);
     updateInCloud(dt);
     shiftWorld(cam.pos, frame);
@@ -113,6 +115,35 @@ window.__debug = {
       amb: { up: a.slice(0, 3), sunSide: a.slice(4, 7), antiSun: a.slice(8, 11) }, expo: { mean: e[0], adapted: e[1], fog: e[2], exposure: e[3] } };
   },
 };
+// P: the bird's pose as a view for tools/views.js, logged and copied (how a moment seen in flight
+// reaches a session, in the deployed piece too). The pose from POSE_LEAD before the key: a capture's
+// still comes 12 frames of the test's time step after the pose it starts from, so it lands on the
+// moment (the flight in between unsteered).
+const POSE_LEAD = 12 * 0.0166, poses = [];
+function recordPose(t) {
+  poses.push([t, ...bird_.pos, bird_.yaw, bird_.gamma, bird_.bank, bird_.speed]);
+  while (poses.length > 1 && poses[1][0] <= t - POSE_LEAD) poses.shift();
+}
+addEventListener('keydown', e => {
+  if (e.code !== 'KeyP' || e.repeat || e.metaKey || e.ctrlKey || e.altKey || !poses.length) return;
+  const r = (v, d) => +v.toFixed(d);
+  const [, x, y, z, yaw, pitch, bank, speed] = poses[0];
+  const pose = [r(x, 1), r(y, 1), r(z, 1), r(yaw, 4), r(pitch, 4), r(bank, 4), r(speed, 1)].join(',');
+  const world = ['seed', 'towers'].filter(k => params[k] !== null).map(k => `, ${k}: '${params[k]}'`).join('');
+  const entry = `{ name: 'new-view', params: { pose: '${pose}'${world} }, brief: '' },`;
+  console.log(entry);
+  // (the clipboard API wants a secure context: from file://, a selected textarea)
+  const fallback = () => {
+    const a = document.createElement('textarea');
+    a.value = entry;
+    a.style.cssText = 'position:fixed;opacity:0';
+    document.body.append(a);
+    a.select();
+    try { document.execCommand('copy'); } catch (_) { /* the log has it */ }
+    a.remove();
+  };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(entry).catch(fallback); else fallback();
+});
 // A promise that fails unheard would leave a blank or frozen page: say so instead.
 addEventListener('unhandledrejection', e => {
   if (!gpuState.lost && !window.__error) fail('Something went wrong — ' + (e.reason && e.reason.message || e.reason));

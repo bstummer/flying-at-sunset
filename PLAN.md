@@ -181,6 +181,9 @@ under an orange veil, and the picture grainy in flight.
    skim flight 5.4 s in). The views outside cloud as before (within a level, on a few pixels);
    `edge`'s near billows softer, without a seam. Cost: the trace in cloud `entry` +2%, `edge` +6%,
    `inside` +3%; elsewhere the same.
+8. The author (2026-11-23): not fixed: what they see flying into an edge wasn't what step 7 found
+   (it was never reproduced). P now copies the moment's pose as a view (CLAUDE.md §3, the deployed
+   page too): the next session asks for one taken right where it looks wrong.
 
 **Leg 10: distance.**
 1. A coarser level of the sun map for what lies past its window (known issues): the far sea

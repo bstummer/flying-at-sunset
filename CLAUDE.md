@@ -120,6 +120,12 @@ a long turn, a dive and climb, a weave) as in normal use, measuring each leg, th
 copy it. It is how numbers from real computers and phones reach a session: ask the user to run it on
 the published page (`https://bstummer.github.io/flying-at-sunset/?bench`) and paste the summary.
 
+**P** (in the page, the deployed one too; nothing on screen says so): logs and copies the moment as a
+`tools/views.js` entry, `{ name: 'new-view', params: { pose: 'x,y,z,yaw,pitch,bank,speed' } }` (and
+`seed`, `towers` if set): the bird's pose 0.2 s before the key, so a capture's still (12 frames on)
+lands on what was on screen. How a moment the author saw in flight reaches a session: ask them to
+press P there and paste it.
+
 The world in Node (`tools/world/`, no browser; `QS="seed=3"` for another world, `WSRC=dir` for another
 checkout's `src/world`): `stats.js` (the sea, towers by size and how flat their tops, the bubble load), `map.js`, `preview.js`
 (a CPU sphere-traced view of the large shapes in seconds), `catalog.js` (side views of the biggest
@@ -259,8 +265,8 @@ The tools rely on these; keep them, or change the tools with them.
   `&log`: a per-frame flight log in `window.__log` (t, x, alt, z, speed, bank, flight-path angle γ, yaw
   (angles in degrees), sea top, the probe's distance to the cloud at the bird, camera roll, fov).
   `&script=dive|climb|turn|weave|divedeep|holddive`: scripted input (`src/core/capture.js`). `&freeze`: no
-  flight. `&preset=...` (the table below), `&pose=x,y,z,yaw,pitch,bank`: where the bird is (metres, the
-  height absolute; radians, yaw 0 toward the sun (−Z), pitch the flight-path angle); the chase camera
+  flight. `&preset=...` (the table below), `&pose=x,y,z,yaw,pitch,bank[,speed]`: where the bird is (metres, the
+  height absolute; radians, yaw 0 toward the sun (−Z), pitch the flight-path angle; m/s); the chase camera
   sits a few metres behind it, and the flight goes on from there (`tools/world/pose.js` finds a pose
   looking at a point). `&closeup=right,up,forward`: a camera fixed to the bird.
   `&jit=J`: the jitter sequences start J frames on (the grain measurement: the same render with
