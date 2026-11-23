@@ -162,6 +162,25 @@ under an orange veil, and the picture grainy in flight.
    move by more than 2 levels: other noise converged otherwise). Left: the strip a turn or a pitch
    brings in at the frame's edge, near outlines against farther clouds in a dive. Cost: the TAAU
    +10% (0.012 ms a frame), the trace unchanged.
+7. Flying into a cloud's edge (the author, 2026-11-23: "the outlines of the clouds in the
+   background look weird"). In the skim flight at 5.6 s, the camera a metre under the top of the
+   billow ahead, for 0.2 s: the near billow dark, the lit sea beyond in a hard-edged strip, a
+   lighter block between with stair-stepped edges (new in leg 9; before it, `inCloud`'s fading
+   thinned it all away). The rays that skim the top from just under it came out, were handed to
+   the main loop, and met the top again as a crisp surface lit from outside, or stayed in the
+   camera's fog, by the smallest bumps of the stored shapes (texel-sized, at a grazing angle): two
+   ways of drawing one cloud, in blocks. Now the own loop goes on through the air near the camera
+   until clear of cloud by 12 m; a cloud it dips back into is unfrayed and lit toward the main
+   loop's skin by how far clear the gap took it (none at a hair's breadth, all of it by the
+   clearance, as the main loop lights it past there); near its surface the camera's fog is lit as
+   the main loop lights the cloud from outside (the tints, the saturation, a grazing view's sky
+   light), deep in, grey as before, so going out of a top or into it changes nothing (it jumped
+   from dark grey fog to the lighter blue surface). And the main loop starts where the own loop
+   leaves off as from a point outside (it started as if entered at the camera: its light points
+   tens of metres off where a ray went straight back in). A view `entry` holds the moment (the
+   skim flight 5.4 s in). The views outside cloud as before (within a level, on a few pixels);
+   `edge`'s near billows softer, without a seam. Cost: the trace in cloud `entry` +2%, `edge` +6%,
+   `inside` +3%; elsewhere the same.
 
 **Leg 10: distance.**
 1. A coarser level of the sun map for what lies past its window (known issues): the far sea
@@ -595,6 +614,13 @@ they hold until the author says otherwise.
 
 ### In cloud
 
+- **Handing the skim of a top to the main loop** (leg 9, step 7), the ray out of the camera's cloud
+  at its first air: stair-stepped blocks where it met the top again as a surface seen from outside,
+  fainter with the fog lit like it, still there. Kept in the own loop until 20 m clear: `edge`'s near
+  billows a smooth veil, their domes gone; 4 m clear: a straight seam across them between frayed
+  fog and crisp surface, as much without the fray past the first air. Not the cause (each changed
+  nothing): the own loop's step cap (240 or 2000), a softer threshold for the shreds, the camera's
+  cloud ramping in over its first 8 m, finer steps in its holes.
 - **Grain measured at the still alone** (leg 9, step 3): 12 frames in the history is young (1–8% of
   every view, after 2 s of straight flight 0.13–0.58%), and the bird flies straight: it read the
   start, and missed turns and dives. Over the motion strip since step 6.
@@ -744,8 +770,8 @@ they hold until the author says otherwise.
   author's eyes). The puffs and the camera's shake still go by `inCloud`, the density at the
   camera's point. Where the camera is in cloud, the history reprojects the fog by the depth of what
   shows through it (far clouds, or the sky): its own shreds near the camera may smear in motion.
-  Skimming a top (the skim flight at ~5.5 s), a lighter band with a hard upper edge crosses the
-  lower frame: the billow's top just under the camera, seen edge-on (before leg 9 too). `under` (an anvil's underside) is navy since leg 8:
+  The shreds' edge seen nearly edge-on, a metre under a top (`entry`'s crop), is stippled at the
+  trace's pixel: it may shimmer in motion (the author's eyes). `under` (an anvil's underside) is navy since leg 8:
   the sea beneath lies in the anvil's shadow for tens of km at a 5° sun, so nothing warm comes up.
   Kept: physically right (the author, 2026-11-22).
 - **`giant` and `close` miss their briefs** (presets.js, clearOf): `giant` stands 62 km from its

@@ -30,6 +30,9 @@ export const VIEWS = [
   { name: 'under', params: { preset: 'under' }, brief: 'Beneath an overhang, looking up at it: something to fly under.' },
   { name: 'inside', params: { preset: 'inside' }, brief: 'Inside a tower: drifting mist and in-cloud light, not a white wall.' },
   // (in the first metres of a billow over the start's sea, flying out of it; 70 m higher the view is clear)
+  // (the skim flight 5.4 s in, its camera about to pass a metre under the top of the billow ahead)
+  { name: 'entry', params: { pose: '116.8,1307.5,-314.7,0.354,0.105,0' }, brief: 'The camera crossing the top of a billow: one cloud inside and out, the clouds behind clear through its shreds, no blocks or seams.',
+    crops: { top: [0.3, 0.3, 0.45, 0.3] } },
   { name: 'edge', params: { pose: '0,1400,0,-1.0,-0.03,0' }, brief: 'In a billow\'s edge, looking out: a thin fog, the world past it clear and still in flight, not grainy and not washed out.',
     crops: { horizon: [0.15, 0.29, 0.5, 0.1], ridge: [0.08, 0.46, 0.4, 0.12], sky: [0.3, 0.03, 0.4, 0.15] } },
   { name: 'seed3', params: { seed: '3' }, brief: 'Another world\'s start: the generator, not just the piece\'s seed.' },

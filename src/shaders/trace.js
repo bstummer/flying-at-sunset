@@ -8,9 +8,11 @@
 // is found by a few Illinois regula-falsi steps (else far clouds look dark and speckled); inside,
 // steps aim at a fixed optical depth (σ = 0.07/m) but stay fine in the rim (about a pixel wide on
 // the billowy tops); it ends at T < 0.02. The camera's own cloud (a ray that starts in cloud, until
-// it first comes out) is marched first, in a loop of its own: from the camera in fine steps the same
-// for every pixel, the last one cut at the surface, frayed in its first 40 m (shreds and holes),
-// greyed (no shade tints), with variations deep in; how much light gets through it goes out with
+// it is clear of cloud) is marched first, in a loop of its own: from the camera in fine steps the
+// same for every pixel, each cut at a surface it crosses, frayed in its first 40 m (shreds and
+// holes), on through the air near it (a ray skimming a top dips in and out: one cloud, lit toward
+// the main loop's skin by how far clear the gap took it), greyed deep in and lit as the main loop
+// lights a surface near it, with variations deep in; how much light gets through it goes out with
 // the depth (the exposure adapts by it, shaders/exposure.wgsl; the high layers lie behind it), and
 // the depth the history is reprojected by is that of what shows through it.
 // Light (sunScatter, shaders/cloud.js, fitted to a Monte Carlo of the medium, tools/light/): all of

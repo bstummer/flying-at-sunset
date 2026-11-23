@@ -82,11 +82,12 @@ struct Out { @location(0) col: vec4f, @location(1) depth: vec2f }
 
 // The camera's own cloud, where a ray starts in cloud: marched in a loop of its own, before the
 // clouds past it (carried through the main loop, its state and branches cost every ray 16-17%), from
-// the camera in steps of OWN_TAU optical depths, the same for every pixel, until the ray first comes
-// out (in a cloud entered from outside, steps of up to 2 optical depths, each jittered, are averaged
-// by the history at rest; through the camera's cloud they set how much of all behind it shows, and in
-// flight that was grain over everything), the last step's part past the surface taken back.
+// the camera in steps of OWN_TAU optical depths, the same for every pixel (in a cloud entered from
+// outside, steps of up to 2 optical depths, each jittered, are averaged by the history at rest;
+// through the camera's cloud they set how much of all behind it shows, and in flight that was grain
+// over everything), each step's part past a surface taken back, until the ray is clear of cloud.
 const OWN_TAU = 0.12;
+const OWN_CLEAR = 12.0;   // m
 // How much of a cloud's edge at depth x (m) is there, at p: wisps of the detail volume's Worley noise
 // (16–64 m and 4–16 m cells; its median 0.475, quartiles 0.39 and 0.56), cut by a threshold that
 // leaves about 60% of the surface holes, 20% 20 m in, none CLOUD_EDGE_W in
@@ -155,20 +156,37 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
   // and the high layers' order, shaders/taau.wgsl), its depth (km) where nothing shows through
   var tOwn = 1.0;
   var zOwn = 0.0;
+  var dOut = -1.0;    // the distance where it comes out of it, the main loop's last point outside
   var own = false;
+  var dCam = 1.0;     // the distance at the camera
   {
     let lv0 = levelAt(u.camPos.xz, 0.0, jit);
     let C0 = colAt(u.camPos.xz, lv0);
     let dm0 = macroAt(u.camPos, lv0);
-    if (dm0 - shellOf(C0.y) - lvMargin(lv0) <= 0.0) { own = cloudSDF(u.camPos, h0, vec3f(dm0, billowAt(u.camPos, lv0)), C0, 0.0) < 0.0; }
+    if (dm0 - shellOf(C0.y) - lvMargin(lv0) <= 0.0) { dCam = cloudSDF(u.camPos, h0, vec3f(dm0, billowAt(u.camPos, lv0)), C0, 0.0); own = dCam < 0.0; }
   }
   if (own) {
     t = 0.0;
     var lp = LightPath(0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 0.0, 0.0, 0.0);
     var nUp = 1.0;
     var openL = 1.0;
+    var graze = 1.0;
     var sea = seaBounce(SEA_LIT, u.ambSea, ambUp0);
+    // (near its surface the camera's fog is lit as the main loop lights the cloud from outside, with
+    // the shade's tints, the film's saturation and a grazing view's sky light: a step out of the
+    // surface or into it changes nothing, where grey fog against the shaded surface was a jump.
+    // Deeper in, grey: the light has wandered in from everywhere.)
+    let wSurf = 1.0 - smoothstep(0.0, 30.0, -dCam);
+    let ambUpO = ambUp0 * mix(vec3f(1.0), vec3f(0.88, 0.96, 1.2), wSurf);
+    let skyAntiO = skyAnti0 * mix(vec3f(1.0), vec3f(1.03, 0.92, 1.18), wSurf);
+    let satO = mix(1.0, CLOUD_SAT, wSurf);
     var tauLit = 1e9;    // the optical depth since the light was last made afresh
+    var out = false;     // the ray has come out once
+    var gap = 0.0;       // how far clear of cloud the air it is in reaches; where it went back in, and
+    var tA = 0.0;        // the last point in the air before
+    var dA = -1.0;
+    var tE = 0.0;
+    var wS = 0.0;        // how much the cloud it went back into is lit as a surface seen from outside
     var sTau = 0.0;      // the last step: its optical depth, the light it added, the distance at its start
     var sL = vec3f(0.0);
     var sD = 0.0;
@@ -187,37 +205,70 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
       let bs = billowAt(wp, lv);
       let d = cloudSDF(wp, h, vec3f(macroAt(wp, lv), bs), C, lod);
       if (d > 0.0) {
-        if (sTau > 0.0) { let c = exitCut(sTau, sD, d); T *= c.y; L += sL * c.x; }
-        own = false;
-        break;
+        // out in the air: the last step's part past the surface taken back, and on, by the distance,
+        // until clear of every cloud by OWN_CLEAR. A ray skimming a top from just under it dips in and
+        // out: all of it the camera's fog (handed to the main loop at the first air, it met the top
+        // again as a surface seen from outside, crisp and lit, or didn't, by the smallest bumps of the
+        // stored shapes: blocks of veil and surface with stair-stepped edges)
+        if (sTau > 0.0) { let c = exitCut(sTau, sD, d); T *= c.y; L += sL * c.x; sTau = 0.0; }
+        if (d > OWN_CLEAR) { own = false; dOut = d; break; }
+        out = true;
+        gap = max(gap, d);
+        tA = t;
+        dA = d;
+        t += max(d * 0.9, 1.0 + t * 0.01);
+        continue;
       }
       // frayed in its first metres, where dry air mixes in (the medium's thin edge): shreds and holes
       // that let the lit tops and the sky through; deeper in, variations of density, mist streaming
       // past as the bird flies
       let crisp = smoothstep(-150.0, 250.0, h - C.w);
       let edgeW = mix(max(4.0, 2.0 * pix), max(2.0, 1.25 * pix), crisp);
-      let dens = densityFromSDF(d, wp, 1.0, edgeW, 1.0 - smoothstep(150.0, 900.0, t)) * fray(wp, -d);
+      // (back in after the air: lit as a surface seen from outside, at the main loop's skin, as far as
+      // the ray got clear of cloud in the gap: from a hair's breadth back into the same top, none of
+      // it; from across open air, all of it, as the main loop lights it past OWN_CLEAR)
+      if (dA > 0.0) {
+        tE = tA + (t - tA) * dA / max(dA - d, 1e-3);
+        wS = smoothstep(0.0, OWN_CLEAR, gap);
+        gap = 0.0;
+        dA = -1.0;
+        tauLit = 1e9;
+      }
+      // (frayed until the ray first comes out: a cloud it dips back into within OWN_CLEAR is the medium
+      // the main loop draws past there, so no seam shows between them)
+      let dens = densityFromSDF(d, wp, 1.0, edgeW, 1.0 - smoothstep(150.0, 900.0, t)) * select(fray(wp, -d), 1.0, out);
       let sigma = dens * SIGMA;
       let dt = clamp(OWN_TAU / max(sigma, 1e-4), 0.5, 6.0 + t * 0.02);
       if (dens > 0.003) {
-        // (light made afresh once every 0.4 optical depths, at the sample itself: seen from inside,
-        // no outline's ramp to map onto a skin)
+        // (light made afresh once every 0.4 optical depths, at the sample itself, seen from inside: no
+        // outline's ramp to map onto a skin)
+        var depth = -d;
+        var wpL = wp;
+        if (wS > 0.0) {
+          depth = mix(-d, lightDepth(-d, edgeW), wS);
+          let relL = dir * (tE + (t - tE) * depth / max(-d, 1e-3));
+          wpL = u.camPos + relL;
+          wpL.y = h0 + relL.y + dot(relL.xz, relL.xz) * INV2R;
+        }
         if (tauLit >= 0.4) {
           tauLit = 0.0;
-          lp = lightPath(wp, h, d, lv, C, bs, lod);
+          lp = lightPath(wpL, wpL.y, -depth, lv, C, bs, lod);
           let S = 22.0 + t * 0.005;
-          nUp = clamp((cloudSDF(wp + vec3f(0.0, S, 0.0), h + S, vec3f(macroAt(wp + vec3f(0.0, S, 0.0), lv), bs), C, lod) - d) / S, -1.0, 1.0);
-          sea = seaBounce(seaLitBelow(wp.xz, h - C.x), u.ambSea, ambUp0);
-          openL = openLarge(wp, lv).w;
+          let up = wpL + vec3f(0.0, S, 0.0);
+          nUp = clamp((cloudSDF(up, up.y, vec3f(macroAt(up, lv), bs), C, lod) + depth) / S, -1.0, 1.0);
+          sea = seaBounce(seaLitBelow(wpL.xz, wpL.y - C.x), u.ambSea, ambUp0);
+          let oL = openLarge(wpL, lv);
+          openL = oL.w;
+          graze = mix(1.0, 0.92 + 0.6 * pow(1.0 - saturate(-dot(dir, oL.xyz)), 3.0), wSurf);
         }
-        let depth = -d;
         let pw = mix(powder, 1.0, 1.0 - exp(-profileDepth(depth) * SIGMA));
-        let sunL = sunColorAt(h) * sunScatter(lp, tsvTau(wp, h), phase, pw, depth);
+        let sunL = sunColorAt(h) * sunScatter(lp, tsvTau(wpL, wpL.y), phase, pw, depth);
         // the sky's light as on a cloud's faces, as deep and as open to the sky as the main loop takes
-        // it, without the tints (deep in a tower, the sun's light diffusing in outweighs it)
-        let eSide = mix(skyAnti0 + sea * 0.15, skySunS + sea * 0.4, saturate(0.5 + 0.5 * lp.nS));
-        let eDir = select(mix(eSide, sea, -nUp), mix(eSide, ambUp0, nUp), nUp > 0.0);
-        let Sc = sigma * 0.985 * (sunL + eDir * mix(0.5, 1.0, exp(-profileDepth(depth) / 55.0)) * (0.35 + 0.65 * openL));
+        // it (deep in a tower, the sun's light diffusing in outweighs it)
+        let eSide = mix(skyAntiO + sea * 0.15, skySunS + sea * 0.4, saturate(0.5 + 0.5 * lp.nS));
+        let eDir = select(mix(eSide, sea, -nUp), mix(eSide, ambUpO, nUp), nUp > 0.0);
+        let Lc = sunL + eDir * mix(0.5, 1.0, exp(-profileDepth(depth) / 55.0)) * (0.35 + 0.65 * openL) * graze;
+        let Sc = sigma * 0.985 * max(mix(vec3f(luma(Lc)), Lc, satO), vec3f(0.0));
         let st = exp(-sigma * dt);
         let th = airT(t, h0, dir.y);
         sL = T * ((Sc - Sc * st) / sigma * th + (1.0 - st) * skyHaze * (1.0 - luma(th)));
@@ -235,8 +286,9 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
     zOwn = select(0.05, zs / zw * 0.001, zw > 1e-4);
   }
   var done = false;
-  var tPrev = 0.0;      // last point outside the clouds
-  var dPrev = -1.0;
+  var tPrev = t;        // last point outside the clouds (after the camera's own cloud, where the ray came
+  var dPrev = dOut;     // out: a cloud entered right after is found again and lit from its surface, not as
+                        // if entered at the camera, its light points tens of metres off)
   var tIn = 0.0;        // nearest point known to be inside, while refining an entry
   var dIn = 0.0;
   var nRef = 0;
