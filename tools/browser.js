@@ -18,10 +18,21 @@ export const BUILT_HTML = join(ROOT, 'dist', 'index.html');
 // world: under a minute for a page alone, a few with others beside it.
 export const STALL_MS = 300_000;
 
-// WebGPU in the headless shell needs --enable-unsafe-webgpu. On Windows its real GPU (D3D12) needs
-// Dawn to compile with FXC: the shell ships without DXC.
+// The Chromium build the tools run, always headless (headed, its window can clip the user's real
+// mouse on Windows). On Windows the full build: its Dawn compiles the shaders for D3D12 with DXC, as
+// visitors' Chrome does there; the headless shell ships without DXC, and FXC put the trace at a cliff
+// of registers DXC doesn't have (PLAN.md, leg 10). Elsewhere the headless shell: CI's, and in
+// tools/linux.js's container CI's captures byte for byte. install: what tools/install-chromium.js runs.
+const FULL_BUILD = process.platform === 'win32';
+export const CHROMIUM = {
+  options: FULL_BUILD ? { channel: 'chromium' } : {},
+  install: `npx playwright install ${FULL_BUILD ? '--no-shell' : '--only-shell'} chromium`,
+};
+
+// WebGPU headless needs --enable-unsafe-webgpu. On Windows DXC by name: without it the device
+// fails (probeWebGPU) rather than the shaders quietly compiling with FXC.
 const HARDWARE_ARGS = {
-  win32: ['--disable-dawn-features=use_dxc'],
+  win32: ['--enable-dawn-features=use_dxc'],
   darwin: [],
   linux: ['--enable-features=Vulkan'],
 };
@@ -45,13 +56,13 @@ export async function launch(mode = 'auto', log = console.log) {
   for (const kind of order) {
     let browser;
     try {
-      // Headless shell only: no `channel:`, never headed. Other modes can clip the user's real mouse on Windows.
       if (kind === 'swiftshader' && process.platform !== 'linux') {
         throw new Error('WebGPU has a SwiftShader adapter on Linux only: run this in a Linux container (node tools/linux.js node tools/...)');
       }
-      browser = await chromium.launch({ headless: true, args: BACKENDS[kind] });
-      const { gl, fallback } = (await probeWebGPU(browser)) ?? {};
+      browser = await chromium.launch({ headless: true, ...CHROMIUM.options, args: BACKENDS[kind] });
+      const { gl, fallback, deviceError } = (await probeWebGPU(browser)) ?? {};
       if (!gl) throw new Error('no WebGPU adapter');
+      if (deviceError) throw new Error(`no WebGPU device: ${deviceError}`);
       if (kind === 'hardware' && (SOFTWARE_GPU.test(gl) || fallback)) throw new Error(`got a software adapter instead (${gl})`);
       if (kind === 'swiftshader' && !/swiftshader/i.test(gl)) throw new Error(`got another adapter instead (${gl})`);
       return { browser, kind, gl };
@@ -69,13 +80,14 @@ export async function launch(mode = 'auto', log = console.log) {
 export function explainLaunchError(message) {
   const lib = /error while loading shared libraries: ([^:\s]+)/.exec(message)?.[1];
   if (lib) return `missing system library ${lib}. Install Chromium's dependencies: npx playwright install-deps chromium (needs root or sudo)`;
-  if (message.includes("Executable doesn't exist")) return 'the Chromium headless shell is not installed. Run: npx playwright install --only-shell chromium';
+  if (message.includes("Executable doesn't exist")) return `Playwright's Chromium is not installed. Run: ${CHROMIUM.install}`;
+  if (/dxcompiler\.dll/.test(message)) return `this Chromium has no DXC (dxcompiler.dll; the headless shell?). Run: ${CHROMIUM.install}`;
   return message.split('\n')[0];
 }
 
-// { gl, fallback } of the adapter the browser gives, or null without one. WebGPU needs a secure
-// context, which about:blank isn't here: an empty page at localhost, served by the tool (nothing
-// leaves the browser).
+// { gl, fallback, deviceError } of the adapter the browser gives, or null without one; deviceError:
+// why it gives no device (on Windows, a Chromium without DXC). WebGPU needs a secure context, which
+// about:blank isn't here: an empty page at localhost, served by the tool (nothing leaves the browser).
 async function probeWebGPU(browser) {
   const page = await browser.newPage();
   try {
@@ -85,7 +97,9 @@ async function probeWebGPU(browser) {
       const adapter = await navigator.gpu?.requestAdapter();
       if (!adapter) return null;
       const { vendor, architecture, device, description, isFallbackAdapter } = adapter.info ?? {};
-      return { gl: [vendor, architecture, device, description].filter(Boolean).join(' ') || 'unknown adapter', fallback: Boolean(isFallbackAdapter) };
+      let deviceError = null;
+      try { (await adapter.requestDevice()).destroy(); } catch (err) { deviceError = err.message; }
+      return { gl: [vendor, architecture, device, description].filter(Boolean).join(' ') || 'unknown adapter', fallback: Boolean(isFallbackAdapter), deviceError };
     });
   } finally {
     await page.close();

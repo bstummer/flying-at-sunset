@@ -20,7 +20,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertFreshBuild, launch, pool, ROOT, testRender } from './browser.js';
+import { assertFreshBuild, CHROMIUM, launch, pool, ROOT, testRender } from './browser.js';
 import { diffImage, tile } from './image.js';
 import { defaultLabel, gitDescribe, labelFolder } from './labels.js';
 import { describeMeasurements, describeWarning, grainParams, measurementChanges, measureView, motionParams, shimmerParams, zoomCrops } from './measure.js';
@@ -179,7 +179,7 @@ async function compare(args) {
   mkdirSync(outDir, { recursive: true });
   const out = join(outDir, `${labelA}_vs_${labelB}.png`);
   const { chromium } = await import('playwright');
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...CHROMIUM.options });
   try {
     const stats = await renderPage(browser, compareSheetHtml(sides, rows), files, out);
     console.log(`screenshot: compare ${labelA} vs ${labelB}`);

@@ -271,6 +271,19 @@ under an orange veil, and the picture grainy in flight.
 4. The haze toward the sun: a row of `?haze` values (1.3–5 × 10⁻⁵ against 2.6 now) changes the veil
    over the low sea toward the sun little (most of it is the atmosphere's own aerosols, `MIE_S`);
    the author saw no difference: kept (2026-11-23).
+5. Done (2026-11-23; `screenshots/fxc` → `dxc`). The tools compile the shaders with DXC, as
+   visitors' Chrome on Windows does: on Windows they run Playwright's full Chromium build, headless
+   (its `dxcompiler.dll`; the headless shell has none), with `use_dxc` asked for by name, so a
+   Chromium without DXC fails at the start rather than falling back to FXC; elsewhere still the
+   shell (CI's captures unchanged). The same build under both (Chromium 159, NVIDIA laptop, 200
+   frames, A B B A A B): the trace −6 to −8% in all seven views (`away` 1221 → 1128 ms, Chrome's
+   1111–1120 above), `post` +14%, `bird` +15%, the TAAU +2–5% (together +0.03 ms a frame against
+   the trace's −0.45). The first frame's bakes (`world`, `sunmap`: their totals the same over 24,
+   200 and 400 frames) spread ±20–40% under DXC, mostly slower (+15–70%), once faster. Stills:
+   1–2 levels in 0.3–5.7% of pixels, a few dozen pixels more on lit edges (`entry`, `exitsun`),
+   the same to the eye; flights identical. A page compiles its shaders ~5 s sooner (FXC compiles
+   slowly): the 20 views 479 → 274 s, verify ~10 → ~7 min. Captures and costs made with FXC
+   before this compare with none made after it.
 
 **Leg 11: tower shapes** (the world: the fingerprint recorded again, flights compared).
 1. The instruments: the mushroom measure (leg 6's scratch script) and a count of knobs into
@@ -654,12 +667,13 @@ they hold until the author says otherwise.
   eye and in the grain. Against its window's differences after a move (the march past it, found
   above): the march's first 4 km in steps of 80 m as the window's stretches, its rays not bent
   with the planet, L2 alone: none changed them.
-- **Costs measured with FXC** (leg 10): the tools compile the shaders with FXC (the headless shell
-  has no DXC), visitors' Chrome on Windows with DXC, Macs with Metal, Linux and Android with Vulkan.
-  FXC puts the trace's main loop at a cliff of registers: one number more carried through it costs
-  +12% (DXC: nothing), and every formulation of the silver lining +12–14% in a view it doesn't
-  change. Leg 9's flag for the camera's own cloud in the main loop (+16–17%) and leg 8's openness
-  once a cloud (+15–22%) were judged so too: worth measuring again under DXC.
+- **Costs measured with FXC** (until leg 10, step 5): the tools compiled the shaders with FXC (the
+  headless shell has no DXC), visitors' Chrome on Windows with DXC, Macs with Metal, Linux and
+  Android with Vulkan. FXC puts the trace's main loop at a cliff of registers: one number more
+  carried through it costs +12% (DXC: nothing), and every formulation of the silver lining +12–14%
+  in a view it doesn't change. Leg 9's flag for the camera's own cloud in the main loop (+16–17%)
+  and leg 8's openness once a cloud (+15–22%) were judged under FXC too: worth measuring again,
+  now that the tools compile with DXC.
 - **The light march's jitter** (before the legs): each step at a random point per pixel flipped in
   and out of a bulge beside the path: the screen-door on near clouds. Averaging each step's
   occupancy instead darkened the sea's lit tops (the path skims them; the air above counted).
@@ -816,9 +830,6 @@ they hold until the author says otherwise.
 
 ## Known issues and ideas
 
-- **The tools measure FXC's shaders** (tools/browser.js: the headless shell ships without DXC),
-  where visitors' Chrome on Windows runs DXC's, the trace ~9% faster (leg 10). The full Chromium
-  build Playwright installs has DXC: the cost tool's numbers would then be the visitors'.
 - **Measured only on one desktop GPU**: NVIDIA, headless, at 640×360, where a short benchmark ran at 60
   fps (capped) with 5.9 ms of GPU time a frame, the clouds at the 0.75 ceiling and no hitches; never on
   phones, integrated GPUs or at full-screen sizes, so frame rate, dynamic resolution and memory there
@@ -882,7 +893,7 @@ they hold until the author says otherwise.
   tower's lie within a trace pixel (60–80 m), where a real edge's wisps and the profile both are: a
   fringe outside the surface failed (decisions). Thin cloud over the outline's footprint, the
   light march thinned alike, makes them (leg 10, step 3), for the trace +7% under DXC (Chrome's
-  compiler; +13% under the tools' FXC): subtle at full size (`sun`'s towers, `anvil`'s top; barely
+  compiler, the tools' since; +13% under FXC): subtle at full size (`sun`'s towers, `anvil`'s top; barely
   in `start`, `seed3`, `high2`), the author: not worth it (2026-11-23).
 - **Inside cloud**, deep in a tower (`inside`), is an even tan card ((174,142,122) since leg 9, the
   exposure adapting to the frame: 3.3×): the fog there is lit evenly by diffusion, so its density

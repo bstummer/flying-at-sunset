@@ -1,5 +1,6 @@
 // The tools' logic that needs no browser: the screenshot tool's arguments, plans, labels and compares
-// (tools/screenshot.js, labels.js, views.js), why a page stopped (browser.js), the flight logs'
+// (tools/screenshot.js, labels.js, views.js), why a page stopped or Chromium gave no WebGPU
+// (browser.js), the flight logs'
 // compare (flights.js), the streaming check's (checks.js) and the cost tool's runs (cost.js)
 
 import test from 'node:test';
@@ -10,7 +11,7 @@ import { join } from 'node:path';
 import { diffSummary, gpuChanges, mismatchWarnings, parseArgs, planCapture, removeCapture, viewParams } from '../tools/screenshot.js';
 import { labelFolder } from '../tools/labels.js';
 import { compareLevels, difference } from '../tools/checks.js';
-import { whyStopped } from '../tools/browser.js';
+import { CHROMIUM, explainLaunchError, whyStopped } from '../tools/browser.js';
 import { describeDifference, parseArgs as flightArgs } from '../tools/flights.js';
 import { describeRows, ownWorktrees, parseArgs as costArgs, runOrder, summarize } from '../tools/cost.js';
 import { VIEWS } from '../tools/views.js';
@@ -117,6 +118,15 @@ test('why waiting on a page failed: a crash, the watchdog, a stall, anything els
   assert.deepEqual(whyStopped(err, { crashed: false, fired: true, timeoutMs: 90_000 }), { kind: 'timeout', text: 'not done within 90 s' });
   assert.deepEqual(whyStopped(Object.assign(new Error('no frame drawn for 300 s'), { stalled: true }), {}), { kind: 'timeout', text: 'no frame drawn for 300 s' });
   assert.deepEqual(whyStopped(err, {}), { kind: 'tool error', text: 'Target page, context or browser has been closed' });
+});
+
+test("why Chromium gave no WebGPU: a missing library, browser or DXC, else the first line", () => {
+  assert.match(explainLaunchError('launch: error while loading shared libraries: libnss3.so: cannot open shared object file'), /missing system library libnss3\.so/);
+  assert.ok(explainLaunchError("browserType.launch: Executable doesn't exist at C:\\pw\\chrome.exe\n...").endsWith(`Run: ${CHROMIUM.install}`));
+  // (as Chromium 159's headless shell on Windows says it, asked for DXC)
+  const noDxc = "no WebGPU device: Failed to execute 'requestDevice' on 'GPUAdapter': DynamicLib.Open: dxcompiler.dll Windows Error: 87\n    at EnsureDXCLibraries (PlatformFunctionsD3D12.cpp:224)";
+  assert.match(explainLaunchError(noDxc), /^this Chromium has no DXC .* Run: /);
+  assert.equal(explainLaunchError('no WebGPU adapter\nCall log: ...'), 'no WebGPU adapter');
 });
 
 test('flight logs: identical, or where they part and how far', () => {
