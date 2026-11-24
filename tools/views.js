@@ -22,6 +22,9 @@ export const VIEWS = [
   // (the preset's way, 400 m over the sea's top: just over its billows, which rise 300-380 m over it
   // there; the preset itself lies 170 m over it, in the billows, where the skim flight dives through)
   { name: 'skim', params: { pose: '0,1493,0,0.35,-0.03,0' }, brief: 'Just over the cloud tops: billows at every size, bulges on bulges down to metres, crisp where the sun catches them, soft edges, never sharp ridgelines or smooth pillows.' },
+  // (the pose a held climb settles in, flight.js: 26° up at 51 m/s; the camera sinks behind the bird, camera.js)
+  { name: 'climb', params: { pose: '0,3200,0,0.45,0.45,0,51.4' }, brief: 'In a held climb, 2 km over the sea: the bird whole in the frame, not sunk to its bottom edge, the towers rising ahead far above it, the sea falling away below.',
+    crops: { bird: [0.42, 0.66, 0.16, 0.16] } },
   { name: 'high2', params: { preset: 'high2' }, brief: 'From 5 km up: the sea\'s swells and valleys, heaps and towers from above, never evenly spread; the farther, the hazier, paler and bluer.' },
   { name: 'tower', params: { preset: 'tower' }, brief: 'A big tower from 9 km or more, sunlit from the side: broad base swelling out of the sea, a few huge lobes carrying smaller ones, crisp cauliflower domes, shadowed folds kept luminous, sides that bulge and lean.',
     crops: { domes: [0.45, 0.02, 0.25, 0.25] } },

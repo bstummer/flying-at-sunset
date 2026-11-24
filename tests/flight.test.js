@@ -35,8 +35,27 @@ test('a climb trades speed for height, and the bird never stalls below its floor
   let slowest = Infinity;
   const b = fly(20, () => [0, 1], { each: (b) => { slowest = Math.min(slowest, b.speed); } });
   assert.ok(b.pos[1] - start.pos[1] > 100, `climbed ${(b.pos[1] - start.pos[1]).toFixed(0)} m`);
-  assert.ok(slowest < start.speed - 15, `slowest ${slowest.toFixed(0)} m/s`);
+  assert.ok(slowest < start.speed - 10, `slowest ${slowest.toFixed(0)} m/s`);
   assert.ok(slowest >= FLIGHT.vStall * 0.8, `slowest ${slowest} m/s, under the floor speed`);
+});
+
+test('a held climb goes on: from the cloud tops the bird is back at its start height within a minute, and rising', () => {
+  const sea0 = W.seaTopAt(0, 0);
+  for (const [stick, least] of [[1, 750], [0.5, 400]]) {
+    let before = 0;
+    const b = fly(60, () => [0, stick], { start: { pos: [0, sea0, 0] }, each: (b, t) => { if (t < 50) before = b.pos[1]; } });
+    assert.ok(b.pos[1] - sea0 > least, `stick ${stick}: ${(b.pos[1] - sea0).toFixed(0)} m in a minute`);
+    assert.ok(b.pos[1] - before > least / 10, `stick ${stick}: ${(b.pos[1] - before).toFixed(0)} m in the last 10 s`);
+  }
+});
+
+test('out of a dive the bird climbs on its speed: faster than a held climb, until the speed is spent', () => {
+  const rate = (b) => b.speed * Math.sin(b.gamma);
+  let zoom = 0;
+  const b = fly(60, (t) => [0, t < 12 ? -1 : 1], { start: { pos: [0, 9000, 0] }, each: (b) => { zoom = Math.max(zoom, rate(b)); } });
+  assert.ok(rate(b) > 10, `held: ${rate(b).toFixed(1)} m/s up`);
+  assert.ok(zoom > 1.5 * rate(b), `out of the dive ${zoom.toFixed(1)} m/s up, held ${rate(b).toFixed(1)}`);
+  assert.ok(b.speed < FLIGHT.vCruise, `held at ${b.speed.toFixed(0)} m/s`);
 });
 
 test('held in a dive over the sea of clouds, the bird is kept from sinking deep into it', () => {

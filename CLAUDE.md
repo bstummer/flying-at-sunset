@@ -27,11 +27,14 @@ stuttering breaks the spell.
 - **The paper bird.** Slightly off-white paper, crisp creases, a subtle paper texture. Small against
   the landscape; its wings flex; it glows warmly when the sun is behind it.
 - **The flight.** Gliding: diving builds speed, climbing trades it for height, turning banks
-  gracefully. Smooth and forgiving, never twitchy, on phones and computers alike. The bird can't crash:
-  it can skim the cloud tops and fly into clouds (briefly surrounded by drifting mist), but is gently
-  kept from sinking deep into the sea.
+  gracefully. From down at the cloud tops the bird can always fly up again: a held climb goes on,
+  more slowly once the speed is spent, up past the towers' heads. Smooth and forgiving, never
+  twitchy, on phones and computers alike. The bird can't crash: it can skim the cloud tops and fly
+  into clouds (briefly surrounded by drifting mist), but is gently kept from sinking deep into the
+  sea.
 - **The camera** follows with a slight, natural lag, swinging wide on turns and leaning into them.
-  Speed is tangible in a dive: near clouds rush past, far ones barely move.
+  Speed is tangible in a dive: near clouds rush past, far ones barely move. In a climb, held
+  for however long, the bird stays whole in the frame.
 - **A clean screen**: only a short hint on how to steer (in at ~1.8 s, out at ~10 s or after 3 s of
   steering), and a note only when WebGPU is missing or something fails.
 

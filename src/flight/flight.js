@@ -2,7 +2,10 @@
 //
 // Energy-based: dives gain speed, climbs trade it for height; drag above cruise speed, a gentle lift
 // below it; springs on bank and flight-path angle, coordinated turns, gentle turbulence (livelier in
-// cloud). It can't crash: a soft lift as it sinks into the sea of clouds (by the probe's distance to
+// cloud). A climb never ends for want of speed: as the bird slows from cruise to its climb speed,
+// rising air takes over its weight, so out of a dive it soars up on its speed at 30°, then lowers
+// its nose a little and climbs on for as long as it is held (~26° at 51 m/s: 22 m/s up, from the
+// cloud tops to the start's height in half a minute, to a tower's head in minutes). It can't crash: a soft lift as it sinks into the sea of clouds (by the probe's distance to
 // the real billows or by the sea's top, world/queries.js: whichever says it is deeper) and a hard
 // floor 170 m under the sea's top; heaps piled high and the towers can be flown through. Ceiling
 // 11.5 km.
@@ -14,7 +17,7 @@
 import { add, clamp, cross, damp, DEG, lerp, norm, sat, scl, smoothstep, spring, sub } from '../math.js';
 import { seaTopAt } from '../world/queries.js';
 
-export const FLIGHT = { vCruise: 64, vStall: 31, vMax: 185, g: 11.5, gTurn: 16.5, maxBank: 56 * DEG, maxClimb: 30 * DEG, maxDive: 42 * DEG };
+export const FLIGHT = { vCruise: 64, vClimb: 48, vStall: 31, vMax: 185, g: 11.5, gTurn: 16.5, maxBank: 56 * DEG, maxClimb: 30 * DEG, maxDive: 42 * DEG };
 // a bird at the start, 750 m over the sea's top there (sea0; presets.js and ?pose move it)
 export const newBird = (sea0 = seaTopAt(0, 0)) => ({
   pos: [0, sea0 + 750, 0], yaw: 0.45, gamma: 0, gammaV: 0, bank: 0, bankV: 0, speed: 66, aoa: 0.05,
@@ -56,7 +59,10 @@ export function updateFlight(b, dt, time, steer, probe) {
   const dv = v - F.vCruise;
   // above cruise: air drag bleeds speed; below it a gentle lift of rising air brings the glide back
   const drag = dv > 0 ? 0.012 * dv + 0.00042 * dv * dv : 0.045 * dv;
-  b.accel = -F.g * Math.sin(b.gamma) - drag;
+  // a climb costs speed in full above cruise, and nothing at the climb speed: rising air carries
+  // the bird there, and a held climb goes on (a higher vClimb climbs faster and steeper)
+  const carried = b.gamma > 0 ? 1 - smoothstep(F.vClimb, F.vCruise, v) : 0;
+  b.accel = -F.g * Math.sin(b.gamma) * (1 - carried) - drag;
   b.speed = clamp(v + b.accel * dt, F.vStall * 0.8, F.vMax);
   b.load = 1 / Math.max(Math.cos(b.bank), 0.3) + b.gammaV * v / 9.81 * 0.5;
   // angle of attack (visual): more when slow or pulling

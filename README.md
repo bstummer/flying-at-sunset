@@ -26,8 +26,9 @@ your graphics driver blocked.
 bird flies a fixed route for about 40 seconds while the page measures, then shows a summary of frame
 times and the GPU, browser and screen it ran on. Copy it into an issue or a development session.
 
-Diving gathers speed, climbing trades it back for height; when the bird runs out of speed it
-gently lowers its nose. You can skim the cloud tops, fly under overhangs and through the heaps and
+Diving gathers speed, climbing trades it back for height; when the speed is spent the bird lowers
+its nose a little and climbs on more slowly, carried by rising air, as long as you hold it there:
+from the cloud tops up past the towers' heads. You can skim the cloud tops, fly under overhangs and through the heaps and
 towers that rise above the sea, but the bird is softly kept from sinking deep into the cloud sea.
 
 ## How it is made

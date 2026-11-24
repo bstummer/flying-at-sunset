@@ -1329,6 +1329,23 @@ they hold until the author says otherwise.
   backlit rims, most toward the sun (`sun`). The history blends at half the rate where the image
   holds still. The slower blend may lag or smear in slow motion: for the author's eyes. The cloud
   scale, the TAAU clamp and blend rate, and the approach's floor (trace.wgsl) are the levers.
+- **The held climb** (2026-11-24, the author: "once you are down, you can't fly up again"): held up,
+  the bird had slowed to 43.6 m/s, where the stall protection lowered its nose to 4.6°: 3.5 m/s up,
+  3.5 min from the cloud tops to the start's height, most of an hour to a tower's head. Now rising
+  air takes over the bird's weight as it slows from cruise to `vClimb` (flight.js), and the climb
+  goes on at 51 m/s and 26°, 22 m/s up (the start's height in half a minute, 5 km in under 4);
+  half the stick, half the angle (14°, 12.5 m/s). Out of a dive it still soars at 30° until the
+  speed is spent, then lowers its nose by 4°. The camera sat behind the bird on a slope 0.55 of
+  the flight's and looked along the flight: in a climb the bird sank to the frame's bottom edge
+  (at 16:9, 10 s into a held climb: its wings in the frame, its body out; `close` and `under`,
+  placed climbing at 24°, had it there too). In a climb it now sits and looks on a slope 0.8 of
+  the flight's (camera.js, `CLIMB_SLOPE`): the bird 77% down the frame as in level flight, the
+  look as far up as before (the view `climb`). Looking up by half the climb's angle instead (the
+  sea the frame's lower quarter) took the look up out of `close` and `under`. Dives as before. The
+  rate and the feel are for the author's
+  hands: `vClimb` is the lever (52: 27 m/s up at 30°; 44: 17 at 20°). The air is the same
+  everywhere: no lift tied to the world's thermals (stronger under a growing tower), an idea not
+  tried.
 - The trace binds 16 sampled textures (since leg 10, the sun map's coarse level), core WebGPU's
   limit a stage: another needs two of them in one texture.
 - A WebGPU validation error shows no note (left out: a harmless one on a browser never tried would stop
