@@ -1,11 +1,13 @@
 // Numbers about the generated world around a point: the sea, the towers (how high, how wide, how
-// flat their tops), the bubble load.
+// flat their tops, mushrooms and knobs), the bubble load.
 //
 //   node tools/world/stats.js [cx cz] [R]      (metres; default the start, R = 150 km)
 //   QS="seed=3" node tools/world/stats.js      another world
 //
 // Towers are the convective cells that grew 3D bubbles; `rise` is top minus sea level, `wide` how
-// far (radius) their top 2 km reach from the cell centre.
+// far (radius) their top 2 km reach from the cell centre. Mushrooms: a tower's widest cross-section
+// in its upper third against its narrowest in its middle third (its own bubbles, united as the bake
+// unites them). Knobs: small bubbles perched on bigger ones, a ball on a ball.
 import { loadWorld } from './load.js';
 const W = await loadWorld();
 const cx = +(process.argv[2] || 0), cz = +(process.argv[3] || 0), R = +(process.argv[4] || 150000);
@@ -25,8 +27,10 @@ const f0 = v => (+v).toFixed(0), f2 = v => (+v).toFixed(2);
   for (let j = 0; j < 80; j++) for (let i = 0; i < 80; i++) { n++; if (W.restAt(cx - R + (i + 0.5) * R / 40, cz - R + (j + 0.5) * R / 40) < 0.1) calm++; }
   console.log(`calm air (restlessness < 0.1) over the ${f0(2 * R / 1000)} km box: ${(calm / n * 100).toFixed(0)}%`);
 }
-// towers
+// towers, and the bubbles of each
 const ts = W.towersNear(cx, cz, R);
+const own = new Map();
+W.forEachSys(cx - R, cz - R, cx + R, cz + R, c => { for (const b of c.bub) { const l = own.get(b.cell); if (l) l.push(b); else own.set(b.cell, [b]); } });
 {
   const area = Math.PI * R * R / 1e6;
   console.log(`\ntowers within ${f0(R / 1000)} km: ${ts.length} (${(ts.length / area * 1e4).toFixed(1)} per 10^4 km2)`);
@@ -43,8 +47,6 @@ const ts = W.towersNear(cx, cz, R);
   }
   // how flat the tops are: the highest bubble's height over its radius, and where it stopped (at the
   // ceiling, or how far past the level el where the air stops buoying it up)
-  const own = new Map();
-  W.forEachSys(cx - R, cz - R, cx + R, cz + R, c => { for (const b of c.bub) { const l = own.get(b.cell); if (l) l.push(b); else own.set(b.cell, [b]); } });
   const tops = [];
   for (const t of ts) {
     let b = null;
@@ -58,6 +60,45 @@ const ts = W.towersNear(cx, cz, R);
     const c = t.cell;
     console.log(`    ${f0(Math.hypot(t.x - cx, t.z - cz) / 100) / 10} km bearing ${f2(Math.atan2(t.x - cx, -(t.z - cz)))}  P ${f0(t.P)}  top ${(t.top / 1000).toFixed(1)} km  wide ${(t.wide / 1000).toFixed(1)} km  age/life ${f2(c.age / c.life)}  restless ${f2(c.A.I)}  gen ${t.gen}`);
   }
+}
+// mushrooms and knobs, on the towers rising over 5 km
+{
+  const smin = (a, b, k) => { if (k <= 0) return Math.min(a, b); const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };
+  // (the union of bubbles bs at a point, as the bake's smooth min; 2000 m out at most)
+  const union = (bs, x, y, z) => { let d = 2000; for (const b of bs) if (Math.abs(b.x - x) < b.br + 2000 && Math.abs(b.z - z) < b.br + 2000 && Math.abs(b.y - y) < b.br + 2000) d = smin(d, W.ellDist(b, x, y, z), b.k); return d; };
+  const G = 250, N = 18, rows = [];
+  for (const t of ts) {
+    const rise = t.top - t.y0, bs = own.get(t.cell);
+    if (rise < 5000 || !bs) continue;
+    // a cross-section's area (km2): the grid points inside the union, over the box of the bubbles near that height
+    const area = y => {
+      const c = bs.filter(b => y > b.y - b.ryD - b.k && y < b.y + b.ryU + b.k);
+      if (!c.length) return 0;
+      let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9;
+      for (const b of c) { x0 = Math.min(x0, b.x - b.br); x1 = Math.max(x1, b.x + b.br); z0 = Math.min(z0, b.z - b.br); z1 = Math.max(z1, b.z + b.br); }
+      let n = 0;
+      for (let z = z0 + G / 2; z < z1; z += G) for (let x = x0 + G / 2; x < x1; x += G) if (union(c, x, y, z) < 0) n++;
+      return n * G * G / 1e6;
+    };
+    const sec = Array.from({ length: N }, (_, i) => area(t.y0 + rise * (i + 0.5) / N));
+    const top = Math.max(...sec.slice(2 * N / 3)), mid = Math.min(...sec.slice(N / 3, 2 * N / 3));
+    // knobs: a bubble whose top stands out of the union of the bubbles over 2.5 times its size by more
+    // than half its height, while its centre lies within its size of their surface (it sits on them)
+    let knobs = 0, knobsTop = 0;
+    for (const b of bs) {
+      const big = bs.filter(o => o.rh > 2.5 * b.rh && Math.abs(o.x - b.x) < o.br + b.br && Math.abs(o.z - b.z) < o.br + b.br && Math.abs(o.y - b.y) < o.br + b.br);
+      if (!big.length || union(big, b.x, b.y, b.z) > b.rh || union(big, b.x, b.y + b.ryU, b.z) < 0.5 * b.ryU) continue;
+      knobs++;
+      if (b.y + b.ryU > t.top - 2500) knobsTop++;
+    }
+    rows.push({ t, rise, ratio: top / Math.max(mid, G * G / 1e6), top, mid, knobs, knobsTop, n: bs.length });
+  }
+  const r = rows.map(o => o.ratio), k = rows.map(o => o.knobs), kt = rows.map(o => o.knobsTop);
+  console.log(`
+mushrooms, ${rows.length} towers rising over 5 km (the widest section of the upper third / the narrowest of the middle third):`);
+  console.log(`  ratio p50 ${f2(q(r, .5))} p90 ${f2(q(r, .9))} max ${f2(q(r, 1))} | over 1.6x ${r.filter(v => v > 1.6).length}, over 2x ${r.filter(v => v > 2).length}, over 4x ${r.filter(v => v > 4).length}`);
+  for (const o of rows.sort((a, b) => b.ratio - a.ratio).slice(0, 5)) console.log(`    ${f2(o.ratio)}x  (${(o.t.x / 1000).toFixed(1)}, ${(o.t.z / 1000).toFixed(1)}) km  rise ${(o.rise / 1000).toFixed(1)} km  top ${o.top.toFixed(1)} km2 over ${o.mid.toFixed(1)} km2  P ${f0(o.t.P)}`);
+  console.log(`  knobs (a bubble perched on ones 2.5x its size, over half of it standing out): per tower p50 ${q(k, .5)} p90 ${q(k, .9)} max ${q(k, 1)}, ${k.reduce((a, b) => a + b, 0)} in all; in the top 2.5 km p50 ${q(kt, .5)} p90 ${q(kt, .9)}, towers with any there ${kt.filter(v => v > 0).length} of ${rows.length}`);
 }
 // bubble load (what the bakes have to loop over)
 {

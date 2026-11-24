@@ -25,9 +25,11 @@ pick.forEach((t, n) => {
   const bub = [];
   W.forEachSys(t.x - SPANX, t.z - SPANX, t.x + SPANX, t.z + SPANX, c => { for (const b of c.bub) if ((!process.env.ONE || b.cell === t.cell) && Math.abs(b.x - t.x) < SPANX / 2 + b.br && Math.abs(b.z - t.z) < SPANX) bub.push(b); });
   const sea = t.y0, ox = (n % cols) * TW, oy = Math.floor(n / cols) * TH;
-  for (let py = 0; py < TH; py++) for (let px = 0; px < TW; px++) {
+  for (let px = 0; px < TW; px++) for (let py = 0; py < TH; py++) {
     const x = t.x - SPANX / 2 + (px + 0.5) / TW * SPANX, y = SPANY * (1 - (py + 0.5) / TH);
-    const cand = bub.filter(b => Math.abs(b.x - x) < b.br + 300 && Math.abs(b.y - y) < b.br + 300);
+    // (the bubbles near this column of pixels, then near this pixel)
+    if (py === 0) bub.col = bub.filter(b => Math.abs(b.x - x) < b.br + 300);
+    const cand = bub.col.filter(b => Math.abs(b.y - y) < b.br + 300);
     const sdf = (xx, yy, zz) => { let d = 2000; for (const b of cand) d = smin(d, W.ellDist(b, xx, yy, zz), b.k); const above = yy - sea; return smin(above, d, 700 + (60 - 700) * ss(0, 1800, above)); };
     let z = t.z - SPANX, hit = false;
     for (let k = 0; k < 160 && z < t.z + SPANX; k++) { const d = sdf(x, y, z); if (d < 20) { hit = true; break; } z += Math.max(d * 0.9, 30); }

@@ -127,7 +127,9 @@ lands on what was on screen. How a moment the author saw in flight reaches a ses
 press P there and paste it.
 
 The world in Node (`tools/world/`, no browser; `QS="seed=3"` for another world, `WSRC=dir` for another
-checkout's `src/world`): `stats.js` (the sea, towers by size and how flat their tops, the bubble load), `map.js`, `preview.js`
+checkout's `src/world`): `stats.js` (the sea, towers by size and how flat their tops, mushrooms (a
+tower's widest section up top against its narrowest in the middle) and knobs (small bubbles perched
+on big ones), the bubble load), `map.js`, `preview.js`
 (a CPU sphere-traced view of the large shapes in seconds), `catalog.js` (side views of the biggest
 towers, for silhouettes), `pose.js` (a camera pose looking at a point, for `?pose=`), `levels.js` (how far
 the clipmap levels' large shapes disagree over boxes: the top surface, the heaps, the towers' peaks; each
