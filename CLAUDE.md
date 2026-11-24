@@ -344,9 +344,10 @@ header; outside the test mode one the page can't read is a console warning, and 
 ## 9. Performance budget
 
 Smooth before sharp: dynamic resolution keeps the GPU under 12.5 ms a frame where the browser has
-timestamp queries and they hold up against the frame times (`render/gputrust.js`: a phone's Mali
-said more GPU time a frame than the time between frames), else it aims at the display's frame rate
-by frame times (`render/resolution.js`),
+timestamp queries (a frame's time: the span from its first pass to its last; a phone's Mali
+overlaps its passes, and their own times summed said 3.5 times what its frames took), held to the
+time between frames (`render/gputrust.js`), else it aims at the display's frame rate by frame times
+(their 75th percentile: frames that fall behind come in bursts) (`render/resolution.js`),
 and detail gives way first. Phones get a lower resolution cap and cloud scale. Real computers and
 phones report through the benchmark (`?bench`, §3); the numbers in hand are in PLAN.md (known issues). CI's
 SwiftShader timings are only relative. To compare two builds on one machine, `node tools/cost.js`:

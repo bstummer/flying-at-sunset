@@ -1,11 +1,12 @@
 // Whether the GPU's timestamps may steer the resolution (render/resolution.js). A frame's GPU time
-// can't be longer than the time between frames: the GPU finishes a frame for every frame shown, or
-// the frames would come slower. Where the timestamps say more, they overstate: on a tile-based GPU
-// (a phone's Mali, leg 12) passes overlap, each pass's timestamps span others' work, and their sum
-// said 38–60 ms a frame where frames came every 16.6 ms; steered by that, the resolution fell to
-// its floor. So: the median GPU time a frame over a while (render/resolution.js: 30 frames)
-// against the median time between frames over the same while; over RATIO times it for WINDOWS
-// whiles in a row, and the timestamps are distrusted for good (frame times steer). Pure:
+// can't be longer than the time between frames on average: the GPU finishes a frame for every frame
+// shown, or the frames would come slower. The time a frame is the span from its first pass's start
+// to its last pass's end (render/timing.js): on a tile-based GPU (a phone's Mali, leg 12) passes
+// overlap, and their own times summed said 3.5 times what the frames took, while the span matched
+// the mean time between frames within 10%. The span is held to that mean (the median time between
+// frames can't judge: where the GPU falls behind, frames come in bursts, half 16.7 ms apart and
+// the rest 50–130); over RATIO times it for WINDOWS whiles in a row (render/resolution.js: 30
+// frames each), and the timestamps are distrusted for good (frame times steer). Pure:
 // tests/gputrust.test.js.
 
 const RATIO = 1.15, WINDOWS = 2;
@@ -15,7 +16,8 @@ export function timestampTrust() {
   return {
     trusted: true,
     seen: null,    // when distrusted: { gpu, frame } (ms), what the last while said
-    // gpuMs, frameMs: the medians over a while; returns whether the timestamps are still trusted
+    // gpuMs: a frame's GPU time (the median span) over a while; frameMs: the mean time between
+    // frames over it. Returns whether the timestamps are still trusted.
     add(gpuMs, frameMs) {
       if (!this.trusted || !(gpuMs > 0) || !(frameMs > 0)) return this.trusted;
       over = gpuMs > RATIO * frameMs ? over + 1 : 0;
@@ -25,9 +27,10 @@ export function timestampTrust() {
   };
 }
 
-// the median of a list of numbers (NaN when empty)
+// the median and the mean of a list of numbers (NaN when empty)
 export function median(values) {
   if (!values.length) return NaN;
   const s = [...values].sort((a, b) => a - b);
   return s[s.length >> 1];
 }
+export const mean = values => values.length ? values.reduce((a, b) => a + b, 0) / values.length : NaN;

@@ -5,8 +5,8 @@
 // group without passes this frame (the world, mostly) took no GPU time. They are read back once the
 // GPU is done; tEnd(then): then(ms) gets the group's time when it is. Per frame, the groups' times
 // summed and the span from its first pass's start to its last pass's end (where passes overlap,
-// as on tile-based GPUs, the sum counts the overlap again): onFrame (the benchmark) and frames()
-// (render/resolution.js, render/gputrust.js). ?cpuprof: their sums over a test run (window.__gpu,
+// as on tile-based GPUs, the sum counts the overlap again: the span is the frame's GPU time):
+// onFrame (the benchmark), frames() and their smoothed spanMs and sumMs (render/resolution.js). ?cpuprof: their sums over a test run (window.__gpu,
 // tools/screenshot.js --profile).
 
 import { params } from '../core/params.js';
@@ -33,7 +33,7 @@ export const gpuTimer = TIMESTAMPS ? (() => {
     return { querySet, beginningOfPassWriteIndex: cur.q, endOfPassWriteIndex: cur.q + 1 };
   };
   const timer = {
-    ms, sum,
+    ms, sum, spanMs: 0, sumMs: 0,
     onFrame: null,   // called with each measured frame's GPU time, its groups summed, and its span (the benchmark)
     begin(label) { cur = { label, q: -1 }; },
     end(then) { if (cur) { cur.then = then; groups.push(cur); } cur = null; },
@@ -67,6 +67,8 @@ export const gpuTimer = TIMESTAMPS ? (() => {
         const span = lo === null ? 0 : Number(hi - lo) / 1e6;
         if (span < 1e5) {
           if (frames.length < 240) frames.push([frameMs, span]);
+          timer.spanMs = timer.spanMs ? timer.spanMs * 0.85 + span * 0.15 : span;
+          timer.sumMs = timer.sumMs ? timer.sumMs * 0.85 + frameMs * 0.15 : frameMs;
           if (timer.onFrame) timer.onFrame(frameMs, span);
         }
         buf.unmap();

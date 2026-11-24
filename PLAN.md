@@ -361,22 +361,34 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
      (p95 12.9) at clouds 0.32–0.42: dynamic resolution at its budget. Firefox's WGSL compiler
      takes the shaders, its timestamp queries work.
    - A phone (`arm valhall`: a Mali, Android 10, Chrome 158), portrait (canvas 529×1040) and
-     landscape (1205×456): frames every 16.6 ms in every leg (fps 52–60), while its timestamps said
-     34–60 ms of GPU a frame. The GPU can't take 38 ms a frame and finish one every 16.6: the
-     timestamps overstate (a tile-based GPU overlaps its passes, and each pass's timestamps span
-     others' work: summed, it counts again). Steered by them the clouds fell to their floor (0.22)
-     and the canvas three times to its floor, 0.55 Mpx (529×1040 on a 1079×2121 screen: blurry);
-     the hitches (3 and 9 frames over 50 ms, 250–280 ms, all in the first leg) match the canvas
-     made again three times. Now (render/gputrust.js, tests/gputrust.test.js): the median GPU time
-     a frame over 30 frames against the median time between them; over 1.15× twice in a row and
-     the timestamps are distrusted for good, frame times steer from the start's scale; and the
-     canvas never shrinks while frames come on time. The benchmark shows the span of a frame's
-     passes beside their sum (where passes overlap, the span doesn't count them twice) and whether
-     the timestamps steered. Tried on the NVIDIA laptop with its timestamps stretched: ×8 (the
-     phone's case: over the frames even at the floor) distrusted, the canvas kept, the clouds back
-     to 0.55–0.75; ×3 the resolution steers to the stretched 12.5 ms (0.36), under the time between
-     frames, which can't be told from a GPU that busy. Not known yet: what the phone holds at 60 fps
-     steered by its frames (its numbers again, on this build), Safari, an integrated GPU.
+     landscape (1205×456): fps 52–60, while its passes' times summed said 34–60 ms of GPU a frame.
+     Steered by that the clouds fell to their floor (0.22) and the canvas three times to its floor,
+     0.55 Mpx (529×1040 on a 1079×2121 screen: blurry); the hitches (3 and 9 frames over 50 ms,
+     250–280 ms, all in the first leg) match the canvas made again three times.
+   - First answer (285b1be), wrong: the timestamps held to the median time between frames and
+     distrusted, frame times steering. The phone again (landscape, the canvas at its 1.15 Mpx cap,
+     1728×654), twice: the timestamps distrusted, the clouds left at 0.24–0.38, 24–45 fps (mean),
+     84 and 118 hitches. What the new span column showed: a frame's span from its first pass's
+     start to its last's end matched the mean time between its frames within 10% in every leg
+     (40.0 against 40.6 ms, 27.3/28.0, 20.1/22.2, 20.8/22.9; 41.9/42.7, 38.2/39.8, 23.3/25.4,
+     24.9/25.3), while the passes' own times summed said 3.5 times that (a tile-based GPU overlaps
+     its passes, and each pass's timestamps span others' work). The timestamps were honest, their
+     sum wasn't; and the frames came in bursts, the median 16.7 ms apart (all well, to the frame
+     times) where the mean was 22–43.
+   - Now (render/gputrust.js, tests/gputrust.test.js): a frame's GPU time is its span (the
+     trace's share of it as of the passes' own times); the timestamps are held to the mean time
+     between frames (over 30 frames: the median span over 1.15× the mean twice in a row, and
+     they're distrusted for good, frame times steering from the start's scale); frame times are
+     judged by their 75th percentile, not the median; and the canvas never shrinks while frames
+     come on time. Tried on the NVIDIA laptop with its timestamps changed: every pass's start set
+     to the frame's first (the Mali's way: summed 26 ms, span 6.5) steers as the honest ones
+     (clouds 0.75); stretched ×8 (even the span over the frames) distrusted, the canvas kept, the
+     clouds back to 0.55–0.75; stretched ×3 the resolution steers to the stretched 12.5 ms (0.36),
+     under the time between frames, which can't be told from a GPU that busy. Expected on that
+     phone: the clouds at their floor and the canvas once or twice smaller (about 0.8 or 0.55 Mpx),
+     as before but for the right reason: at 1.13 Mpx and clouds 0.24 its frames took 20–25 ms.
+     Not known yet: the phone on this build; Safari and an integrated GPU (the author has neither
+     at hand).
 2. Done (2026-11-24). `bakeCost` (render/stream.js) is scaled by what the bakes take on the device,
    where it has timestamp queries (render/bakescale.js, tests/bakescale.test.js): the world group's
    measured time against the frame's estimate, both summed, fading by 0.9 a frame that baked,
@@ -965,10 +977,10 @@ they hold until the author says otherwise.
 ## Known issues and ideas
 
 - **Measured on few devices**: the NVIDIA laptop (headless, 640×360: 60 fps, 5.9 ms of GPU a frame, the
-  clouds at their 0.75 ceiling), a desktop in Firefox (2173×1058: 60 fps at clouds 0.36) and a Mali
-  phone in Chrome (leg 12, step 1: its timestamps overstate; what it holds steered by frame times
-  is not known yet). Never an integrated GPU or Safari (whose WGSL compiler hasn't seen the
-  shaders); `?bench` reports them.
+  clouds at their 0.75 ceiling), a desktop in Firefox (2173×1058: 60 fps at clouds 0.36) and a
+  mid-range Mali phone in Chrome (leg 12, step 1: 60 fps only at about 0.55 Mpx with the clouds at
+  their floor, blurry; at 1.13 Mpx 20–40 ms a frame). Never an integrated GPU or Safari (whose WGSL
+  compiler hasn't seen the shaders); `?bench` reports them.
 - **The world grows in a worker** (src/worker.js), so new areas no longer stall frames; the page
   applies what it sends within budgets (render/stream.js). The budget's GPU estimate (`bakeCost`) is
   one NVIDIA laptop's constants, scaled since leg 12 by what the bakes take on the device where it
