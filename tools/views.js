@@ -51,6 +51,11 @@ export const VIEWS = [
   // 64 × 32 m and 320 m long, lies end-on, a rectangle on screen)
   { name: 'backlit', params: { pose: '433.9,1691.7,-1104,0.05,0.0322,-0.0126,70.4' }, brief: 'Straight into the sun past a near lobe that lies in the shadow of the cloud behind it: its shade whole and soft, no bright box on it; only edges the sun really reaches shine.',
     crops: { lobe: [0.42, 0.46, 0.27, 0.35] } },
+  // (a moment the author caught with P, 16 km from the start: a tower's flank leaning out over the
+  // bird, in shade; where a ray's first sample fell in the frayed edge's air, the sky's taps were
+  // never taken, and the flank was spotted with the open sky's blue)
+  { name: 'belly', params: { pose: '5141.4,1849.7,-16052.4,7.0839,0.2905,-0.1009,53' }, brief: 'Under a tower\'s flank that leans out overhead, in shade: lit warm from the sunlit sea below, the sky\'s blue only on what faces up, its shade whole, no spots.',
+    crops: { flank: [0.3, 0.3, 0.3, 0.3] } },
   { name: 'seed3', params: { seed: '3' }, brief: 'Another world\'s start: the generator, not just the piece\'s seed; towers in view, nothing placed, nothing repeating.' },
   // (the pose places the bird diving steeply at 8 km: the camera behind it looks almost straight down)
   { name: 'down', params: { pose: '0,8000,0,0.45,-1.5,0' }, brief: 'Straight down from 8 km over the start: the sea as a map, heaps and billows at every size, towers in clusters, walls, lone giants and open stretches, never evenly spread, nothing repeating.',

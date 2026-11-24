@@ -453,8 +453,11 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
         // shapes' normal (openLarge); between the domes, at a point out along it and back toward the
         // camera, the side of a visible surface that is open (up and back, it ran into every belly
         // seen from below). (Only near the visible surface, SKY_T; deeper samples keep the last
-        // estimate.)
-        let ws = smoothstep(SKY_T.x, SKY_T.y, Tn);
+        // estimate. At a cloud's first lit sample always, as deep as it lies: where the frayed edge
+        // left the sample before it empty, little got through to it, and the face kept the sky of the
+        // loop's start, an open top's, or of the cloud before: spots of zenith blue on a flank in
+        // shade, in the shape of the edge's noise.)
+        let ws = select(smoothstep(SKY_T.x, SKY_T.y, Tn), 1.0, Sp.a <= 0.0);
         if (ws > 0.0) {
           let S = 22.0 + t * 0.005;
           let nUp = clamp((cloudSDF(wpL + vec3f(0.0, S, 0.0), wpL.y + S, vec3f(macroAt(vec3f(wpL.x, wpL.y + S, wpL.z), lv), bs), C, lod) + depthL) / S, -1.0, 1.0);

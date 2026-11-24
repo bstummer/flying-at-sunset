@@ -532,6 +532,28 @@ what the loop's state costs (decisions). The author's other two moments, to add 
 needed: `1553.3,1748.7,-2599.8,-5.4842,0.0578,0.8101,51` (banking past a near cloud),
 `744.6,1725.5,-810.5,0.9041,-0.0941,0.0389,81.5`.
 
+**Blue spots on a flank in shade** (the author, 2026-11-24: "what are these spots on the cloud?", a
+moment caught with P, the view `belly`; `screenshots/before` → `after`): a tower's flank leaning out
+over the bird, in shade, warm from the sunlit sea below, spotted all over with ragged blue patches.
+From the march without jitter above, not from the place or the long flight through cloud before it
+(the pose from a fresh start shows them; the commit before, 2159ba7, has none). The sky's light
+(`?dbg=7`, the sun's off, keeps them), and of it how far up the surface faces: shown as colour, the
+spots faced straight up on a flank that faces down. They were the loop's starting sky (an open top's:
+up, open, no walls), never replaced: the sky's taps were taken by `SKY_T` alone, and where the
+frayed edge (the erosion, up to 6 m) left a ray's first sample without density, its first lit sample
+was the next, a step on (some 15 m at 2 km), with too little getting through for the taps. The spots had the erosion
+noise's shape. The jitter had hidden it: the first sample's depth changed from frame to frame, and
+the history averaged the spots into the face. Now a cloud's first lit sample always takes the taps
+(as it is always lit): a ray never carries the start's sky, or the last cloud's, onto a face.
+`belly` 10% of its pixels by more than 2 levels (the spots), its flank's grain 0.055 → 0.002%. The
+same spots, fainter, were in every view's shade: `tower` 11.6% (its shaded side and the sea's
+shade under it, grain 0.142 → 0.107%), `down` 10% (the shaded sea: smoother), `entry` 8.7% (the
+billow's top the camera crosses, grain there 0.104 → 0.012%), `close` 4.2% (blue specks in its
+deep shade gone: that shade is darker for it, navy in the folds, known issues), the rest 0–2.7%;
+`inside` identical. Shimmer and grain lower or the same in every view (where higher, by under 0.01
+points). The trace +0 to +1%
+(`node tools/cost.js`: within its noise).
+
 **A sunlit box on a cloud in shadow** (the author, 2026-11-24: "is this an issue with the
 shadows?", a moment caught with P, the view `backlit`; `screenshots/sm-before` → `sm-after`):
 looking straight into the sun, a bright rectangle on a round lobe 750 m off, its right and lower
