@@ -386,7 +386,8 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
    two patches of domes on: each must come before the bird reaches the edge of the last, or the
    page grows the world's cells itself (core/world.js counts it, `patchStats`). On the NVIDIA
    laptop each patch came within 1.2–1.3 s of being asked for, 32 s before the edge; no frame over
-   50 ms. It asks for nothing more there: a CPU ~25× slower would still keep ahead. Broken on
+   50 ms (in verify, beside the streaming check: 1.7 s, and 50 of 5682 frames over 50 ms, the two
+   pages sharing the GPU). It asks for nothing more there: a CPU ~25× slower would still keep ahead. Broken on
    purpose (the next patch asked for 500 m past the edge, not 6 km before it) it fails: the page grew
    cells itself for 178 lookups, 101 ms on its thread, a 67 ms frame.
 5. Done (2026-11-24). The values JS and WGSL both kept as literals come from constants.js: the sun
