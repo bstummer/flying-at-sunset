@@ -40,9 +40,10 @@ fn dome(ds: f32, a: f32, k: f32) -> f32 { return ds - a * (1.0 - smoothstep(0.0,
 
 // Signed distance (m) to the cloud surface: the large shapes (sh.x, from a clipmap), lobes of bent
 // spheres heaped on them, and domes on those, down to metres; the lobes and turrets only where the
-// billows of the nearest bubble are big enough (sh.y, m), all of them lower where those have lost
-// their life (sh.z: old parts and wakes soften). C: column data. lod: the pixel's footprint over
-// 52 m (0 = full detail): each octave fades as its cells shrink from about 4 pixels to 2.
+// billows of the nearest bubble are big enough (sh.y, m), and on a tower's bubbles with the biggest
+// billows the turrets as big as the lobes; all of them lower where those have lost their life (sh.z:
+// old parts and wakes soften). C: column data. lod: the pixel's footprint over 52 m (0 = full
+// detail): each octave fades as its cells shrink from about 4 pixels to 2.
 fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
   let dm = sh.x;
   // squashed lookup: billows are wider than tall (heaps, not balls); half a tile up, where the lobes
@@ -57,25 +58,29 @@ fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
   let wT = smoothstep(350.0, 800.0, sh.y) * (1.0 - smoothstep(2.8, 5.6, lod));
   var ds = octave(dm, sf.x * 1280.0, 300.0 * A * wL, 300.0 * wL + 4.0);
   // (the turrets heap on the lobes' caps: the lobes' flanks and the creases between them stay
-  // broad, so the billows come in sizes, not as one bubbly texture)
-  ds = octave(ds, sf.y * 640.0, 160.0 * A * wT * mix(0.3, 1.0, onCap(sf.x * 1280.0, 300.0)), 160.0 * wT + 4.0);
+  // broad, so the billows come in sizes, not as one bubbly texture. On a tower, well above the sea,
+  // a bubble whose billows are over ~1 km boils in turrets the lobes' own size, lifting the lobes
+  // into a few great turrets: 640 m ones there, a carpet of beads from afar)
+  let tb = smoothstep(900.0, 1800.0, sh.y) * smoothstep(300.0, 1500.0, h - C.x);
+  let tf = mix(sf.y * 640.0, sf.x * 1280.0, tb);
+  ds = octave(ds, tf, 160.0 * A * wT * mix(mix(0.3, 1.0, onCap(sf.x * 1280.0, 300.0)), 1.0, tb), 160.0 * wT + 4.0);
   // (a bubble too small for those boils in turrets half their size)
   let wS = smoothstep(800.0, 350.0, sh.y) * (1.0 - smoothstep(1.4, 2.8, lod));
   if (wS > 0.01) {
     let st = textureSampleLevel(tShape, sRep, warpLand(wp) * (vec3f(2.0, 2.7, 2.0) / SHAPE_TILE) + vec3f(0.43, 0.29, 0.71), 0.0).y;
-    ds = octave(ds, (st * 2.0 - 1.0) * (320.0 / 1.35), 80.0 * A * wS * mix(0.25, 1.0, onCap(sf.y * 640.0, 160.0)), 80.0 * wS + 4.0);
+    ds = octave(ds, (st * 2.0 - 1.0) * (320.0 / 1.35), 80.0 * A * wS * mix(0.25, 1.0, onCap(tf, 160.0)), 80.0 * wS + 4.0);
   }
   // cauliflower everywhere, strongest on the upper parts of the sea and on everything heaped above
   // it: domes pushing the surface out (320 and 160 m cells), more on the lobes' caps and each
   // more on the tops of the one before
   let topW = mix(0.5, 1.0, saturate((h - min(C.x, C.w + 100.0) + 40.0) / 220.0)) * C.z * mix(0.75, 1.0, sh.z);
-  ds = dome(ds, 64.0 * (1.0 - smoothstep(1.4, 2.8, lod)) * topW * mix(0.4, 1.0, onCap(sf.y * 640.0, 160.0)) * (s.z - 0.3), 96.0);
+  ds = dome(ds, 64.0 * (1.0 - smoothstep(1.4, 2.8, lod)) * topW * mix(0.4, 1.0, onCap(tf, 160.0)) * (s.z - 0.3), 96.0);
   ds = dome(ds, 30.0 * (1.0 - smoothstep(0.35, 1.0, lod)) * topW * onDome(s.z) * (s.w - 0.3), 45.0);
   // the finest domes (the detail volume: 128 to 32 m cells, and near the camera 32 to 8 m), only
   // near the surface (they move it by less than 50 m); a third
   // to half as high as they are wide, so the light shows them up close (flatter ones, the near sea
   // read as smooth dough)
-  let wF = (1.0 - smoothstep(0.35, 0.8, lod)) * topW * onDome(s.w) * mix(mix(0.45, 1.0, onCap(sf.y * 640.0, 160.0)), 1.0, 1.0 - smoothstep(0.1, 0.35, lod)) * (1.0 - smoothstep(80.0, 140.0, ds));
+  let wF = (1.0 - smoothstep(0.35, 0.8, lod)) * topW * onDome(s.w) * mix(mix(0.45, 1.0, onCap(tf, 160.0)), 1.0, 1.0 - smoothstep(0.1, 0.35, lod)) * (1.0 - smoothstep(80.0, 140.0, ds));
   if (wF > 0.01) {
     let q = detailAt(wp);
     let f1 = textureSampleLevel(tDetail, sRep, q * (1.0 / DETAIL_TILE), 0.0).b;
