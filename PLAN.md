@@ -355,10 +355,28 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
 
 **Leg 12: reach, before `main`** (the branch is 51 commits ahead of what is published;
 `screenshots/l12-before` → `l12-s5`: every view identical, the steps below change no capture).
-1. Not done: the devices' numbers (above) are the author's to bring, and what they ask for (the
-   phones' resolution cap and cloud scale, the budgets, what a small device goes without: step 3)
-   waits for them. The benchmark's summary now also says the GPU memory the piece made and how its
-   world bakes took against their estimate (steps 2 and 3).
+1. Begun (2026-11-24): the author's `?bench` on the preview of bdb0ef1.
+   - Firefox (desktop, its GPU unnamed: Firefox gives no adapter info; the user agent spoofed),
+     canvas 2173×1058 (the 2.3 Mpx cap): 60 fps in every leg, no hitches, the GPU 12.3 ms a frame
+     (p95 12.9) at clouds 0.32–0.42: dynamic resolution at its budget. Firefox's WGSL compiler
+     takes the shaders, its timestamp queries work.
+   - A phone (`arm valhall`: a Mali, Android 10, Chrome 158), portrait (canvas 529×1040) and
+     landscape (1205×456): frames every 16.6 ms in every leg (fps 52–60), while its timestamps said
+     34–60 ms of GPU a frame. The GPU can't take 38 ms a frame and finish one every 16.6: the
+     timestamps overstate (a tile-based GPU overlaps its passes, and each pass's timestamps span
+     others' work: summed, it counts again). Steered by them the clouds fell to their floor (0.22)
+     and the canvas three times to its floor, 0.55 Mpx (529×1040 on a 1079×2121 screen: blurry);
+     the hitches (3 and 9 frames over 50 ms, 250–280 ms, all in the first leg) match the canvas
+     made again three times. Now (render/gputrust.js, tests/gputrust.test.js): the median GPU time
+     a frame over 30 frames against the median time between them; over 1.15× twice in a row and
+     the timestamps are distrusted for good, frame times steer from the start's scale; and the
+     canvas never shrinks while frames come on time. The benchmark shows the span of a frame's
+     passes beside their sum (where passes overlap, the span doesn't count them twice) and whether
+     the timestamps steered. Tried on the NVIDIA laptop with its timestamps stretched: ×8 (the
+     phone's case: over the frames even at the floor) distrusted, the canvas kept, the clouds back
+     to 0.55–0.75; ×3 the resolution steers to the stretched 12.5 ms (0.36), under the time between
+     frames, which can't be told from a GPU that busy. Not known yet: what the phone holds at 60 fps
+     steered by its frames (its numbers again, on this build), Safari, an integrated GPU.
 2. Done (2026-11-24). `bakeCost` (render/stream.js) is scaled by what the bakes take on the device,
    where it has timestamp queries (render/bakescale.js, tests/bakescale.test.js): the world group's
    measured time against the frame's estimate, both summed, fading by 0.9 a frame that baked,
@@ -942,11 +960,11 @@ they hold until the author says otherwise.
 
 ## Known issues and ideas
 
-- **Measured only on one desktop GPU**: NVIDIA, headless, at 640×360, where a short benchmark ran at 60
-  fps (capped) with 5.9 ms of GPU time a frame, the clouds at the 0.75 ceiling and no hitches; never on
-  phones, integrated GPUs or at full-screen sizes, so frame rate, dynamic resolution and memory there
-  are unknown (`?bench` reports them). Only Chrome's WGSL compiler (Tint) has seen the shaders;
-  Safari's and Firefox's haven't.
+- **Measured on few devices**: the NVIDIA laptop (headless, 640×360: 60 fps, 5.9 ms of GPU a frame, the
+  clouds at their 0.75 ceiling), a desktop in Firefox (2173×1058: 60 fps at clouds 0.36) and a Mali
+  phone in Chrome (leg 12, step 1: its timestamps overstate; what it holds steered by frame times
+  is not known yet). Never an integrated GPU or Safari (whose WGSL compiler hasn't seen the
+  shaders); `?bench` reports them.
 - **The world grows in a worker** (src/worker.js), so new areas no longer stall frames; the page
   applies what it sends within budgets (render/stream.js). The budget's GPU estimate (`bakeCost`) is
   one NVIDIA laptop's constants, scaled since leg 12 by what the bakes take on the device where it

@@ -89,7 +89,7 @@ What the author keeps coming back to:
 |---|---|
 | `npm install` | Installs the dev dependencies (Vite, Playwright) and Playwright's Chromium, the only browser the tools use, always headless (`tools/install-chromium.js`): on Windows the full build, whose Dawn compiles the shaders with DXC as visitors' Chrome does; elsewhere the headless shell. |
 | `npm run dev` | Vite's dev server: the sources as ES modules, reloading on every edit. |
-| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the bakes' scale (`render/bakescale.js`), the screenshot tool's arguments and compares, the cost tool's runs, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
+| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the bakes' scale (`render/bakescale.js`), whether the GPU's timestamps may steer (`render/gputrust.js`), the screenshot tool's arguments and compares, the cost tool's runs, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
 | `npm run build` | `dist/index.html`. Fails on any other output, or a module from outside `src/`. |
 | `npm run check` | `tools/check-build.js`: one self-contained file within the size budget, and the `src/` lint. |
 | `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `grain.png` and the share where the flight (the motion strip's frames) differs from itself rendered with other jitter (the grain the history can't average in motion, over the frame and each crop), `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
@@ -116,8 +116,9 @@ take most of a run on SwiftShader).
 
 **The benchmark** (`?bench`, `src/core/benchmark.js`): the piece flies a fixed route from the start (level,
 a long turn, a dive and climb, a weave) as in normal use, measuring each leg, then shows a summary
-(frame times, GPU time, the clouds' resolution, hitches, the GPU, browser and screen, the GPU memory
-made, the world's bakes against their estimate) with a button to copy it. It is how numbers from real computers and phones reach a session: ask the user to run it on
+(frame times, GPU time (its passes summed, and the span from the first to the last), the clouds'
+resolution, hitches, the GPU, browser and screen, the GPU memory made, whether the timestamps steered
+the resolution, the world's bakes against their estimate) with a button to copy it. It is how numbers from real computers and phones reach a session: ask the user to run it on
 the published page (`https://bstummer.github.io/flying-at-sunset/?bench`) and paste the summary.
 
 **P** (in the page, the deployed one too; nothing on screen says so): logs and copies the moment as a
@@ -343,7 +344,9 @@ header; outside the test mode one the page can't read is a console warning, and 
 ## 9. Performance budget
 
 Smooth before sharp: dynamic resolution keeps the GPU under 12.5 ms a frame where the browser has
-timestamp queries, else it aims at the display's frame rate by frame times (`render/resolution.js`),
+timestamp queries and they hold up against the frame times (`render/gputrust.js`: a phone's Mali
+said more GPU time a frame than the time between frames), else it aims at the display's frame rate
+by frame times (`render/resolution.js`),
 and detail gives way first. Phones get a lower resolution cap and cloud scale. Real computers and
 phones report through the benchmark (`?bench`, §3); the numbers in hand are in PLAN.md (known issues). CI's
 SwiftShader timings are only relative. To compare two builds on one machine, `node tools/cost.js`:

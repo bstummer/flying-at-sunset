@@ -766,7 +766,7 @@ async function checkBenchmark(browser, { fail, note, problems, outDir }) {
       if (!leg.frames) fail(`the leg "${leg.name}" measured no frames`);
       if (!new RegExp(`^${leg.name} +\\d`, 'm').test(s.summary)) fail(`the summary has no row for the leg "${leg.name}"`);
     }
-    for (const line of ['build', 'gpu', 'browser', 'screen', 'memory', 'measured', 'bakes', 'all legs']) {
+    for (const line of ['build', 'gpu', 'browser', 'screen', 'memory', 'measured', 'gpu timer', 'bakes', 'all legs']) {
       if (!new RegExp(`^${line} +\\S`, 'm').test(s.summary)) fail(`the summary has no "${line}" line`);
     }
     if (!s.panel || !s.copy) fail('the summary panel or its copy button is hidden');

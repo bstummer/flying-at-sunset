@@ -1,24 +1,40 @@
 // Dynamic resolution: the clouds are traced at R.scale of the canvas (0.22–0.75; 0.5 at the start,
 // 0.36 on touch devices), adapted so frames stay within budget. With GPU timestamps it keeps the GPU
-// under 12.5 ms a frame, solving for the trace's share; without them it aims for 60 fps by frame
-// times, or for the rate the display or the browser caps at (much cheaper frames coming no faster).
-// The ceiling it may rise to recovers after hitches. If even the cheapest clouds are too slow, the
-// canvas gets fewer pixels (R.maxPixels). In the test mode it only hands over the GPU times
+// under 12.5 ms a frame, solving for the trace's share; without them, or where they say more GPU
+// time a frame than the time between frames allows (render/gputrust.js: then from the start's
+// scale again), it aims for 60 fps by frame times, or for the rate the display or the browser caps
+// at (much cheaper frames coming no faster).
+// The ceiling it may rise to recovers after hitches. If even the cheapest clouds are too slow, and
+// the frames come late, the canvas gets fewer pixels (R.maxPixels). In the test mode it only hands over the GPU times
 // (window.__gpu).
 
 import { TEST } from '../core/params.js';
 import { clamp } from '../math.js';
 import { R } from './targets.js';
 import { CPUPROF, gpuTimer } from './timing.js';
+import { median, timestampTrust } from './gputrust.js';
 
 export const DR = { acc: [], cool: 0, ceiling: 0.75, gpuN: 0, gpuFresh: 0, gpuMiss: 0, slow: 0, warm: 0,
-  cap: 0, probe: null, calm: 0, calmNeed: 12, settled: false, fastWait: 0, win: 0, raisedWin: -99 };
+  cap: 0, probe: null, calm: 0, calmNeed: 12, settled: false, fastWait: 0, win: 0, raisedWin: -99,
+  trust: timestampTrust(), gaps: [], gpuFrames: [], gapMed: 0 };
+const START = R.scale;
 const GPU_BUDGET = 12.5; // ms: leaves headroom for the browser at 60 Hz
+const TRUST_FRAMES = 30; // the while over which the timestamps are held to the frames (render/gputrust.js)
 export function adaptResolution(dtMs) {
   if (TEST) { if (gpuTimer) { gpuTimer.poll(); window.__gpu = CPUPROF ? gpuTimer.sum : gpuTimer.ms; } return; }
-  if (++DR.warm < 8) { if (gpuTimer) gpuTimer.poll(); return; }    // shader warm-up frames
-  if (gpuTimer && DR.gpuMiss < 5) {
+  if (++DR.warm < 8) { if (gpuTimer) { gpuTimer.poll(); gpuTimer.frames(); } return; }    // shader warm-up frames
+  if (gpuTimer && DR.gpuMiss < 5 && DR.trust.trusted) {
     DR.gpuFresh += Object.keys(gpuTimer.poll()).length;
+    // timestamps that say more GPU time a frame than the frames allow: frame times from here on,
+    // from the start's scale (what the timestamps lowered it to was their mistake)
+    if (dtMs < 250) DR.gaps.push(dtMs);
+    for (const f of gpuTimer.frames()) DR.gpuFrames.push(f[0]);
+    if (DR.gaps.length >= TRUST_FRAMES) {
+      DR.gapMed = median(DR.gaps);
+      const trusted = DR.trust.add(median(DR.gpuFrames), DR.gapMed);
+      DR.gaps.length = 0; DR.gpuFrames.length = 0;
+      if (!trusted) { R.scale = START; DR.ceiling = 0.75; DR.slow = 0; return; }
+    }
     if (++DR.gpuN < 10) return;
     DR.gpuN = 0;
     const tot = gpuTimer.total(), tr = gpuTimer.ms.trace || 0;
@@ -30,8 +46,9 @@ export function adaptResolution(dtMs) {
     let k = Math.sqrt(budget / tr);
     k = tot > GPU_BUDGET ? clamp(k, 0.8, 0.98) : clamp(k, 1.0, 1.05);
     if (Math.abs(k - 1) > 0.015) R.scale = clamp(R.scale * k, 0.22, 0.75);
-    // even the cheapest clouds don't fit: render fewer full-resolution pixels
-    if (R.scale <= 0.23 && tot > GPU_BUDGET * 1.3) { if (++DR.slow > 6) downgradePixels(); } else DR.slow = 0;
+    // even the cheapest clouds don't fit, and the frames come late: render fewer full-resolution
+    // pixels (frames on time say the GPU isn't what holds them back, whatever its timestamps say)
+    if (R.scale <= 0.23 && tot > GPU_BUDGET * 1.3 && DR.gapMed > 16.7 * 1.12) { if (++DR.slow > 6) downgradePixels(); } else DR.slow = 0;
     return;
   }
   if (dtMs > 250) return;                     // tab switch, hitch

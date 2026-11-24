@@ -6,14 +6,17 @@
 // The piece runs as in normal use (dynamic resolution, real frame times), steered by the route,
 // without the hint. Each leg (level, turn, dive, weave) settles first (?benchWarmup seconds and at
 // least 10 frames), then measures for ?benchSeconds: frame times, the GPU's time a frame where the
-// browser has timestamp queries, the clouds' scale (render/resolution.js) and hitches (frames over
-// 50 ms); at the end, how the world's bakes took against their estimate (render/bakescale.js), and
-// the GPU memory the piece made (render/targets.js). Then the viewer steers again; window.__BENCH__ holds the result (tools/checks.js).
+// browser has timestamp queries (its passes' times summed, and the span from the first pass's start
+// to the last's end: where passes overlap the sum counts it again), the clouds' scale
+// (render/resolution.js) and hitches (frames over 50 ms); at the end, whether the timestamps
+// steered the resolution (render/gputrust.js), how the world's bakes took against their estimate
+// (render/bakescale.js), and the GPU memory the piece made (render/targets.js). Then the viewer steers again; window.__BENCH__ holds the result (tools/checks.js).
 
 import { BENCH, params } from './params.js';
 import { GPU_NAME } from '../render/gpu.js';
 import { BAKES } from '../render/stream.js';
 import { R } from '../render/targets.js';
+import { DR } from '../render/resolution.js';
 import { gpuTimer } from '../render/timing.js';
 import { input } from './input.js';
 
@@ -29,7 +32,7 @@ const LEGS = [
   { name: 'weave', steer: (t) => [Math.sin(t * 0.7), 0.4 * Math.sin(t * 0.45)] },
 ];
 
-const legs = LEGS.map((leg) => ({ name: leg.name, frameMs: [], gpuMs: [], scale: [] }));
+const legs = LEGS.map((leg) => ({ name: leg.name, frameMs: [], gpuMs: [], spanMs: [], scale: [] }));
 let index = 0, legTime = 0, legFrames = 0, measuring = false, finished = false;
 const panel = document.getElementById('bench');
 const text = panel.querySelector('pre');
@@ -37,7 +40,7 @@ const copy = panel.querySelector('button');
 
 if (BENCH) {
   input.script = () => LEGS[index].steer(legTime);
-  if (gpuTimer) gpuTimer.onFrame = (ms) => { if (measuring) legs[index].gpuMs.push(ms); };
+  if (gpuTimer) gpuTimer.onFrame = (ms, span) => { if (measuring) { legs[index].gpuMs.push(ms); legs[index].spanMs.push(span); } };
   panel.hidden = false;
   text.textContent = 'Benchmark: starting… keep this tab in front';
   copy.addEventListener('click', () => {
@@ -81,14 +84,15 @@ function quantile(values, q) {
 }
 
 function formatBenchmark() {
-  const widths = [10, 7, 6, 7, 6, 7, 6, 7, 8];
+  const widths = [10, 7, 6, 7, 6, 7, 6, 6, 7, 8];
   const line = (cells) => cells.map((c, i) => (i ? String(c).padStart(widths[i]) : String(c).padEnd(widths[i]))).join(' ').trimEnd();
   const fixed = (v, d) => (Number.isFinite(v) ? v.toFixed(d) : 'n/a');
-  const row = (name, frameMs, gpuMs, scale) => {
+  const row = (name, frameMs, gpuMs, spanMs, scale) => {
     const mean = frameMs.reduce((a, b) => a + b, 0) / frameMs.length;
     return line([name, fixed(quantile(frameMs, 0.5), 1), fixed(quantile(frameMs, 0.95), 1), fixed(Math.max(...frameMs), 1), fixed(1000 / mean, 1),
-      fixed(quantile(gpuMs, 0.5), 2), fixed(quantile(gpuMs, 0.95), 2), fixed(quantile(scale, 0.5), 2), frameMs.filter((ms) => ms > HITCH_MS).length]);
+      fixed(quantile(gpuMs, 0.5), 2), fixed(quantile(gpuMs, 0.95), 2), fixed(quantile(spanMs, 0.5), 1), fixed(quantile(scale, 0.5), 2), frameMs.filter((ms) => ms > HITCH_MS).length]);
   };
+  const seen = DR.trust.seen;
   const all = (key) => legs.flatMap((l) => l[key]);
   return [
     'Flying at Sunset benchmark',
@@ -98,14 +102,17 @@ function formatBenchmark() {
     `screen     ${innerWidth}×${innerHeight} CSS px × ${devicePixelRatio} → canvas ${R.w}×${R.h}, clouds up to ${R.lowMaxW}×${R.lowMaxH}`,
     `memory     ${(R.keptBytes / 1e6).toFixed(0)} MB of volumes and tables, ${(R.sizedBytes / 1e6).toFixed(0)} MB of targets at this canvas (from their formats)`,
     `measured   ${SECONDS} s per leg after ${WARMUP} s to settle`,
+    `gpu timer  ${!gpuTimer ? 'none: frame times steer the resolution' : seen ? `overstates (${seen.gpu.toFixed(1)} ms a frame, frames every ${seen.frame.toFixed(1)} ms): frame times steer the resolution` : 'steers the resolution'}`,
     `bakes      ${gpuTimer ? `${BAKES.k.toFixed(2)}× the estimate (one NVIDIA laptop's)` : 'not measured (no GPU timer)'}`,
     '',
-    line(['', 'frame ms', '', '', '', 'GPU ms', '', 'clouds', '']),
-    line(['leg', 'median', 'p95', 'max', 'fps', 'median', 'p95', 'scale', 'hitches']),
-    ...legs.map((l) => row(l.name, l.frameMs, l.gpuMs, l.scale)),
-    row('all legs', all('frameMs'), all('gpuMs'), all('scale')),
+    line(['', 'frame ms', '', '', '', 'GPU ms', '', '', 'clouds', '']),
+    line(['leg', 'median', 'p95', 'max', 'fps', 'median', 'p95', 'span', 'scale', 'hitches']),
+    ...legs.map((l) => row(l.name, l.frameMs, l.gpuMs, l.spanMs, l.scale)),
+    row('all legs', all('frameMs'), all('gpuMs'), all('spanMs'), all('scale')),
     '',
     `Hitches: frames over ${HITCH_MS} ms.`,
+    'GPU ms: its passes\' times summed (median, p95), and the median span from the first pass\'s start',
+    'to the last\'s end (on GPUs whose passes overlap, the sum counts the overlap again).',
     'Frame times can\'t drop below the display\'s refresh interval; GPU ms shows the headroom,',
     'and the clouds\' scale (0.22 to 0.75 of the canvas) where dynamic resolution settled.',
   ].join('\n');
