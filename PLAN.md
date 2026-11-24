@@ -394,7 +394,10 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
      phone fell behind again until the scale came down. Now the clouds stay at their floor when
      the canvas shrinks and rise from there where there is room (render/resolution.js). (A second
      run of 9d4e3bd, from the phone's cache, repeated its numbers: 56 fps, 5 hitches in the first
-     leg.) Not measured since; Safari and an integrated GPU not at all (the author has neither at hand).
+     leg.) On 76fd5f5, portrait: 56.7 fps over all legs (55.5, 55.9 before), the frame times' p95
+     16.8 ms (33.2), 57.6–59.1 fps after the first leg, 4 hitches, all in the first leg (6, 5), the
+     worst 282 ms: the canvas made smaller once. Left as it is: starting phones smaller would hold
+     stronger ones back for good (the canvas never grows again). Safari and an integrated GPU not at all (the author has neither at hand).
      What the phone says about phones: a mid-range Mali holds 60 fps at about 0.6–0.8 Mpx with
      the clouds at their floor, blurry; the start (1.15 Mpx, clouds 0.36) is too much for it and
      takes it a few seconds and one or two hitches to leave. One phone: the start stays as it is
@@ -1019,8 +1022,8 @@ they hold until the author says otherwise.
 - **Measured on few devices**: the NVIDIA laptop (headless, 640×360: 60 fps, 5.9 ms of GPU a frame, the
   clouds at their 0.75 ceiling), a desktop in Firefox (2173×1058: 60 fps at clouds 0.36) and a
   mid-range Mali phone in Chrome (leg 12, step 1: 57–59 fps at 0.56–0.8 Mpx with the clouds at
-  their floor, blurry; the first seconds a few hitches while the canvas shrinks from the start's
-  1.15 Mpx). Never an integrated GPU or Safari (whose WGSL compiler hasn't seen the shaders);
+  their floor, blurry; in the first seconds 4 hitches, one of them the canvas shrinking from the
+  start's 1.15 Mpx). Never an integrated GPU or Safari (whose WGSL compiler hasn't seen the shaders);
   `?bench` reports them. On the phone the world's bakes read 5.8× the NVIDIA laptop's estimate:
   maybe overstated as the passes' sum was (the world's own timestamps span the overlap too), so
   fewer bakes a frame and slower streaming, never a hitch.
