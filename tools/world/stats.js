@@ -94,8 +94,7 @@ W.forEachSys(cx - R, cz - R, cx + R, cz + R, c => { for (const b of c.bub) { con
     rows.push({ t, rise, ratio: top / Math.max(mid, G * G / 1e6), top, mid, knobs, knobsTop, n: bs.length });
   }
   const r = rows.map(o => o.ratio), k = rows.map(o => o.knobs), kt = rows.map(o => o.knobsTop);
-  console.log(`
-mushrooms, ${rows.length} towers rising over 5 km (the widest section of the upper third / the narrowest of the middle third):`);
+  console.log(`\nmushrooms, ${rows.length} towers rising over 5 km (the widest section of the upper third / the narrowest of the middle third):`);
   console.log(`  ratio p50 ${f2(q(r, .5))} p90 ${f2(q(r, .9))} max ${f2(q(r, 1))} | over 1.6x ${r.filter(v => v > 1.6).length}, over 2x ${r.filter(v => v > 2).length}, over 4x ${r.filter(v => v > 4).length}`);
   for (const o of rows.sort((a, b) => b.ratio - a.ratio).slice(0, 5)) console.log(`    ${f2(o.ratio)}x  (${(o.t.x / 1000).toFixed(1)}, ${(o.t.z / 1000).toFixed(1)}) km  rise ${(o.rise / 1000).toFixed(1)} km  top ${o.top.toFixed(1)} km2 over ${o.mid.toFixed(1)} km2  P ${f0(o.t.P)}`);
   console.log(`  knobs (a bubble perched on ones 2.5x its size, over half of it standing out): per tower p50 ${q(k, .5)} p90 ${q(k, .9)} max ${q(k, 1)}, ${k.reduce((a, b) => a + b, 0)} in all; in the top 2.5 km p50 ${q(kt, .5)} p90 ${q(kt, .9)}, towers with any there ${kt.filter(v => v > 0).length} of ${rows.length}`);

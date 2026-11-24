@@ -41,9 +41,9 @@ fn dome(ds: f32, a: f32, k: f32) -> f32 { return ds - a * (1.0 - smoothstep(0.0,
 // Signed distance (m) to the cloud surface: the large shapes (sh.x, from a clipmap), lobes of bent
 // spheres heaped on them, and domes on those, down to metres; the lobes and turrets only where the
 // billows of the nearest bubble are big enough (sh.y, m), and on a tower's bubbles big enough for
-// the lobes the turrets as big as the lobes; all of them lower where those have lost their life (sh.z:
-// old parts and wakes soften). C: column data. lod: the pixel's footprint over 52 m (0 = full
-// detail): each octave fades as its cells shrink from about 4 pixels to 2.
+// the lobes the turrets as big as the lobes; all of them lower where those have lost their life
+// (sh.z: old parts and wakes soften). C: column data. lod: the pixel's footprint over 52 m (0 =
+// full detail): each octave fades as its cells shrink from about 4 pixels to 2.
 fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
   let dm = sh.x;
   // squashed lookup: billows are wider than tall (heaps, not balls); half a tile up, where the lobes

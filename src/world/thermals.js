@@ -6,17 +6,18 @@
 // air; drag slows it; it stops when its speed runs out, or is still rising at the moment the world
 // shows. On the way it swells, drifts with the wind of its height, is pushed aside by earlier heads,
 // leaves a wake of lumps and sheds smaller bubbles; at the top it boils into a few crowns, which
-// rise in turn (C.depth levels deep, none smaller than C.minR). Lifted alone first (C.log), its
-// path decides what a pulse becomes; replay then grows what it shed, without lifting it again.
-// roofOf: how far a piece may bulge above its centre (the inversion while below it, the ceiling,
-// CLOUD_TOP).
+// rise in turn (C.depth levels deep, none smaller than C.minR; in a tower none small beside the
+// bubble they burst from or the pulse's head: those stay in it, whose billows show them). Lifted
+// alone first (C.log), its path decides what a pulse becomes; replay then grows what it shed,
+// without lifting it again. roofOf: how far a piece may bulge above its centre (the inversion
+// while below it, the ceiling, CLOUD_TOP).
 // settle: what became of each piece by that moment: it drifted with the wind and evaporates (sooner
 // higher up and in dry air, the small first; ice lingers; dying towers crumble from the top); a
-// stopped head is pressed flat by the air that stopped it (a heap under the inversion; in a tower
-// only where it pushed far into stable air, or into the ceiling: else it keeps its dome), sags, and
-// where stopped hard spreads out beneath that air in lobes: a little under the inversion, far under
-// the ceiling (anvils). Its pieces meet the others in broad fillets, not creases (a ball perched on
-// a ball).
+// tower's column is about as wide as the bubbles that rose through it; a stopped head is pressed
+// flat by the air that stopped it (a heap under the inversion; in a tower only where it pushed far
+// into stable air, or into the ceiling: else it keeps its dome), sags, and where stopped hard
+// spreads out beneath that air in lobes: a little under the inversion, far under the ceiling
+// (anvils). Its pieces meet the others in broad fillets, not creases (a ball perched on a ball).
 // placeDome: the pieces of a low pulse become 2D domes raising the sea's surface, standing on what
 // they grew from, their flanks never steeper than ~60°. START_Y, nearStart: the start is kept clear.
 
@@ -34,7 +35,7 @@ import { domeHeightAt, domeSteepness, makeDome } from './shapes.js';
 // wake and everything it shed go to `out`; returns its head. With C.log (an array) it sheds nothing
 // yet: its wake and what it would shed (as lift's arguments) go to the log, in order, for replay
 // (its path never depends on what it sheds).
-export const MIX = 0.6, DRAG = 0.35, SWELL = 0.04, SHED = 0.8, ICE_Y = 8000, H_FLAT = 2200, R_TH = 3500;
+export const MIX = 0.6, DRAG = 0.35, SWELL = 0.04, SHED = 0.8, ICE_Y = 8000, H_FLAT = 2200, R_TH = 3500, CROWN_MIN = 0.28, CROWN_MIN_HEAD = 0.2;
 export function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
   const A = C.A, hd = { head: true, x, y, z, r, t, w, depth, parent, still: false, bu: 0, seed: 0 }, log = depth === C.depth ? C.log : null;
   let w2 = w * w, wPeak = w, trailY = y + 0.3 * r;
@@ -88,14 +89,24 @@ export function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
   for (let i = 0; i < nb; i++) {
     const a = rng() * 2 * PI, el = lerp(0.1, 1.3, rng()), rc = r * lerp(0.18, 0.5, Math.pow(rng(), 1.3)), wc = wPeak * lerp(0.15, 0.4, rng()), seed = (rng() * 4294967296) >>> 0;
     const up = Math.min(0.75 * r, 0.9 * roofOf(A, y, r));     // (on its surface, pressed as flat as it is)
-    const e = [x + Math.cos(a) * Math.cos(el) * 0.92 * r, y + Math.sin(el) * up, z + Math.sin(a) * Math.cos(el) * 0.92 * r, rc, wc, 0.3, t, vx, vz, depth - 1, seed];
+    const e = [x + Math.cos(a) * Math.cos(el) * 0.92 * r, y + Math.sin(el) * up, z + Math.sin(a) * Math.cos(el) * 0.92 * r, rc, wc, 0.3, t, vx, vz, depth - 1, seed, true];
     if (log) log.push(e); else shed(C, e, out, hd);
   }
   out.push(hd);
   return hd;
 }
-// a smaller bubble breaking away from hd, lifted if it is bigger than C.minR
-const shed = (C, e, out, hd) => { if (e[3] > C.minR) lift(C, e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9], mulberry32(e[10]), out, hd); };
+// a smaller bubble breaking away from hd (e[11]: a crown on its top), lifted if it is bigger than
+// C.minR. In a tower (C.trails) the smallest crowns stay in hd, which boils with billows their
+// size: grown on their own, they were balls perched on it, or on the pulse's head
+function shed(C, e, out, hd) {
+  if (e[3] <= C.minR) return;
+  if (C.trails && e[11]) {
+    let root = hd;
+    while (root.parent) root = root.parent;
+    if (e[3] < CROWN_MIN * hd.r || e[3] < CROWN_MIN_HEAD * root.r) return;
+  }
+  lift(C, e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9], mulberry32(e[10]), out, hd);
+}
 // what a bubble lifted alone (with C.log) left, grown: its wake (if C.trails) and what it sheds
 // bigger than C.minR, in lift's order, then its head hd
 export function replay(C, log, hd, out) {
@@ -141,10 +152,12 @@ export function settle(c, e, out, tall = false) {
     return p;
   };
   // the wake: cloudy air keeps spilling out of the rising column, so it widens as it ages; its lumps
-  // blend into each other by about their size (one trunk widening with height, not a string of beads)
+  // blend into each other by about their size (one trunk widening with height, not a string of
+  // beads), about as wide as the bubbles that rose through it (a wide top on a narrower stem was a
+  // mushroom)
   if (!e.head) {
     const wid = 1 + 0.7 * (1 - Math.exp(-age / (900 * Math.sqrt(r / 1000))));
-    return put(x, e.y, z, 0.7 * r * wid * g, Math.min(0.62 * r, roof) * g, 0.62 * r * g, 1 + 0.25 * (wid - 1), A.turn, 0.9, 0, null);
+    return put(x, e.y, z, 0.85 * r * wid * g, Math.min(0.62 * r, roof) * g, 0.62 * r * g, 1 + 0.25 * (wid - 1), A.turn, 0.9, 0, null);
   }
   if (e.still) return put(x, e.y, z, r, Math.min(0.86 * r, roof), 0.6 * r, 1, 0, 0.25, 1, null);
   const rng = mulberry32(e.seed), grow = 1 - Math.exp(-age / (600 * Math.sqrt(r / 1000)));

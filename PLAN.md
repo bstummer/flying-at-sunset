@@ -285,20 +285,73 @@ under an orange veil, and the picture grainy in flight.
    slowly): the 20 views 479 → 274 s, verify ~10 → ~7 min. Captures and costs made with FXC
    before this compare with none made after it.
 
-**Leg 11: tower shapes** (the world: the fingerprint recorded again, flights compared).
-1. The instruments: the mushroom measure (leg 6's scratch script) and a count of knobs into
-   stats.js; and two views that miss their briefs (known issues): `giant` and `close`, their poses
-   found again, `close` up a flank from below.
-2. Popcorn far away: every bubble over ~2 km carries the same 1280 and 640 m lobes (90% and 70% of
-   their cells filled), and its liveliness moves their height only between 0.6 and 1 (cloudSDF's
-   A), so a tower 20–60 km off is rows of beads (`high2`'s right tower, `away`'s horizon, `start`'s
-   right tower). Old parts smooth and young ones boiling (the liveliness over its whole range), the
-   lobes' size by the bubble's billow scale; spheres of power-law sizes failed (decisions).
-3. Mushrooms and knobs by their causes (known issues; catalog.js still shows a wide top on a
-   narrow column among the twelve tallest, and small balls perched on most heads): a column
-   widening with the shear it stands in, the smallest crowns taken into their heads.
-4. Other seeds' starts (known issues): the spawn draw scores sites, not the towers that grew in
-   view. Low: only `?seed` reaches them.
+**Leg 11: tower shapes** (`screenshots/l11-before` → `l11-s2`, `l11-s3`; `l11-views` the old look
+from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
+1. Done (2026-11-24). The instruments, in stats.js: mushrooms (each tower rising over 5 km within
+   150 km: its widest cross-section in its upper third against its narrowest in its middle third,
+   its own bubbles united as the bake unites them) and knobs (a bubble perched on ones 2.5× its
+   size: its centre within its size of their surface, over half of it standing out). Before: 144
+   towers, the ratio p50 1.38, p90 2.34, max 3.5, 48 over 1.6×, 25 over 2× (leg 6's numbers came
+   from another script); 975 knobs, a tower p50 4 (p90 16), in its top 2.5 km 3 (p90 12), on 116
+   of the 144. `giant` stands 2.2 times its tower's rise away (24 km: it fills the frame, where it
+   filled an eighth of its height from 62 km), from the sun's side, lit from whichever side it is
+   nearest in clear sight; `close` 1.5 km off the `tower` view's tower's bubbles, under it, looking
+   up its flank (its search aimed its sight line at the tower's middle, which runs into the tower's
+   own body near it, so it ended 17 km out). catalog.js 5 → 3 min, the same image.
+2. Done (2026-11-24). Popcorn far away. What makes the beads (`giant`, each octave turned off in
+   turn): the 640 m turrets. At the giant's surface its bubbles' billows are 0.6–2.2 km (median
+   1.1, the liveliness 0.54–0.95), so the turrets sat at full strength over all of it, on the
+   lobes' caps in name only (90% of the lobes' cells hold a sphere: nearly every point lies within
+   300 m of one). Now on a tower (300–1500 m over the sea's top on), a bubble with billows big
+   enough for the lobes (0.7–1.5 km, `wL`) boils in turrets the lobes' size (the 640 m field slides
+   to the 1280 m one, and the domes that heap on the turrets' caps follow it): its lobes rise into
+   fewer, greater turrets; smaller bubbles keep their 640 m ones. (A weight of the billows' size of
+   its own, 0.9–1.8 km, cost the trace +11%: a cliff of registers, decisions.) The look: `start`'s
+   right tower bigger turrets with relief, fewer beads; `giant` larger lobes; `tower` and `close`
+   keep their domes; `away`'s horizon (60–80 km) hardly changes: its beads are the 1280 m lobes
+   (known issues). Pixels changed
+   (> 2 levels): `close` 65%, `tower` 45%, `under` 44% (within 44 levels: its overhang's lobes),
+   `geometry` 33%, `giant` 28%, `side` 27% (its tall heaps and tower), `anvil` 12% (a sun shaft
+   through a gap moved), `away` 11%, `start` 9%, `high2` 7%, the sea and the views in cloud a few
+   %. Grain over the strip and shimmer at rest within ±0.05 points but `anvil`'s centre (the
+   shaft) 0.11 → 0.22% and shimmer 0.039 → 0.063%, `sun`'s rim 0.61 → 0.69%, `close`'s domes 0.50
+   → 0.59%. Failed on the way (decisions). Cost (`node tools/cost.js`, 200 frames, A B B A A B):
+   the trace +1 to +3% (`start` +2, `sun` +2, `side` +3, `tower` +3, `high2` +1, `close` +3,
+   `giant` +1, `away` +2).
+3. Done (2026-11-24). Mushrooms and knobs by their causes (`catalog.js`: a wide top on a narrow
+   column among the twelve tallest, small balls perched on most heads). Knobs: crowns of crowns
+   (380 of the 975, at 0.11–0.27 of the head they sit on) and crowns (189, 0.24–0.39). In a tower a
+   crown under 0.28 of the bubble it would burst from, or 0.2 of the pulse's head, stays in it (its
+   billows make bumps that size); on the sea's heaps they grow as before (there they are its small
+   domes). Mushrooms: a head is its bubble's size or more, its column's lumps 0.43–0.6 of the
+   bubble that left them (×1.7 as they age), so a young column stood under a head up to ~1.9× its
+   radius; and the worst were dying cells (age/life 1.1–1.7), the head outliving a column the dry
+   air has eaten. The column's lumps now 0.53–0.72 (0.85 of each lump's size, not 0.7): about as
+   wide as what rose through it. The ratio p50 1.38 → 1.21, p90 2.34 → 1.96, over 2× 25 → 14, over
+   1.6× 48 → 31; knobs 975 → 467, a tower p50 4 → 2 (p90 16 → 7), in its top 2.5 km p90 12 → 4,
+   on 111 of 145 towers; the bubbles in the 120 km box 6027 → 5460 (−9%, the bakes' load); tops over
+   11 km within 80 km 8 → 6 (crowns of crowns were often the highest points). The price: overhangs
+   (a dome over 700 m with 1500 m of clear air under it) within 100 km 28 → 21, on 13 → 8 towers,
+   the nearest the 33rd tower (the 5th): `under` now looks at the 48 nearest. Tops at the
+   ceiling flatter than 0.45 (stats.js) 77 → 18%: those were the small crowns of crowns pressed flat
+   under the ceiling; `anvil` looks as before. The sea's heaps and columns as before (2258 domes
+   in the 30 km box). The look: `tower`'s tower broader and more massive, its lit lobes larger;
+   `start`'s right tower a broader column under its head; `giant`'s neighbour broader; `close`'s
+   flank broader, its shaded lower half one large quiet mass (the shaded side of a wider trunk, lit
+   by the sky alone: less structure than before); `side`'s near tower lost its big lit lumps;
+   `seed3`'s great mass a rounder head at its left; `under` a new place, an underside with lit
+   lobes at its edge. Pixels changed against step 2 (> 2 levels): the tower views whole (their
+   poses follow the towers), `side` 27%, `seed3` 12%, `down` 11%, `high2` 10%, `away` 9%, `start`
+   6%, `sun` 3%, the views in cloud under 1%. Grain over the strip: `close`'s domes 0.59 → 0.30%,
+   `sun`'s rim 0.69 → 0.52, `start`'s tower 0.58 → 0.50; `turn` 0.29 → 0.40, `tower`'s domes 0.32 →
+   0.50, `giant`'s turrets 1.14 → 1.33. Flights (the whole leg against 3c819fa): `climb`, `turn`,
+   `skim` identical, `dive` and `weave` part at 7.9 and 14.2 s by under a centimetre. Failed on the
+   way (decisions). Cost (against step 2, 200 frames, A B B A A B): the trace −1 to 0% where the
+   scene is the same (`start`, `sun`, `side`, `high2`), `away` −5%, `giant` −2%; `tower` +6% and
+   `close` −6% (their towers and poses moved); the bakes within their noise, over 9% fewer
+   bubbles.
+4. Not done: other seeds' starts (known issues): the spawn draw scores sites, not the towers that
+   grew in view. Low: only `?seed` reaches them.
 
 **Leg 12: reach, before `main`** (the branch is 28 commits ahead of what is published).
 1. The devices' numbers (above), and what they ask for: the phones' resolution cap and cloud
@@ -606,6 +659,15 @@ they hold until the author says otherwise.
   huge tower right ahead of the start blocks the sunset and is dull, backlit.
 - **The bubble budget** (before the legs): the bake loops over every gathered bubble per texel; a
   first try with 14 times as many bubbles would have swamped it (stats.js prints the load).
+- **A tower's column drawn out by the shear** (leg 11, against mushrooms): every piece lengthened
+  along the wind by half the shear × its height × its age: old heads high in strong shear drawn out
+  by kilometres into caps (a section 12× its column's). The column's lumps alone: dead cells' upper
+  wakes joined into a cap on a 5.8 km² stem; only while the cell lives, and at most 0.6 of a lump's
+  radius: mushrooms over 2× 14 → 11, but it filled in under the heads drifting downwind (overhangs
+  within 100 km 27 → 20, the nearest from the 5th tower to the 33rd), and big lumps turned smooth
+  sausages (catalog.js). Shear tilts a lump; its horizontal slices keep their width. **A head tied
+  to its column's 75th percentile** of evaporation, not the median: the same. **The small crowns
+  kept in their head on every pulse**: the sea's heaps in a 30 km box 2258 → 1601 (towers only).
 
 ### The billows and the edge
 
@@ -617,6 +679,14 @@ they hold until the author says otherwise.
 - **Billows without a lattice** (leg 6): spheres of power-law sizes, sparse and clustered, as much
   surface covered: the near sea smooth swells with lone small balls (`start`, `down`); milder, still
   smoother, with compact puffs floating over heaps (`giant`), the far grape texture unchanged.
+- **Fewer billows on a tower's biggest bubbles** (leg 11, against the popcorn far away): the turrets
+  to a third or a fifth on bubbles whose billows are over ~1 km, the lobes too over ~2 km, the
+  liveliness over its whole range (old parts' lobes at 0.35, their turrets gone): far towers calmer
+  (`start`'s right tower), but near ones lost their domes to pillows (`tower`'s lit face, `close`'s
+  flank). The turrets only on the lobes' crowns, by how far the lobes pushed the surface out or how
+  far their spheres stand over it: hardly a change (clipped to their shell, the lobes are plateaus
+  over most of a surface). The turrets and lobes fading at twice the pixels a cell on towers: far
+  towers cotton (`away`), `start`'s tower lit blobs on a smooth face.
 - **Billows of one size on every bubble** (before the legs, the author: "puffs all one size"): a
   400 m crown carried lobes as big as a 4 km head's, one stamped texture. Without the 640 m turrets
   a surface reads as smooth dough (`start`'s near sea, `side`); a billow scale for heaps by their
@@ -786,6 +856,12 @@ they hold until the author says otherwise.
   resolution for it: `pixC`.
 - **A generous billow bound** (before the legs): `shellOf` 460a + 150 cost ~10% more than 400a + 120,
   no visible difference. Crisp rims cost nothing.
+- **A weight of the billows' size of its own in cloudSDF** (leg 11): the turrets turned lobe-sized
+  by `smoothstep(900, 1800, sh.y)` times the height over the sea cost the trace +11% in every view
+  (`side` +13%, `high2` +7%), the same as a linear ramp, with the turrets' field or their shell
+  alone (the same source on both sides of `tools/cost.js`: 0%; the height's weight alone +1%):
+  a cliff of registers under DXC, as leg 10 found one under FXC. Taken from the lobes' weight
+  (`wL`), +3%.
 - **TAAU at rest** (before the legs): a wider clamp box alone barely calms crisp rims; the blend rate
   is what flickers (a rim pixel swinging ~150 levels × α 0.05).
 - **Against the grain left in a dive** (leg 9, step 6, `tower` at frame 120, 1.59%): the blend at the
@@ -848,12 +924,11 @@ they hold until the author says otherwise.
   arena) have no out-of-memory fallback: if one fails, the frames draw nothing (only the
   size-dependent targets retry smaller; the bird's are now only as big as its box can get, about a
   third of the canvas, instead of three canvas-sized ones).
-- **Mushroom tops**: fewer since leg 6 (a head evaporates as far as its column), but a live cell's
-  top still spreads to twice its column's width in places (a tower 140 km from the start:
-  30 km² over 7–10 km²): its pulses' heads drift apart with the wind's shear while their columns
-  stay narrow (wake lumps 0.43–0.6 of the bubble's radius). Leg 6 measured it with a scratch
-  script (each tower's widest section in its upper third against its narrowest in the middle
-  third): worth a place in stats.js if this is worked on again.
+- **Mushroom tops**: fewer since leg 6 (a head evaporates as far as its column) and leg 11 (the
+  column's lumps as wide as what rose through it): 14 of 145 towers over 5 km have a top over twice
+  their column's section (stats.js), the worst dying cells whose head outlived a column the dry air
+  has eaten (age/life 1.1–1.7). A wider column fills in under overhangs: within 100 km 21 on 8
+  towers (28 on 13 before leg 11), the nearest the 33rd tower from the start.
 - **Close-up surfaces** of towers can look blotchy in low sun (`close`): since leg 7 not from other
   clouds (the sun map casts their shadows as streaks, where they belong) but from the lumps' own
   shade, the light march's first ~90 m. **Past the sun map's fine level** (8 km across the sun's
@@ -873,19 +948,20 @@ they hold until the author says otherwise.
   billows. Drift brought back, the map has to be baked all the time (0.11–0.15 ms a frame, and it
   lags the billows by its cycle: 2 s, 7 m at 60 fps); or it could hold the large shapes alone, and
   the light march the billows' shadows near by.
-- **Popcorn far away**: towers 20–60 km off still read as one grape texture (`start`'s right
-  tower, `high2`, `giant`, `away`'s horizon): their bubbles are big (billow scale over ~800 m), so
-  all carry lobes and turrets alike (since leg 3 the turrets fade from ~40 km, sooner on a coarser
-  trace). A real tower shows 2–4 dominant turrets, smaller domes on
-  their upper, sunward shoulders, older parts smoother. Ideas: more spread in the billow scale per
-  bubble, the liveliness stronger (the lattice's spheres at power-law sizes failed, decisions).
-  **Crowns perched on heads** read as knobs (`start`'s middle tower, a "teddy-bear head" in a
-  review; `catalog.js`): small bubbles sitting on big ones; since leg 6 joined by a fillet their
-  own size, the smallest still knobs. **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird,
+- **Popcorn far away**: since leg 11 a tower's bubbles whose billows are over ~1 km boil in turrets
+  the lobes' size, not in a carpet of 640 m beads (`start`'s right tower, `giant`); `away`'s horizon
+  (60–80 km) is still beads: the 1280 m lobes, 90% of their cells filled, the turrets faded by then.
+  A real tower shows 2–4 dominant turrets, smaller domes on their upper, sunward shoulders, older
+  parts smoother; fewer billows on big bubbles or old parts turned near towers to pillows, an
+  earlier fade far ones to cotton (decisions). **Crowns perched on heads**: since leg 11 a tower's
+  crowns small beside the bubble they burst from or the pulse's head stay in it (knobs halved,
+  stats.js); the first crowns, about a third of their head, remain (`start`'s middle tower's two
+  bumps). **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird,
   `sun`, `tower`, `away` right of the bird, bigger since the detail volume turned in leg 1):
   attached (`?dbg=1`), their base melts into the shade.
 - **Tops**: tower heads keep their domes unless they hit the ceiling (since leg 6 also those that
-  overshot far: tops flatter than 0.45 on 8% of the towers, most of them anvils); `seed3`'s great
+  overshot far: tops flatter than 0.45 on 5% of the towers, stats.js; at the ceiling 18% since leg
+  11 took the small crowns pressed flat there, which the measure read; `anvil` looks as before); `seed3`'s great
   cap broke into domed masses, one flat lens left against the haze at its right end. Deep folds between lobes go near black
   (`tower`, `close`: a navy pit).
 - **Silver linings** of far towers are a pixel wide: a backlit tower's edge 10–20 km off doesn't
@@ -907,11 +983,6 @@ they hold until the author says otherwise.
   trace's pixel: it may shimmer in motion (the author's eyes). `under` (an anvil's underside) is navy since leg 8:
   the sea beneath lies in the anvil's shadow for tens of km at a 5° sun, so nothing warm comes up.
   Kept: physically right (the author, 2026-11-22).
-- **`giant` and `close` miss their briefs** (presets.js, clearOf): `giant` stands 62 km from its
-  tower (25 km clear of every tower: in a crowd, far out), which fills about an eighth of the
-  frame's height where it should dominate. `close` stands 17.4 km from the tower `tower` sees from 9.4 km
-  (the first air clear of the heaps at 1100 m over the sea lies that far out) and frames all of
-  it; neither looks up a flank from below.
 - **The shade's colour**: since leg 8 lighter and with form, but blue, not the reviews' lavender
   grey: the sky's own colour (the reference's shade, b/r 2.4 in light), tinted bluer (COOL_UP,
   COOL_ANTI: b/r 3.5) and saturated (CLOUD_SAT). Lavender needs red in the shade's light: the
