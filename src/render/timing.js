@@ -1,8 +1,9 @@
 // GPU timing with timestamp queries, where the browser has them (gpuTimer, else null): it drives
-// dynamic resolution (render/resolution.js) and feeds the readout and the benchmark. Each group of
-// passes (tBegin .. tEnd) writes two timestamps: at the start of its first pass and at the end of
-// each pass (the last one stays); a group without passes this frame (the world, mostly) took no GPU
-// time. They are read back once the GPU is done. ?cpuprof: their sums over a test run
+// dynamic resolution (render/resolution.js), scales the world bakes' estimate (render/stream.js)
+// and feeds the readout and the benchmark. Each group of passes (tBegin .. tEnd) writes two
+// timestamps: at the start of its first pass and at the end of each pass (the last one stays); a
+// group without passes this frame (the world, mostly) took no GPU time. They are read back once the
+// GPU is done; tEnd(then): then(ms) gets the group's time when it is. ?cpuprof: their sums over a test run
 // (window.__gpu, tools/screenshot.js --profile).
 
 import { params } from '../core/params.js';
@@ -32,7 +33,7 @@ export const gpuTimer = TIMESTAMPS ? (() => {
     ms, sum,
     onFrame: null,   // called with each measured frame's GPU time (the benchmark)
     begin(label) { cur = { label, q: -1 }; },
-    end() { if (cur) groups.push(cur); cur = null; },
+    end(then) { if (cur) { cur.then = then; groups.push(cur); } cur = null; },
     // after the last pass of a frame: resolve its timestamps into a buffer to read
     resolve() {
       if (!groups.length) return;
@@ -56,7 +57,7 @@ export const gpuTimer = TIMESTAMPS ? (() => {
         let frameMs = 0;
         for (const g of gs) {
           const v = g.q < 0 ? 0 : Number(t[g.q + 1] - t[g.q]) / 1e6;
-          if (v >= 0 && v < 1e5) { record(g.label, v); frameMs += v; }       // (else not a valid pair)
+          if (v >= 0 && v < 1e5) { record(g.label, v); frameMs += v; if (g.then) g.then(v); }       // (else not a valid pair)
         }
         if (timer.onFrame) timer.onFrame(frameMs);
         buf.unmap();
@@ -71,4 +72,4 @@ export const gpuTimer = TIMESTAMPS ? (() => {
   return timer;
 })() : null;
 export const tBegin = l => { if (gpuTimer) gpuTimer.begin(l); };
-export const tEnd = () => { if (gpuTimer) gpuTimer.end(); };
+export const tEnd = then => { if (gpuTimer) gpuTimer.end(then); };

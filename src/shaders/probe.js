@@ -6,6 +6,7 @@
 // to the sea's billows, which render/probe.js reads back for the flight and the camera.
 
 import { U_CLIP, U_CLOUD } from './cloud.js';
+import { own as PROBE_STRUCT } from './chunks/probe.wgsl';
 
 export const U_PROBE = {
   ...U_CLIP, ...U_CLOUD,
@@ -13,5 +14,11 @@ export const U_PROBE = {
   birdRel: 'vec3f',     // bird - camera
   ambSea: 'vec3f',
 };
-export const PROBE_FIELDS = 6;   // (the workgroups of a dispatch)
+// the fields of struct Probe, read off its declaration (every one a vec4f): their offsets in floats
+// by name (render/probe.js reads two back, main.js's __debug.probe all), and how many (the buffer's
+// size, a dispatch's workgroups)
+const FIELDS = /struct Probe \{([^}]*)\}/.exec(PROBE_STRUCT.replace(/\/\/[^\n]*/g, ''))[1].split(',').map(f => f.trim()).filter(Boolean);
+if (!FIELDS.every(f => /^\w+: vec4f$/.test(f))) throw new Error('struct Probe: a field that is not a vec4f');
+export const PROBE_AT = Object.fromEntries(FIELDS.map((f, k) => [f.split(':')[0], 4 * k]));
+export const PROBE_FIELDS = FIELDS.length;
 export { default as CS_PROBE } from './probe.wgsl';

@@ -9,11 +9,12 @@ import { TEST } from '../core/params.js';
 import { damp, sat } from '../math.js';
 import { device, enc } from './gpu.js';
 import { T } from './setup.js';
+import { PROBE_AT } from '../shaders/probe.js';
 
 export let probeData = null; // async readback: [sigmaCam, sigmaBird, sdfBird, seaTop, sdfSeaOnlyBird]
 export let inCloud = 0;      // smoothed: is the camera inside cloud?
 const probeBuf = device.createBuffer({ label: 'probe', size: T.probe.size, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-const MEDIUM = 12, FLOOR_D = 20;   // (float offsets of the fields read)
+const MEDIUM = PROBE_AT.medium, FLOOR_D = PROBE_AT.floorD;   // (the fields read)
 let probeState = 0;          // 0 idle, 1 copy encoded (mapped after the submit), 2 mapping
 let probeNext = null;
 // (tests wait for each readback before the next frame)

@@ -353,18 +353,53 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
 4. Not done: other seeds' starts (known issues): the spawn draw scores sites, not the towers that
    grew in view. Low: only `?seed` reaches them.
 
-**Leg 12: reach, before `main`** (the branch is 28 commits ahead of what is published).
-1. The devices' numbers (above), and what they ask for: the phones' resolution cap and cloud
-   scale, the budgets.
-2. `bakeCost` (render/stream.js) from the device's own GPU times where it has timestamp queries; it
-   is one NVIDIA laptop's constants.
-3. The textures and buffers made once at the start: a note in place of blank frames when one
-   fails, and what a small device could go without (about 130 MB of volumes and tables that never
-   shrink, and 40–80 MB of targets by the canvas: counted from the formats, not measured).
-4. The stall where the bird outruns its patch of domes (core/world.js): a check that flies it
-   there at top speed, then what the check asks for.
-5. The values JS and WGSL both keep as literals into constants.js; tools/linux.js tried (Docker
-   wasn't running on 2026-11-22 either).
+**Leg 12: reach, before `main`** (the branch is 51 commits ahead of what is published;
+`screenshots/l12-before` → `l12-s5`: every view identical, the steps below change no capture).
+1. Not done: the devices' numbers (above) are the author's to bring, and what they ask for (the
+   phones' resolution cap and cloud scale, the budgets, what a small device goes without: step 3)
+   waits for them. The benchmark's summary now also says the GPU memory the piece made and how its
+   world bakes took against their estimate (steps 2 and 3).
+2. Done (2026-11-24). `bakeCost` (render/stream.js) is scaled by what the bakes take on the device,
+   where it has timestamp queries (render/bakescale.js, tests/bakescale.test.js): the world group's
+   measured time against the frame's estimate, both summed, fading by 0.9 a frame that baked,
+   bounded to 0.25–16×. On the NVIDIA laptop under DXC the bakes take 0.73–0.75× the old constants
+   (fitted under FXC, before leg 11 took 9% of the bubbles): a shift's bakes now fill the 2 ms a
+   frame instead of 1.5. Without timestamp queries the constants as they were. The readout
+   (`?debug`) and the benchmark say the scale.
+3. Done (2026-11-24). What the modules make as they load (the volumes, the noise, the tables, the
+   sun map, the arenas) sits in an out-of-memory error scope of its own (render/gpu.js, closed by
+   main.js before the first frame): when it ran out the page says so ("Out of GPU memory: the
+   piece needs about 141 MB of it to start …") instead of drawing nothing (the out-of-memory check
+   forces it). Counted from the formats (render/gpu.js, `gpuBytes`): 141 MB that never change, and
+   55 bytes a canvas pixel of targets: 29 MB at 960×540, 51 MB at 1280×720, 114 MB at 1920×1080,
+   ~130 MB at the 2.3 Mpx cap (the phones' 1.15 Mpx: ~65 MB). A third of the targets' is the bird's
+   4× multisampled box (a third of the canvas: 56 bytes a pixel of it). What a small device could
+   go without, largest first (not done until a device's numbers ask for it): the billow volumes
+   (L0 29 MB, L1 15, L2 8, rg16float: as rg8unorm, scale to 8 m and liveliness to 1/255, half;
+   the streaming check's tolerance with it), the shape noise (17 MB, rgba16float: its signed
+   distances would terrace in 8 bits), the sun map's fine level (14 MB: 440 texels up), the shadow
+   volume (10 MB), the bird's box (2× multisampling, or a smaller box: the bird rarely fills a third
+   of the frame), its shadow map (4 MB at 1024²), the high layers' 1024² (6 MB with mips).
+4. Done (2026-11-24). The check `top-speed` (tools/checks.js): the page as a visitor's (its worker
+   answering in its own time, behind the volumes' requests), the bird held level at its top speed
+   (185 m/s: the glider can't keep that up, its speed is set past it each frame) for 100 s, 18.5 km,
+   two patches of domes on: each must come before the bird reaches the edge of the last, or the
+   page grows the world's cells itself (core/world.js counts it, `patchStats`). On the NVIDIA
+   laptop each patch came within 1.2–1.3 s of being asked for, 32 s before the edge; no frame over
+   50 ms. It asks for nothing more there: a CPU ~25× slower would still keep ahead. Broken on
+   purpose (the next patch asked for 500 m past the edge, not 6 km before it) it fails: the page grew
+   cells itself for 178 lookups, 101 ms on its thread, a 67 ms frame.
+5. Done (2026-11-24). The values JS and WGSL both kept as literals come from constants.js: the sun
+   colour table's heights (`SUN_COL_N`, `SUN_COL_DH`), the cirrus' and the high layers' heights and
+   tiles (`CIRRUS_H`, `CIRRUS_TILE`, `LAYER_H0`, `LAYER_H1`, `LAYER_TILE`); struct Probe's field
+   offsets are read off its declaration (shaders/probe.js, `PROBE_AT`: the readback, the buffer's
+   size, the dispatch). Every view identical. `tools/linux.js` tried (Docker Desktop started for it,
+   stopped after): the image builds, `npm ci` runs in its volume, and its SwiftShader captures
+   (320×180, 8 frames) of `start`, `tower` and `giant` are CI's of bdb0ef1 byte for byte; `sun`
+   differs in one pixel by one level, the same from the committed tree and the working one and on
+   a second run: SwiftShader compiles for the CPU it runs on, this laptop's, not CI's runner's.
+   (The container's build of the Windows checkout is 0.7 kB larger than Windows' own; not looked
+   into, the captures agree.)
 
 Not in a leg: the drift (the author's: nothing has to, for now); the shimmer at sunlit rims
 (0–0.11% a view in this capture, `geometry` 0.35%: within the limits, and each lever left costs
@@ -913,17 +948,20 @@ they hold until the author says otherwise.
   Safari's and Firefox's haven't.
 - **The world grows in a worker** (src/worker.js), so new areas no longer stall frames; the page
   applies what it sends within budgets (render/stream.js). The budget's GPU estimate (`bakeCost`) is
-  calibrated on one NVIDIA laptop GPU: on a weaker one a shift's bakes still spread over frames, but
-  each frame's share takes longer. Startup still waits for the whole first bake; the worker grows
-  the start's cells while the shaders compile (the coarsest level's across 524 km take ~2 s in
-  Node), and the canvas comes at 3.5–3.9 s in the player check (headless, that machine). The
-  generator allocates many small objects (`makeDome` and `lift` dominate profiles). If the bird outran the worker's patch of domes (core/world.js: asked for ≥ 30 s ahead
-  at top speed), the page would grow the cells under it itself: a stall. Only Chrome has run the
-  worker; it carries its own copy of the world's code (the page ≈ 19 KB larger).
-- Textures and buffers created once at start (`T.trans` … `T.shadow`, the world volumes, the bubble
-  arena) have no out-of-memory fallback: if one fails, the frames draw nothing (only the
-  size-dependent targets retry smaller; the bird's are now only as big as its box can get, about a
-  third of the canvas, instead of three canvas-sized ones).
+  one NVIDIA laptop's constants, scaled since leg 12 by what the bakes take on the device where it
+  has timestamp queries (render/bakescale.js); without them a weaker GPU's frames take longer over
+  a shift. Startup still waits for the whole first bake; the worker grows the start's cells while
+  the shaders compile (the coarsest level's across 524 km take ~2 s in Node), and the canvas comes
+  at 3.5–3.9 s in the player check (headless, that machine). The generator allocates many small
+  objects (`makeDome` and `lift` dominate profiles). The patch of domes around the bird
+  (core/world.js) keeps ahead at top speed with ~25× to spare on that machine (the top-speed check,
+  leg 12); on a CPU far slower, or a worker far busier, the page would grow the cells under the bird
+  itself: a stall. Only Chrome has run the worker; it carries its own copy of the world's code (the
+  page ≈ 19 KB larger).
+- **GPU memory** (leg 12, counted from the formats): 141 MB made at the start that never shrinks,
+  and 55 bytes a canvas pixel of targets (114 MB at 1920×1080, ~130 MB at the 2.3 Mpx cap). If the
+  first runs out the page says so; the targets retry smaller. What a small device could go without:
+  leg 12, step 3.
 - **Mushroom tops**: fewer since leg 6 (a head evaporates as far as its column) and leg 11 (the
   column's lumps as wide as what rose through it): 14 of 145 towers over 5 km have a top over twice
   their column's section (stats.js), the worst dying cells whose head outlived a column the dry air
@@ -1059,9 +1097,10 @@ they hold until the author says otherwise.
   backlit rims, most toward the sun (`sun`). The history blends at half the rate where the image
   holds still. The slower blend may lag or smear in slow motion: for the author's eyes. The cloud
   scale, the TAAU clamp and blend rate, and the approach's floor (trace.wgsl) are the levers.
-- Values JS and WGSL both keep as literals of their own: the sun-colour table's 750 m steps, the high layers' heights, the offsets of struct Probe's fields read back (CLAUDE.md §8 wants them from `constants.js`).
 - The trace binds 16 sampled textures (since leg 10, the sun map's coarse level), core WebGPU's
   limit a stage: another needs two of them in one texture.
 - A WebGPU validation error shows no note (left out: a harmless one on a browser never tried would stop
   the piece); the tools hear every one.
-- `tools/linux.js` is untried (Docker wasn't running).
+- `tools/linux.js`'s SwiftShader captures can differ from CI's by a level on a stray pixel (leg 12:
+  SwiftShader compiles for the CPU it runs on): compare the container's captures with the
+  container's, CI's with CI's.

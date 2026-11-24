@@ -4,7 +4,7 @@
 
 // The clouds' shape, density and light toward the sun (shaders/cloud.js)
 fn sunColorAt(h: f32) -> vec3f {
-  let f = clamp(h / 750.0, 0.0, 14.99);
+  let f = clamp(h / SUN_COL_DH, 0.0, SUN_COL_N - 1.01);
   let i = i32(f);
   return mix(u.sunCol[i], u.sunCol[i + 1], f - f32(i));
 }

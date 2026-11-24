@@ -12,14 +12,15 @@
 
 import { BENCH, params, TEST } from './core/params.js';
 import { canvas, COARSE, fail, hintEl, refuse } from './core/page.js';
-import { busy as worldBusy, keepPatch, patchAt, started } from './core/world.js';
-import { device, gpuState, pipelinesReady, readBuffer, readTexture } from './render/gpu.js';
+import { busy as worldBusy, keepPatch, patchAt, patchStats, started } from './core/world.js';
+import { device, gpuBytes, gpuState, keptFailed, pipelinesReady, readBuffer, readTexture } from './render/gpu.js';
 import { cloudTopAt, seaTopAt, towersNear } from './world/queries.js';
 import { generateStatic, T } from './render/setup.js';
 import { LEVELS, shiftWorld, TSVL, worldStats } from './render/stream.js';
 import { SUNMAPS } from './render/sunmap.js';
 import { R, resize } from './render/targets.js';
 import { inCloud, probeBusy, probeData, updateInCloud } from './render/probe.js';
+import { PROBE_AT } from './shaders/probe.js';
 import { bird_, newBird, updateFlight } from './flight/flight.js';
 import { input, updateInput } from './core/input.js';
 import { cam, updateCamera } from './flight/camera.js';
@@ -106,12 +107,12 @@ device.lost.then(async info => {
 });
 document.addEventListener('visibilitychange', () => { last = -1; });
 window.__debug = {
-  bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, SUNMAPS, worldStats, device, T, readTexture,
-  // (struct Probe, struct Ambient and struct Exposure, chunks/probe.wgsl, ambient.wgsl and exposure.wgsl)
+  bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, SUNMAPS, worldStats, patchStats, device, T, readTexture,
+  // (struct Probe, each field its vec4f; struct Ambient and struct Exposure, chunks/ambient.wgsl and exposure.wgsl)
   probe: async () => {
     const b = Array.from(await readBuffer(T.probe)), a = Array.from(await readBuffer(T.amb));
     const e = Array.from(await readBuffer(T.expo));
-    return { sun: b.slice(0, 4), ambUp: b.slice(4, 7), ambDn: b.slice(8, 11), medium: b.slice(12, 16), mistL: b.slice(16, 19), floorD: b[20],
+    return { ...Object.fromEntries(Object.entries(PROBE_AT).map(([k, o]) => [k, b.slice(o, o + 4)])),
       amb: { up: a.slice(0, 3), sunSide: a.slice(4, 7), antiSun: a.slice(8, 11) }, expo: { mean: e[0], adapted: e[1], fog: e[2], exposure: e[3] } };
   },
 };
@@ -150,12 +151,17 @@ addEventListener('unhandledrejection', e => {
 });
 // The start: the shaders compile in parallel without blocking the page, while the worker grows the
 // world around the start and looks for ?preset's place; then the bird is placed, the domes around
-// it are at hand (core/world.js), the static data is generated and the flight starts.
+// it are at hand (core/world.js), the static data is generated and the flight starts. (If what the
+// modules made as they loaded ran out of GPU memory, every frame would draw nothing: say so.)
 try { await pipelinesReady(); } catch (e) { fail('Shader error — ' + e.message); throw e; }
 const start = await started;
 if (start.pose?.refused) refuse(start.pose.refused);
 Object.assign(bird_, newBird(start.sea0));
 placeBird(bird_, start.pose?.refused ? null : start.pose, params.pose);
 await patchAt(bird_.pos[0], bird_.pos[2]);
-try { generateStatic(); } catch (e) { fail('Something went wrong while starting — ' + (e && e.message || e)); throw e; }
-requestAnimationFrame(loop);
+if (await keptFailed()) {
+  fail(`Out of GPU memory: the piece needs about ${Math.round(gpuBytes() / 1e6)} MB of it to start, and more for the screen. Closing other tabs or apps may help.`);
+} else {
+  try { generateStatic(); } catch (e) { fail('Something went wrong while starting — ' + (e && e.message || e)); throw e; }
+  requestAnimationFrame(loop);
+}

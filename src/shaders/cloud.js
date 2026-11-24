@@ -38,6 +38,8 @@
 //   diffusion, fitted to a Monte Carlo of the medium (tools/light/). The trace's header describes
 //   the lighting.
 
+import { SUN_COL_N } from '../constants.js';
+
 // uniforms of the clipmap lookups (part of the uniforms of every shader that includes them)
 export const U_CLIP = {
   lvA: 'vec4f[3]',      // per level: 1 / extent, toroidal offset x, z, 1 / height
@@ -58,5 +60,5 @@ export const U_CLOUD = {
   warpPh2: 'vec2f',
   detailOff: 'vec3f',   // the detail volume's lookup: the render origin, turned and wrapped
   sunDir: 'vec3f',
-  sunCol: 'vec3f[16]',
+  sunCol: `vec3f[${SUN_COL_N}]`,
 };

@@ -22,10 +22,11 @@ const LIVE = { test: '', live: '', log: '', w: '64', h: '36', scale: '0.3', dt: 
 
 export const CHECKS = [
   { name: 'streaming', what: 'flying 8 km streams in the same world volumes a fresh start at that place bakes', run: checkStreaming },
+  { name: 'top-speed', what: 'flying level at top speed, the domes around the bird come before it reaches their edge: the page never grows the world itself', run: checkTopSpeed },
   { name: 'flight', what: 'scripted flights: dives gain speed, climbs trade it for height, turns bank, the bird is kept from sinking deep into the sea', run: checkFlight },
   { name: 'steering', what: 'mouse, keys and touch bank, climb and dive the bird, and letting go levels it out', run: checkSteering },
   { name: 'reproducible', what: 'a capture renders the same, byte for byte, every time, and handing over more frames changes it not at all', run: checkReproducible },
-  { name: 'out-of-memory', what: 'GPU memory running out at start, on a resize and for good: the page retries smaller, keeps running, or says so', run: checkOutOfMemory },
+  { name: 'out-of-memory', what: 'GPU memory running out for what never changes, at start, on a resize and for good: the page says so, retries smaller, keeps running, or says so', run: checkOutOfMemory },
   { name: 'volumes', what: 'the baked world volumes: no NaNs, no cloud cut off at a volume\'s ceiling, sound column maps, the sun map baked and within 0..1', run: checkVolumes },
   { name: 'pointer-and-keys', what: 'the pointer leaving levels out; Cmd/Ctrl shortcuts don\'t steer; Meta clears held keys; P logs the moment\'s pose as a view', run: checkPointerAndKeys },
   { name: 'errors', what: 'the tools hear what nothing on screen shows: a WebGPU validation error, a lost device', run: checkErrors },
@@ -353,9 +354,11 @@ async function checkFlight(browser, { fail, note, problems }) {
 
 // ---------------------------------------------------------------- out of memory
 
-// Makes the next `n` out-of-memory error scopes report running out, and counts them all. Only the
-// allocation of the size-dependent render targets opens them (src/render/targets.js).
-const forceOutOfMemory = (n) => {
+// Makes the next `n` out-of-memory error scopes after the first `skip` report running out, and
+// counts them all. What the page's modules make as they load opens the first (src/render/gpu.js,
+// closed by main.js before the first frame), each allocation of the size-dependent render targets
+// one after it (src/render/targets.js).
+const forceOutOfMemory = (n, skip = 0) => {
   const D = GPUDevice.prototype, push = D.pushErrorScope, pop = D.popErrorScope;
   let left = n, fake = 0;
   window.__forced = 0;
@@ -363,7 +366,8 @@ const forceOutOfMemory = (n) => {
   D.pushErrorScope = function (filter) {
     if (filter === 'out-of-memory') {
       window.__scopes++;
-      if (left > 0) {
+      if (skip > 0) skip--;
+      else if (left > 0) {
         left--;
         fake++;
         window.__forced++;
@@ -392,14 +396,32 @@ async function checkOutOfMemory(browser, { fail, note, problems }) {
     size: window.__debug ? [window.__debug.R.w, window.__debug.R.h] : null,
   }));
   {
-    // at start: the first allocation runs out, and the page retries with fewer pixels
-    const { page, done } = await openPage(browser, problems, { viewport: { width: 400, height: 240 } });
+    // what never changes, made as the page loads, runs out: the page says so, and draws nothing
+    const own = [];
+    const { page, done } = await openPage(browser, own, { viewport: { width: 200, height: 120 } });
     try {
       await page.addInitScript(`(${forceOutOfMemory})(1)`);
+      await page.goto(pageUrl({ test: '', frames: '3', w: '160', h: '90' }));
+      await until(page, () => window.__done || window.__error);
+      const s = await state(page);
+      if (s.forced !== 1 || s.scopes !== 1) fail(`what never changes: ${s.forced} out-of-memory errors forced of 1, ${s.scopes} allocations (did the allocation change?)`);
+      if (!/^Out of GPU memory: the piece needs about \d+ MB/.test(s.error ?? '') || s.note === 'none' || s.on || s.frame) fail(`what never changes: the page doesn't say it ran out of GPU memory, or drew: ${JSON.stringify(s)}`);
+      else note(`what never changes: the note says "${s.error}"`);
+    } finally {
+      await done();
+    }
+    // (its note is an error on the console, as it should be)
+    problems.push(...own.filter((p) => !(p.kind === 'console error' && /Out of GPU memory/.test(p.text))));
+  }
+  {
+    // at start: the first allocation of the targets runs out, and the page retries with fewer pixels
+    const { page, done } = await openPage(browser, problems, { viewport: { width: 400, height: 240 } });
+    try {
+      await page.addInitScript(`(${forceOutOfMemory})(1, 1)`);
       await page.goto(pageUrl({ test: '', frames: '3', w: '1280', h: '720', scale: '0.3' }));
       await until(page, () => window.__done || window.__error);
       const s = await state(page);
-      if (s.forced !== 1 || s.scopes < 2) fail(`at start: ${s.forced} out-of-memory errors forced of 1, ${s.scopes} allocations (did the allocation change?)`);
+      if (s.forced !== 1 || s.scopes < 3) fail(`at start: ${s.forced} out-of-memory errors forced of 1, ${s.scopes} allocations (did the allocation change?)`);
       if (s.error || s.note !== 'none' || !s.on || s.frame < 3) fail(`at start: the page didn't recover: ${JSON.stringify(s)}`);
       if (!(s.size?.[0] * s.size?.[1] < 1280 * 720)) fail(`at start: the page retried at ${s.size?.join('x')}, no smaller than 1280x720`);
       note(`at start: recovered at ${s.size?.join('x')}, frame ${s.frame}`);
@@ -430,7 +452,7 @@ async function checkOutOfMemory(browser, { fail, note, problems }) {
     const own = [];
     const { page, done } = await openPage(browser, own, { viewport: { width: 200, height: 120 } });
     try {
-      await page.addInitScript(`(${forceOutOfMemory})(4)`);
+      await page.addInitScript(`(${forceOutOfMemory})(4, 1)`);
       await page.goto(pageUrl({ test: '', frames: '12', w: '160', h: '90' }));
       await until(page, () => window.__done || window.__error);
       const s = await state(page);
@@ -609,6 +631,45 @@ export function difference(a, b) {
   return { mean: sum / (3 * n), over16: over16 / n };
 }
 
+// The flight asks for the sea's surface under the bird every frame, answered from a patch of domes
+// the world's worker sends (src/core/world.js), the next asked for 6 km before the bird reaches the
+// edge of the one it has, behind whatever the volumes asked for before it. Here the page runs as a
+// visitor's does (its worker answering in its own time), the bird held at its top speed (the glider
+// can't keep it there level: its speed set past it each frame, the flight clamps it) for
+// TOP_SPEED_S, about 18 km, two patches on: each must come before the bird reaches the edge of the
+// last, or the page grows the world's cells itself (a stall).
+const TOP_SPEED_S = 100;
+async function checkTopSpeed(browser, { fail, note, problems }) {
+  const { page, done } = await openPage(browser, problems, { viewport: { width: 320, height: 180 } });
+  try {
+    await page.goto(pageUrl({}));
+    await until(page, () => window.__frame > 2 || window.__error);
+    await page.evaluate(() => {
+      const { bird, input } = window.__debug;
+      input.script = () => [0, 0];
+      // (frame times from a second on: the first frames still warm up)
+      const start = [...bird.pos], frames = [], from = performance.now() + 1000;
+      let last = 0;
+      const hold = (now) => { bird.speed = 1000; if (last > from) frames.push(now - last); last = now; requestAnimationFrame(hold); };
+      requestAnimationFrame(hold);
+      window.__topSpeed = { start, frames };
+    });
+    await until(page, (s) => performance.now() > s || window.__error, await page.evaluate((s) => performance.now() + s * 1000, TOP_SPEED_S), { pollMs: 1000 });
+    const s = await page.evaluate(() => {
+      const { bird, patchStats } = window.__debug, { start, frames } = window.__topSpeed;
+      return { error: window.__error ?? null, patch: { ...patchStats }, km: Math.hypot(bird.pos[0] - start[0], bird.pos[2] - start[2]) / 1000,
+        frames: frames.length, slow: frames.filter((ms) => ms > 50).length, longest: Math.max(...frames) };
+    });
+    if (s.error) return fail(`the page's note says: ${s.error}`);
+    const p = s.patch;
+    if (p.asked < 3) fail(`${p.asked} patches asked for over ${s.km.toFixed(1)} km: the bird didn't fly far enough to need two more`);
+    if (p.grown) fail(`the page grew the world's cells itself ${p.grown} times (${p.grownMs.toFixed(0)} ms): a patch came too late (the longest took ${(p.maxWait / 1000).toFixed(1)} s)`);
+    note(`${s.km.toFixed(1)} km in ${TOP_SPEED_S} s, ${p.asked} patches, the longest ${(p.maxWait / 1000).toFixed(1)} s to come (asked for ${(p.edge / 1000 / (s.km / TOP_SPEED_S)).toFixed(0)} s before the edge), the bird ${(p.minLead / 1000).toFixed(1)} km from an edge at the nearest; frames over 50 ms ${s.slow} of ${s.frames} (the longest ${s.longest.toFixed(0)} ms)`);
+  } finally {
+    await done();
+  }
+}
+
 async function checkVolumes(browser, { fail, note, problems }) {
   const { page, done } = await openPage(browser, problems, { viewport: { width: 200, height: 120 } });
   try {
@@ -705,7 +766,7 @@ async function checkBenchmark(browser, { fail, note, problems, outDir }) {
       if (!leg.frames) fail(`the leg "${leg.name}" measured no frames`);
       if (!new RegExp(`^${leg.name} +\\d`, 'm').test(s.summary)) fail(`the summary has no row for the leg "${leg.name}"`);
     }
-    for (const line of ['build', 'gpu', 'browser', 'screen', 'measured', 'all legs']) {
+    for (const line of ['build', 'gpu', 'browser', 'screen', 'memory', 'measured', 'bakes', 'all legs']) {
       if (!new RegExp(`^${line} +\\S`, 'm').test(s.summary)) fail(`the summary has no "${line}" line`);
     }
     if (!s.panel || !s.copy) fail('the summary panel or its copy button is hidden');

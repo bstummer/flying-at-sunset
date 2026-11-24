@@ -30,9 +30,9 @@ fn skyColor(dir: vec3f) -> vec3f {
   var c = skyLookup(tSky, dir, u.sunDir, h);
   // high cirrus veil
   if (dir.y > 0.003) {
-    let hc = 9800.0 - u.camPos.y;
+    let hc = CIRRUS_H - u.camPos.y;
     let t = hc / max(dir.y, 0.02);
-    let p = (u.camPos.xz + dir.xz * t + u.cirrusOff) / 32000.0;
+    let p = (u.camPos.xz + dir.xz * t + u.cirrusOff) / CIRRUS_TILE;
     let cs = textureSampleLevel(tCirrus, sRep, p, 0.0);
     let a = cs.r * smoothstep(0.003, 0.08, dir.y);
     let cosT = dot(dir, u.sunDir);
@@ -73,8 +73,8 @@ fn distToHeight(h0: f32, dy: f32, H: f32) -> f32 {
 }
 // premultiplied colour + alpha of high layer k at distance tL along dir
 fn highLayer(k: i32, dir: vec3f, tL: f32, behind: vec3f) -> vec4f {
-  let H = select(7700.0, 6300.0, k == 0);
-  let p = (u.camPos.xz + dir.xz * tL + u.layerOff) / 64000.0;
+  let H = select(LAYER_H1, LAYER_H0, k == 0);
+  let p = (u.camPos.xz + dir.xz * tL + u.layerOff) / LAYER_TILE;
   let slope = abs(dir.y + 2.0 * tL * LAYER_INV2R);        // ray slope at the layer
   let foot = tL * 2.0 * u.tanHalf.y / u.res.y / max(slope, 0.03);
   let tx = textureSampleLevel(tLayers, sMip, p, log2(max(foot / 62.5, 1.0)));
@@ -180,8 +180,8 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f, @location(2) f
   let sky = skyColor(dir);
   // high layers: behind the clouds they join the sky, in front of them they veil the clouds
   let cd = select(select(dkm * 1000.0, 1.0e9, dkm > 5000.0), 0.0, cdep.y < 0.999);
-  var t0 = distToHeight(u.camPos.y, dir.y, 6300.0);
-  var t1 = distToHeight(u.camPos.y, dir.y, 7700.0);
+  var t0 = distToHeight(u.camPos.y, dir.y, LAYER_H0);
+  var t1 = distToHeight(u.camPos.y, dir.y, LAYER_H1);
   var l0 = vec4f(0.0);
   var l1 = vec4f(0.0);
   if (t0 > 0.0) { l0 = highLayer(0, dir, t0, sky); }

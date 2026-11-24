@@ -4,7 +4,7 @@
 // their own to T (render/stream.js, render/targets.js, render/bird.js).
 
 import { params } from '../core/params.js';
-import { DETAIL_N, SHAPE_N } from '../constants.js';
+import { DETAIL_N, LAYER_H0, LAYER_H1, SHAPE_N } from '../constants.js';
 import { buffer, CANVAS_FORMAT, compute, dispatch, flush, mipLevel, pass, pipeline, texture, RENDER } from './gpu.js';
 import { sunColorAt } from './sun.js';
 import { CS_AMBIENT, FS_MULTISCAT, FS_SKYVIEW, FS_TRANSMITTANCE, U_AMBIENT, U_SKYVIEW } from '../shaders/sky.js';
@@ -12,7 +12,7 @@ import { CS_DETAIL, CS_SHAPE, FS_CIRRUS, FS_LAYERS, FS_MIP, U_NOISE3D, U_SIZE } 
 import { CS_SUNMAP, CS_SUNSCAN, CS_SUNTAIL, CS_TSV, FS_BAKE, FS_LITMAP, NOUT, U_BAKE, U_LITMAP, U_SUNMAP, U_SUNSCAN, U_TSV } from '../shaders/volumes.js';
 import { FS_TRACE, U_TRACE } from '../shaders/trace.js';
 import { FS_TAAU, U_TAAU } from '../shaders/taau.js';
-import { CS_PROBE, U_PROBE } from '../shaders/probe.js';
+import { CS_PROBE, PROBE_FIELDS, U_PROBE } from '../shaders/probe.js';
 import { FS_MIST, U_MIST, VS_MIST } from '../shaders/mist.js';
 import { FS_BIRD, FS_BIRDOVER, U_BIRD, U_BIRDOVER, VS_BIRD } from '../shaders/bird.js';
 import { CS_EXPOSURE, FS_DOWN, FS_FINAL, FS_RAYBLUR, FS_RAYMASK, FS_UP, U_DOWN, U_EXPOSURE, U_FINAL, U_RAYBLUR, U_RAYMASK, U_UP } from '../shaders/post.js';
@@ -74,10 +74,10 @@ T.detail = texture(DETAIL_N, DETAIL_N, 'rgba8unorm', { depth: DETAIL_N, dim: '3d
 T.cirrus = texture(512, 512, 'rgba8unorm');
 T.layers = texture(1024, 1024, 'rgba8unorm', { mips: 11 });   // seen at grazing angles far away: mipmaps
 T.amb = buffer(3 * 16, GPUBufferUsage.UNIFORM);   // struct Ambient (chunks/ambient.wgsl)
-T.probe = buffer(6 * 16);    // struct Probe (chunks/probe.wgsl)
+T.probe = buffer(PROBE_FIELDS * 16);    // struct Probe (chunks/probe.wgsl)
 T.expo = buffer(16, GPUBufferUsage.UNIFORM);   // struct Exposure (chunks/exposure.wgsl)
 
-export const layerColUniform = new Float32Array([...sunColorAt(6300), ...sunColorAt(7700)]);
+export const layerColUniform = new Float32Array([...sunColorAt(LAYER_H0), ...sunColorAt(LAYER_H1)]);
 
 // one-off generation of all static GPU data (once the pipelines are compiled)
 export function generateStatic() {

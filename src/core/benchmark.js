@@ -7,10 +7,12 @@
 // without the hint. Each leg (level, turn, dive, weave) settles first (?benchWarmup seconds and at
 // least 10 frames), then measures for ?benchSeconds: frame times, the GPU's time a frame where the
 // browser has timestamp queries, the clouds' scale (render/resolution.js) and hitches (frames over
-// 50 ms). Then the viewer steers again; window.__BENCH__ holds the result (tools/checks.js).
+// 50 ms); at the end, how the world's bakes took against their estimate (render/bakescale.js), and
+// the GPU memory the piece made (render/targets.js). Then the viewer steers again; window.__BENCH__ holds the result (tools/checks.js).
 
 import { BENCH, params } from './params.js';
 import { GPU_NAME } from '../render/gpu.js';
+import { BAKES } from '../render/stream.js';
 import { R } from '../render/targets.js';
 import { gpuTimer } from '../render/timing.js';
 import { input } from './input.js';
@@ -94,7 +96,9 @@ function formatBenchmark() {
     `gpu        ${GPU_NAME}${gpuTimer ? '' : ' (no GPU timer)'}`,
     `browser    ${navigator.userAgent}`,
     `screen     ${innerWidth}×${innerHeight} CSS px × ${devicePixelRatio} → canvas ${R.w}×${R.h}, clouds up to ${R.lowMaxW}×${R.lowMaxH}`,
+    `memory     ${(R.keptBytes / 1e6).toFixed(0)} MB of volumes and tables, ${(R.sizedBytes / 1e6).toFixed(0)} MB of targets at this canvas (from their formats)`,
     `measured   ${SECONDS} s per leg after ${WARMUP} s to settle`,
+    `bakes      ${gpuTimer ? `${BAKES.k.toFixed(2)}× the estimate (one NVIDIA laptop's)` : 'not measured (no GPU timer)'}`,
     '',
     line(['', 'frame ms', '', '', '', 'GPU ms', '', 'clouds', '']),
     line(['leg', 'median', 'p95', 'max', 'fps', 'median', 'p95', 'scale', 'hitches']),

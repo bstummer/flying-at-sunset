@@ -89,14 +89,14 @@ What the author keeps coming back to:
 |---|---|
 | `npm install` | Installs the dev dependencies (Vite, Playwright) and Playwright's Chromium, the only browser the tools use, always headless (`tools/install-chromium.js`): on Windows the full build, whose Dawn compiles the shaders with DXC as visitors' Chrome does; elsewhere the headless shell. |
 | `npm run dev` | Vite's dev server: the sources as ES modules, reloading on every edit. |
-| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the screenshot tool's arguments and compares, the cost tool's runs, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
+| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the bakes' scale (`render/bakescale.js`), the screenshot tool's arguments and compares, the cost tool's runs, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
 | `npm run build` | `dist/index.html`. Fails on any other output, or a module from outside `src/`. |
 | `npm run check` | `tools/check-build.js`: one self-contained file within the size budget, and the `src/` lint. |
 | `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `grain.png` and the share where the flight (the motion strip's frames) differs from itself rendered with other jitter (the grain the history can't average in motion, over the frame and each crop), `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
-| `npm run verify` | test + build + check + shot with `--checks` (`tools/checks.js`: streaming, flight, steering, captures that repeat byte for byte, running out of GPU memory, the baked volumes, pointer and keys, errors the tools must hear, what a visitor sees, the benchmark). Args after `--` go to the capture (`npm run verify -- --size 640x360`). About 7 min on a desktop GPU (the NVIDIA laptop: the views ~3.5, the checks ~3.5). **The definition-of-done command.** |
+| `npm run verify` | test + build + check + shot with `--checks` (`tools/checks.js`: streaming, the domes kept ahead of the bird at top speed, flight, steering, captures that repeat byte for byte, running out of GPU memory, the baked volumes, pointer and keys, errors the tools must hear, what a visitor sees, the benchmark). Args after `--` go to the capture (`npm run verify -- --size 640x360`). About 7 min on a desktop GPU (the NVIDIA laptop: the views ~3.5, the checks ~3.5). **The definition-of-done command.** |
 | `npm run verify:ci` | verify as CI runs it: SwiftShader, 320×180, 8 frames, no measurements. The one to run without a GPU (cloud sessions; `node tools/linux.js npm run verify:ci` on Windows and macOS). |
 | `node tools/screenshot.js --compare A B [--views a,b]` | Before/after sheet `screenshots/compare/A_vs_B.png` with a diff column, per view how many pixels differ and how the measurements changed, and for each view that changed `compare/A_vs_B/<view>.png`: A, B and the diff at full size, then the view's crops zoomed. |
-| `node tools/checks.js [names]` | The behaviour checks alone (`streaming flight steering reproducible out-of-memory volumes pointer-and-keys errors player benchmark`), writing into `screenshots/checks/`. |
+| `node tools/checks.js [names]` | The behaviour checks alone (`streaming top-speed flight steering reproducible out-of-memory volumes pointer-and-keys errors player benchmark`), writing into `screenshots/checks/`. |
 | `node tools/cost.js [--against HEAD] [--views a,b] [--frames 200] [--rounds 3]` | What a change costs the GPU: the working tree's build against another commit's (built in a temporary git worktree), interleaved A B B A A B, a view at a time, with `?cpuprof`; per view and pass the totals, the change and each side's spread (a change within it is noise), every run in `screenshots/cost/<label>.json`. After committing a change, `--against HEAD~1`. About 6 minutes for the six default views on a desktop GPU. The same build against itself reads the trace within 0–2%: a change past ~3% is real (`world` and `sunmap` swing far more: the first frame's bakes). |
 | `node tools/flights.js [--label L]`, `--compare A B` | The scripted flights' logs (15 s each, from the start and diving into the cloud tops) into `screenshots/flights/<label>.json`; compare says per flight "identical" or where they part and by how much. |
 | `npm run map` | `tools/world/map.js`: a top-down map of the world (restlessness, towers by height), without rendering. |
@@ -116,8 +116,8 @@ take most of a run on SwiftShader).
 
 **The benchmark** (`?bench`, `src/core/benchmark.js`): the piece flies a fixed route from the start (level,
 a long turn, a dive and climb, a weave) as in normal use, measuring each leg, then shows a summary
-(frame times, GPU time, the clouds' resolution, hitches, the GPU, browser and screen) with a button to
-copy it. It is how numbers from real computers and phones reach a session: ask the user to run it on
+(frame times, GPU time, the clouds' resolution, hitches, the GPU, browser and screen, the GPU memory
+made, the world's bakes against their estimate) with a button to copy it. It is how numbers from real computers and phones reach a session: ask the user to run it on
 the published page (`https://bstummer.github.io/flying-at-sunset/?bench`) and paste the summary.
 
 **P** (in the page, the deployed one too; nothing on screen says so): logs and copies the moment as a
@@ -165,8 +165,9 @@ For every change that can affect pixels:
   SwiftShader differ everywhere, and on Windows so do DXC and FXC (the tools' compiler before
   2026-11-23: older captures there are another backend's). CI's are SwiftShader's (`npm run verify:ci`: 320×180, 8 frames). On
   Windows and macOS those come from `node tools/linux.js node tools/screenshot.js --gl swiftshader --size
-  320x180 --frames 8 --no-measurements --label ...`, byte-identical to CI's while `package-lock.json`
-  pins the same Playwright, and with it the same Chromium.
+  320x180 --frames 8 --no-measurements --label ...`, the same as CI's while `package-lock.json`
+  pins the same Playwright, and with it the same Chromium, but for a stray pixel a level off
+  (SwiftShader compiles for the CPU it runs on: compare the container's with the container's).
 - For a lighting or post tunable with a URL parameter (§7), try values before editing: `--query
   "rays=0.24"`, and isolate its pass with `view=` (`--query "view=4&rays=0.24"`).
 - A change that can touch the flight (flight, input, camera, the probe, the world near the bird):
@@ -280,10 +281,12 @@ The tools rely on these; keep them, or change the tools with them.
   and 2). `window.__BENCH__` = `{ done, summary, legs }` once it ends; `#bench` holds the summary.
 - Globals: `window.__done`, `__error` (also shown in `#note`), `__frame`, `__png`, `__frames`, `__gpu` (with
   `?cpuprof`: per-pass GPU times summed over the run), `__log`, `__debug` (`bird`, `cam`, `R`,
-  `seaTopAt`, `cloudTopAt`, `towersNear`, `input`, `DR`, `LEVELS`, `TSVL`, `SUNMAPS`, `worldStats`, `device`, `T`,
+  `seaTopAt`, `cloudTopAt`, `towersNear`, `input`, `DR`, `LEVELS`, `TSVL`, `SUNMAPS`, `worldStats`, `patchStats` (the domes around the bird: core/world.js), `device`, `T`,
   `readTexture(texture, z, nz)`, `probe()`), `__BENCH__`. Elements: `#view` (the canvas, class `on`
   once shown), `#hint` (class `on`), `#touch`, `#note`, `#stats`, `#bench`.
-- Only `render/targets.js` opens out-of-memory error scopes (the out-of-memory check counts on it).
+- Out-of-memory error scopes open in two places only (the out-of-memory check counts on it): `render/gpu.js`,
+  once, around what the modules make as they load (`main.js` closes it before the first frame), and
+  `render/targets.js`, around each allocation of the size-dependent targets.
 
 URL parameters, for working on the piece (all of them, with their defaults, in `src/core/params.js`'s
 header; outside the test mode one the page can't read is a console warning, and the piece runs on):
@@ -351,7 +354,8 @@ separate captures ±25%), a page that waited idle runs its frames slower, and tw
 visitors' Chrome (FXC, the headless shell's, had a cliff of registers in the trace that DXC doesn't:
 PLAN.md, leg 10). Watch the CPU too: the world generator
 runs in a worker, but the page applies what it sends within a budget of main-thread and estimated GPU
-time (`render/stream.js`): a hitch in the benchmark is a question for that budget.
+time (`render/stream.js`; the estimate scaled by what the bakes take on the device, where it has
+timestamp queries: `render/bakescale.js`): a hitch in the benchmark is a question for that budget.
 
 ## 10. Definition of done
 

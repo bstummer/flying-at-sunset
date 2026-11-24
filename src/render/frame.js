@@ -17,11 +17,11 @@
 
 import { params, TEST } from '../core/params.js';
 import { dot, fmod, halton, mat3Apply, mat4Mul, perspective, PI, scl, smoothstep, sub, viewFromBasis } from '../math.js';
-import { DETAIL_ROT, DETAIL_TILE, SUN_DIR, WIND } from '../constants.js';
+import { CIRRUS_H, CIRRUS_TILE, DETAIL_ROT, DETAIL_TILE, LAYER_TILE, SUN_DIR, WIND } from '../constants.js';
 import { clearPass, context, dispatch, flush, pass } from './gpu.js';
 import { sunColorAt, sunColTable } from './sun.js';
 import { layerColUniform, P, T } from './setup.js';
-import { originOf, streamWorld, worldUniforms } from './stream.js';
+import { BAKES, originOf, streamWorld, worldUniforms } from './stream.js';
 import { refreshLitMap, refreshSunMap, sunMapUniforms } from './sunmap.js';
 import { bloomLevels, R } from './targets.js';
 import { inCloud, mapProbe, readProbeAsync } from './probe.js';
@@ -51,8 +51,8 @@ export function render(time, dtFrame) {
   const O = originOf(cam.pos);
   const camR = [cam.pos[0] - O[0], cam.pos[1], cam.pos[2] - O[2]];
   tBegin('world');
-  streamWorld(O, TEST || frame === 0);
-  tEnd();
+  const baked = streamWorld(O, TEST || frame === 0);
+  tEnd(baked ? ms => BAKES.add(baked, ms) : undefined);   // (what the bakes took here scales their estimate)
   const camDelta = sub(cam.pos, cam.prevPos);
   const tanY = Math.tan(cam.fov / 2), tanX = tanY * aspect;
   const jf = frame + JIT;
@@ -114,8 +114,8 @@ export function render(time, dtFrame) {
     lowRes: [R.lowW, R.lowH], lowTex: [R.lowMaxW, R.lowMaxH], res: [w, h], jitter,
     camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY],
     prevVP: prevVP || curVP, camDelta, histFrames: R.histFrames, sunDir: SUN_DIR, camPos: camR,
-    sunDisk, cirrusCol: scl(sunColorAt(9800), 1.0), cirrusOff: [fmod(O[0] + time * 6, 32000), fmod(O[2] + time * 2, 32000)],
-    tLayers: T.layers, layerOff: [fmod(O[0] + time * WIND[0] * 1.5, 64000), fmod(O[2] + time * WIND[2] * 1.5, 64000)], layerCol: layerColUniform,
+    sunDisk, cirrusCol: scl(sunColorAt(CIRRUS_H), 1.0), cirrusOff: [fmod(O[0] + time * 6, CIRRUS_TILE), fmod(O[2] + time * 2, CIRRUS_TILE)],
+    tLayers: T.layers, layerOff: [fmod(O[0] + time * WIND[0] * 1.5, LAYER_TILE), fmod(O[2] + time * WIND[2] * 1.5, LAYER_TILE)], layerCol: layerColUniform,
   });
   // drifting mist puffs: only while the camera is inside cloud (they float in the fog around us)
   if (inCloud > 0.02) {

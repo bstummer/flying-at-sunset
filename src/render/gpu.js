@@ -14,6 +14,10 @@
 // every pass until a submit go into one buffer at 256-byte steps (dynamic offsets); flush() writes
 // it and submits. Pipelines compile in parallel (pipelinesReady). The device is awaited at the top
 // level: without WebGPU the page shows its note and this module throws, which stops the page.
+// Running out of memory: an error scope opens here, around everything the modules make as they
+// load (main.js closes it before the first frame: keptFailed), and render/targets.js opens its own
+// around the size-dependent targets; gpuBytes() counts what texture() and buffer() made (from the
+// formats: the driver's own padding aside).
 
 import { TEST } from '../core/params.js';
 import { canvas, fail } from '../core/page.js';
@@ -33,6 +37,11 @@ export const TIMESTAMPS = device.features.has('timestamp-query');
 // (a lost device, e.g. after a GPU reset: main.js reloads the page)
 export const gpuState = { lost: null };
 device.lost.then(info => { gpuState.lost = info; });
+// (the textures and buffers made as the modules load, which never shrink: whether one ran out)
+device.pushErrorScope('out-of-memory');
+export const keptFailed = () => device.popErrorScope().then(e => Boolean(e), () => false);
+let bytes = 0;
+export const gpuBytes = () => bytes;
 
 // the canvas (tests copy its texture to read the image back)
 export const context = canvas.getContext('webgpu');
@@ -43,9 +52,11 @@ context.configure({ device, format: CANVAS_FORMAT, alphaMode: 'opaque', usage: G
 const TU = GPUTextureUsage;
 export const RENDER = TU.TEXTURE_BINDING | TU.RENDER_ATTACHMENT;   // the usual: drawn into, then read
 let nextId = 0;
+const TEXEL_BYTES = { rgba16float: 8, rg16float: 4, r16float: 2, rgba8unorm: 4, r8unorm: 1, depth24plus: 4 };
 // a texture and its view; `id` keys the cached bind groups
 export function texture(w, h, format, { depth = 1, dim = '2d', mips = 1, samples = 1, usage = RENDER } = {}) {
   const tex = device.createTexture({ size: [w, h, depth], format, dimension: dim, mipLevelCount: mips, sampleCount: samples, usage });
+  for (let k = 0; k < mips; k++) bytes += Math.max(1, w >> k) * Math.max(1, h >> k) * depth * samples * (TEXEL_BYTES[format] || 4);
   return { tex, view: tex.createView(), w, h, d: depth, format, id: ++nextId };
 }
 // one mip level of a texture: to draw into, or to read while drawing the next
@@ -57,6 +68,7 @@ export const slices = (t, z, n = 1) => Array.from({ length: n }, (_, k) => ({ vi
 // a storage buffer (also copied from and written by the queue); `id` keys the cached bind groups
 export function buffer(size, usage = 0) {
   const buf = device.createBuffer({ size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | usage });
+  bytes += size;
   return { buf, size, id: ++nextId };
 }
 
@@ -128,6 +140,7 @@ function struct(fields) {
 // the uniforms of all draws until the next submit, in one buffer (each draw at its own offset)
 const ARENA = 1 << 20;
 const arena = device.createBuffer({ label: 'uniforms', size: ARENA, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+bytes += ARENA;
 const arenaData = new ArrayBuffer(ARENA), arenaF = new Float32Array(arenaData), arenaI = new Int32Array(arenaData);
 let arenaUsed = 0;
 

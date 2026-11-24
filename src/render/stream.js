@@ -12,7 +12,8 @@
 // into the column map, its bubbles into the frame's bubble arena, to be baked (shaders/volumes.js).
 // Until a shift is baked a level is valid only where its old and new windows overlap, and the
 // shaders fall back to a coarser one. A frame applies what has come within budgets (2 ms of this
-// thread; GPU time as bakeCost estimates it), the first frame and the tests' frames all of it. The
+// thread; GPU time as bakeCost estimates it, scaled by what the bakes took on this GPU where it has
+// timestamp queries: BAKES, render/bakescale.js), the first frame and the tests' frames all of it. The
 // bake reads the sea's slope from neighbouring columns, which wrap at the edge: the shaders keep two
 // cells clear of it, and the old edge beside an entering strip is baked again, so a streamed level
 // holds what a fresh start bakes (tools/checks.js streaming). Render space: the world minus an
@@ -23,6 +24,7 @@ import { CLIP_LEVELS, ORIGIN_Q, SUN_DIR } from '../constants.js';
 import { COARSE } from '../core/page.js';
 import { forgetFar, request } from '../core/world.js';
 import { buffer, device, dispatch, enc, flush, pass, slices, texture } from './gpu.js';
+import { bakeScale } from './bakescale.js';
 import { NOUT, TSV_ROW } from '../shaders/volumes.js';
 import { worldGC } from '../world/cells.js';
 import { P, T } from './setup.js';
@@ -56,6 +58,7 @@ let bubUsed = 0;
 export const bakeQueue = [];
 export const worldStats = { jobs: 0, bubbles: 0, maxBub: 0, ms: 0 };
 const CPU_BUDGET = 2, GPU_BUDGET = COARSE ? 1 : 2;   // ms a frame
+export const BAKES = bakeScale();
 let camXZ = [0, 0];
 
 // the blocks of global cell rectangle [i0, i1) x [j0, j1) of level L (blocks never wrap around
@@ -105,8 +108,9 @@ function shiftLevel(L, cx, cz) {
   L.pending = queueBatch(L, blocks);
   if (!L.pending) L.valid = [ti, tj, ti + CLIP_N, tj + CLIP_N];
 }
-// What a job's GPU work costs, estimated (ms on the GPU measured): a bake pass loops over the
-// block's bubbles in every texel, the shadow volume marches every texel toward the sun.
+// What a job's GPU work costs, estimated (ms one NVIDIA laptop's GPU took; BAKES scales them to
+// this one's): a bake pass loops over the block's bubbles in every texel, the shadow volume
+// marches every texel toward the sun.
 function bakeCost(job) {
   if (job.fill) return 0;
   if (job.L.tsv) return 0.1 + 1.5e-5 * job.ni * job.nj * job.L.nz;
@@ -156,7 +160,8 @@ export function shiftWorld(camPos, frame) {
   if (!LEVELS[1].pending && !LEVELS[2].pending) shiftLevel(TSVL, camXZ[0], camXZ[1]);
 }
 // In the frame (render/frame.js): work through the queue, as far as the replies have come, within
-// the budgets (all: everything, the first frame's and the tests')
+// the budgets (all: everything, the first frame's and the tests'). Returns the GPU time estimated
+// for what it baked (unscaled: frame.js hands it to BAKES with what it took).
 export function streamWorld(O, all) {
   bubUsed = 0;
   const t0 = performance.now();
@@ -169,7 +174,7 @@ export function streamWorld(O, all) {
       if (job.L.tsv && (LEVELS[1].pending || LEVELS[2].pending)) break;
       if (job.req && !job.req.reply) break;     // (its data hasn't come yet)
       const cost = bakeCost(job);
-      if (!all && n && (gpu + cost > GPU_BUDGET || performance.now() - t0 > CPU_BUDGET)) break;
+      if (!all && n && ((gpu + cost) * BAKES.k > GPU_BUDGET || performance.now() - t0 > CPU_BUDGET)) break;
       bakeQueue.shift();
       runJob(job, O);
       gpu += cost; n++;
@@ -177,6 +182,7 @@ export function streamWorld(O, all) {
     if (!all) break;
   }
   worldStats.ms = performance.now() - t0;
+  return gpu;
 }
 // render-space uniforms of the world volumes
 const _lvA = new Float32Array(12), _lvV = new Float32Array(12);

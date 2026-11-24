@@ -1,8 +1,10 @@
 // Constants several modules share: the sun (low, toward −Z), the wind, the noise volumes' sizes and
 // tiles and the detail volume's turn, the render origin's step, the clouds' ceiling and medium, the
-// clipmap levels' grids, the atmosphere.
-// The shaders get CLOUD_TOP, the medium, the tiles, the turn and the atmosphere from here too
-// (render/gpu.js).
+// sun colour table's heights, the high cloud's heights and tiles, the clipmap levels' grids, the
+// sun map's grids, the atmosphere.
+// The shaders get CLOUD_TOP, the medium, the tiles, the turn, the atmosphere, the sun colour
+// table's and the high cloud's heights and the sun map's sizes from here too (FOR_SHADERS,
+// render/gpu.js).
 
 import { DEG, norm, rotation } from './math.js';
 
@@ -28,6 +30,11 @@ export const RAY_S = [5.802e-3, 13.558e-3, 33.1e-3], RAY_H = 8.0;
 export const MIE_S = 3.996e-3 * 2.2, MIE_A = 0.444e-3 * 2.2, MIE_H = 1.2;
 export const OZO_A = [0.650e-3, 1.881e-3, 0.085e-3];
 export const CLOUD_TOP = 14000;       // m: nothing rises above this
+// The sun's colour by height (render/sun.js, the shaders' sunCol): SUN_COL_N heights SUN_COL_DH m apart
+export const SUN_COL_N = 16, SUN_COL_DH = 750;
+// The sky's high cloud (render/frame.js, shaders/taau.wgsl), sheets at fixed heights (m): the cirrus
+// veil, tiling every CIRRUS_TILE, and the two thin layers, every LAYER_TILE
+export const CIRRUS_H = 9800, CIRRUS_TILE = 32000, LAYER_H0 = 6300, LAYER_H1 = 7700, LAYER_TILE = 64000;
 // The clouds' medium: the extinction inside (1/m; cumulus measure 0.05–0.12), and how it thins
 // toward the surface, where dry air mixes in (Nubis³'s profile): a step at the surface to
 // CLOUD_EDGE0 of it, rising to all of it CLOUD_EDGE_W m in (chunks/cloud.wgsl; tools/light/ judges
@@ -57,5 +64,5 @@ export const SM_GRIDS = [
 // what the shaders get from here: render/gpu.js declares these in front of each
 export const FOR_SHADERS = {
   CLOUD_TOP, SIGMA, CLOUD_EDGE0, CLOUD_EDGE_W, SHAPE_TILE, DETAIL_TILE, DETAIL_ROT, RG, RT, RAY_S, RAY_H, MIE_S, MIE_A, MIE_H, OZO_A,
-  SM_NA, SM_NW, SM_PIECES,
+  SM_NA, SM_NW, SM_PIECES, SUN_COL_N, SUN_COL_DH, CIRRUS_H, CIRRUS_TILE, LAYER_H0, LAYER_H1, LAYER_TILE,
 };
