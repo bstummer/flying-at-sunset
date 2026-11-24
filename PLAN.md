@@ -380,10 +380,12 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
 2. Done (2026-11-24). `bakeCost` (render/stream.js) is scaled by what the bakes take on the device,
    where it has timestamp queries (render/bakescale.js, tests/bakescale.test.js): the world group's
    measured time against the frame's estimate, both summed, fading by 0.9 a frame that baked,
-   bounded to 0.25–16×. On the NVIDIA laptop under DXC the bakes take 0.73–0.75× the old constants
+   bounded to 0.25–16×. On the NVIDIA laptop under DXC the bakes take 0.64–0.75× the old constants
    (fitted under FXC, before leg 11 took 9% of the bubbles): a shift's bakes now fill the 2 ms a
    frame instead of 1.5. Without timestamp queries the constants as they were. The readout
-   (`?debug`) and the benchmark say the scale.
+   (`?debug`) and the benchmark say the scale. Where the timestamps overstate (the Mali, step 1)
+   so does the scale: fewer bakes a frame, a shift streams in more slowly (the shaders fall back
+   to a coarser level meanwhile), no hitch.
 3. Done (2026-11-24). What the modules make as they load (the volumes, the noise, the tables, the
    sun map, the arenas) sits in an out-of-memory error scope of its own (render/gpu.js, closed by
    main.js before the first frame): when it ran out the page says so ("Out of GPU memory: the
