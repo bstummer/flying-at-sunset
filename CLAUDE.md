@@ -174,7 +174,7 @@ For every change that can affect pixels:
 - A change that can touch the flight (flight, input, camera, the probe, the world near the bird):
   `node tools/flights.js --label before` before, `--label after` after, then `--compare`.
 - Something new worth watching gets a view in `tools/views.js`, with a `brief`: one line on what the
-  shot is for, and `crops` where its detail is. Keep existing views stable so captures stay comparable.
+  shot is for, in the vision's terms (§1), and `crops` where its detail is. Keep existing views stable so captures stay comparable.
 - The limits (`tools/measure.js`: banded and shimmering share of the frame) only warn; a warning is a
   question to look at the image, and a change that raises one says why when it is handed over. They are
   set for the default 960×540: at smaller sizes sunlit rims make `high2` and `anvil` warn (PLAN.md,
