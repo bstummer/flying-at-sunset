@@ -639,8 +639,9 @@ export function difference(a, b) {
 // TOP_SPEED_S, about 18 km, two patches on: each must come before the bird reaches the edge of the
 // last, or the page grows the world's cells itself (a stall). Where frames come further apart than
 // the flight's longest step (0.1 s: SwiftShader, CI's), the bird flies too little in that time for
-// the check to judge the patches' lead: it says so, and holds the page only to never growing cells.
-const TOP_SPEED_S = 100, FLIGHT_STEP_MS = 100;
+// the check to judge the patches' lead: after its first PEEK_S it says so, and holds the page only to
+// never growing cells.
+const TOP_SPEED_S = 100, PEEK_S = 20, FLIGHT_STEP_MS = 100;
 async function checkTopSpeed(browser, { fail, note, problems }) {
   const { page, done } = await openPage(browser, problems, { viewport: { width: 320, height: 180 } });
   try {
@@ -656,16 +657,22 @@ async function checkTopSpeed(browser, { fail, note, problems }) {
       requestAnimationFrame(hold);
       window.__topSpeed = { start, frames };
     });
-    await until(page, (s) => performance.now() > s || window.__error, await page.evaluate((s) => performance.now() + s * 1000, TOP_SPEED_S), { pollMs: 1000 });
-    const s = await page.evaluate(() => {
+    const t0 = await page.evaluate(() => performance.now());
+    const flown = () => page.evaluate(() => {
       const { bird, patchStats } = window.__debug, { start, frames } = window.__topSpeed;
       return { error: window.__error ?? null, patch: { ...patchStats }, km: Math.hypot(bird.pos[0] - start[0], bird.pos[2] - start[2]) / 1000,
         frames: frames.length, slow: frames.filter((ms) => ms > 50).length, longest: Math.max(...frames), median: [...frames].sort((a, b) => a - b)[frames.length >> 1] };
     });
+    await until(page, (s) => performance.now() > s || window.__error, t0 + PEEK_S * 1000, { pollMs: 500 });
+    let s = await flown();
+    if (s.median <= FLIGHT_STEP_MS && !s.error) {
+      await until(page, (s) => performance.now() > s || window.__error, t0 + TOP_SPEED_S * 1000, { pollMs: 1000 });
+      s = await flown();
+    }
     if (s.error) return fail(`the page's note says: ${s.error}`);
     const p = s.patch;
     if (p.grown) fail(`the page grew the world's cells itself ${p.grown} times (${p.grownMs.toFixed(0)} ms): a patch came too late (the longest took ${(p.maxWait / 1000).toFixed(1)} s)`);
-    if (!(s.median <= FLIGHT_STEP_MS)) return note(`frames ${s.median?.toFixed(0)} ms apart (the flight steps at most ${FLIGHT_STEP_MS} ms): the bird flew ${s.km.toFixed(1)} km, too little to judge the patches' lead`);
+    if (!(s.median <= FLIGHT_STEP_MS)) return note(`${s.frames ? `frames ${s.median.toFixed(0)} ms apart` : 'no frames'} (the flight steps at most ${FLIGHT_STEP_MS} ms): the bird flew ${s.km.toFixed(1)} km in ${PEEK_S} s, too little to judge the patches' lead`);
     if (p.asked < 3) fail(`${p.asked} patches asked for over ${s.km.toFixed(1)} km: the bird didn't fly far enough to need two more`);
     note(`${s.km.toFixed(1)} km in ${TOP_SPEED_S} s, ${p.asked} patches, the longest ${(p.maxWait / 1000).toFixed(1)} s to come (asked for ${(p.edge / 1000 / (s.km / TOP_SPEED_S)).toFixed(0)} s before the edge), the bird ${(p.minLead / 1000).toFixed(1)} km from an edge at the nearest; frames over 50 ms ${s.slow} of ${s.frames} (the longest ${s.longest.toFixed(0)} ms)`);
   } finally {

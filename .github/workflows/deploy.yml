@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-24.04
     # SwiftShader draws every pixel on the CPU, and each view's first frame bakes the world.
     # Verify's limit below, and room for the uploads.
-    timeout-minutes: 55
+    timeout-minutes: 70
     permissions:
       contents: read
     steps:
@@ -65,9 +65,10 @@ jobs:
       # Every check that can fail still runs. The step's own limit, under the job's, keeps the
       # uploads below running when it is too slow: a timed-out step is a failed one. Verify took
       # 20 minutes on a fast runner and 27 on a slow one (November 2026; runners differ by half),
-      # and over 30 once the far clipmap level held every heap: about twice the fast run's time.
+      # and over 30 once the far clipmap level held every heap; by leg 12, 33 minutes on one
+      # runner and over 45 on a slower one (each view 70 s against 95): about twice that.
       - run: npm run verify:ci
-        timeout-minutes: 45
+        timeout-minutes: 60
 
       # Screenshots for review: a run that failed or timed out keeps them all for two weeks,
       # to see why; one that passed keeps the views, the contact sheet, info.json and what the
