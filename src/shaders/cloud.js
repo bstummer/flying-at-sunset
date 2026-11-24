@@ -29,7 +29,8 @@
 // - densityFromSDF: density from the signed distance, ramping up over a few metres or about a pixel
 //   (real cumulus ends within metres), its surface frayed a few metres deep by the detail volume;
 //   variations of density inside cloud near the camera (mist streaming past as the bird flies), while
-//   the camera is in cloud.
+//   the camera is in cloud. The trace takes it in two parts: erodedDepth (the depth under the frayed
+//   surface) at its samples, and rampMean, the ramp's mean along the stretch between two of them.
 // - lightPath: the light's path toward the sun (6 growing steps from 10 m, each sampled at its
 //   middle, the first three with the view sample's detail: domes of metres shade themselves; then
 //   three long steps through the large shapes): the optical depth through the point's own cloud and

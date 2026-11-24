@@ -300,6 +300,7 @@ header; outside the test mode one the page can't read is a console warning, and 
 | `?preset=start\|sun\|away\|side\|skim\|high\|bank\|fastdive\|humps\|high2\|upward\|tower\|giant\|anvil\|close\|approach\|inside\|under` | where the bird starts (in normal play too: `?preset=tower`); the last seven look at generated towers |
 | `?view=1..5` | cloud transmittance, raw cloud light, depth, sun rays, bloom |
 | `?dbg=1..7` | cloud debug: normals, sun visibility, the shadow volume and the sun map, march cost, lighting terms |
+| `?raw` | each frame's own cloud trace, upsampled without the history: what the trace alone gives a frame (its noise and aliasing, before the temporal upsampling averages them) |
 | `?exp ?con ?haze ?bloom ?bloomw ?bclamp ?rays ?tm` | exposure, contrast, haze density, bloom, sun rays, tone curve |
 | `?cpuprof` | with `?test`: `window.__gpu` sums the per-pass GPU times over the run (timestamp queries; `--profile`) |
 

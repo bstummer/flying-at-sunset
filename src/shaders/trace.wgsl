@@ -14,6 +14,13 @@ const CLOUD_SAT = 1.35;
 // at a 5° sun the light fades within metres of a top, and lit as deep as that ramp is, the tops
 // toward the sun lost half their glare (and their light changed with the trace's resolution)
 const LIGHT_SKIN = 1.0;
+// Which samples in a cloud are lit (a light march each), and at which of those the sky's taps are
+// taken again: by how much gets through to the sample, a weight rising smoothly over these ranges
+// (a cloud's first lit sample always). The ranges lie between what gets through to a cloud face's
+// samples (about 1, 0.7, 0.25, 0.04): where a sample often fell inside one, its weight, and the
+// light with it, went with the ray's every hair (specks flickering at rest in a tower's shade).
+const LIT_T = vec2f(0.05, 0.12);
+const SKY_T = vec2f(0.32, 0.55);
 // the depth in a skin LIGHT_SKIN thick that the view has seen as much cloud by as at depth z in the
 // outline's ramp E wide, both times the medium's profile (the light at it is then weighted as a
 // crisp edge's, whatever the ramp): as much cloud as the depth of full density q
@@ -111,10 +118,12 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
     if (b < 0.0 && D1 > 0.0) { tEnd = min(tEnd, (-b - sqrt(D1)) / (2.0 * a)); }
   }
 
-  // per-pixel low-discrepancy temporal sequences (R2) on top of a spatial IGN pattern
-  let fr = mod1(u.frame, 1024.0);
-  let jit = fract(ign(frag) + fr * 0.75487767);
-  let jit2 = fract(ign(frag + vec2f(47.0, 17.0)) + fr * 0.56984029);
+  // a per-pixel low-discrepancy temporal sequence (R2) on top of a spatial IGN pattern, for the dither
+  // between the clipmap levels (levelAt) alone. The march has no jitter: the same ray gives the same
+  // light, and a ray beside it nearly the same. (Its start, its strides, its first sample in a cloud
+  // and its steps there jittered per pixel and frame: grain the history averages at rest and can't
+  // where near clouds move past, at their edges most of all.)
+  let jit = fract(ign(frag) + mod1(u.frame, 1024.0) * 0.75487767);
   // haze colour: the sky just above the horizon for downward rays (no seam at the horizon)
   let hazeDir = normalize(vec3f(dir.x, max(dir.y, 0.004), dir.z));
   let skyHaze = skyLookup(tSky, hazeDir, u.sunDir, h0 * 0.001);
@@ -136,7 +145,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
   var L = vec3f(0.0);
   var zSum = 0.0;
   var zW = 0.0;
-  var t = (0.2 + jit * 0.8) * 4.0;
+  var t = 2.4;          // (the first sample, a few metres out)
   // the camera's own cloud: how much light gets through it (to the exposure, shaders/exposure.wgsl,
   // and the high layers' order, shaders/taau.wgsl), its depth (km) where nothing shows through
   var tOwn = 1.0;
@@ -293,15 +302,17 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
   var nIter = 0.0;
   var nIn = 0.0;
   var nSdf = 0.0;
-  var lastLp = LightPath(0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 0.0, 0.0, 0.0);
-  var lastDepth = 0.0;
-  var lastRel = 1.0;
-  var lastNUp = 1.0;
-  var lastOpen = 1.0;
-  var lastOpenL = 1.0;
-  var lastSea = seaBounce(SEA_LIT, u.ambSea, bAmb.up.rgb * AMB_K);
-  var lastWalls = 0.0;
-  var lastGraze = 1.0;
+  // In cloud (below): the last sample (none: tS < 0): where, its depth and its eroded depth; the
+  // last lit sample's light, and its density; the sky over the last samples whose taps were taken
+  // (how far up the surface faces, how open it is times a grazing view's share, how much of the sea
+  // below is in the sun, the walls' light). No more than these: every number the loop carries costs
+  // each of its steps (the light march's ten, kept from sample to sample: a tenth of the trace and
+  // more).
+  var tS = -1.0;
+  var xS = 0.0;
+  var gS = 0.0;
+  var Sp = vec4f(0.0);
+  var sky = vec4f(1.0, 1.0, SEA_LIT, 0.0);
   for (var i = 0; i < 360; i++) {
     nIter += 1.0;
     if (t >= tEnd || T < 0.02) { done = true; break; }
@@ -312,7 +323,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
     // stride floor grows with distance (far detail is softened by haze anyway), slowly enough
     // that distant towers are not stepped over. Near a surface it is less: a step s past the
     // distance d (to d' after it) can hop over a crest the ray passes within it, up to
-    // (s - d - d') / 2 deep, by the jitter (rims and silhouettes flicker), so there the floor is
+    // (s - d - d') / 2 deep, or not, by a hair (rims and silhouettes flicker), so there the floor is
     // 2d plus two outline widths: a crest it misses is grazed at most about an outline deep, where
     // the density is thin. (Two pixels everywhere cost the trace a third more.)
     let minStep = 6.0 + t * 0.02 + max(t - 8000.0, 0.0) * 0.006;
@@ -321,13 +332,14 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
     // with a half-size trace; following a finer trace, the domes reaching twice as far and the
     // strides twice as fine cost the trace +30% at 1920×1080)
     let pixC = max(pix, t * 0.00345);
-    let rj = fract(jit + f32(i) * 0.61803399);
+    // (the strides' share of their floor: from step to step, the same for every pixel)
+    let rj = fract(0.5 + f32(i) * 0.61803399);
     // empty space skipping: the distance to the large shapes, less the highest billows on them
     let lv = levelAt(wp.xz, t, jit);
     let C = colAt(wp.xz, lv);
     let dm = macroAt(vec3f(wp.x, h, wp.z), lv);
     let bound = dm - shellOf(C.y) - lvMargin(lv);
-    if (bound > 0.0 && nRef == 0 && !startIn) { tPrev = t; dPrev = bound; t += max(bound * 0.95, min(minStep, 2.0 * bound + 2.5 * pixC) * (0.5 + rj)); continue; }
+    if (bound > 0.0 && nRef == 0 && !startIn && tS < 0.0) { tPrev = t; dPrev = bound; t += max(bound * 0.95, min(minStep, 2.0 * bound + 2.5 * pixC) * (0.5 + rj)); continue; }
     // the detail the pixel resolves: its footprint over 52 m (t / 15000 at the 270-row trace), each
     // octave of billows fading as its cells shrink to a few pixels (cloudSDF)
     let lod = pixC * (1.0 / 52.0);
@@ -341,7 +353,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
     let edgeW = mix(max(mix(4.0, EDGE_W, smoothstep(300.0, 6000.0, t)), 2.0 * pix), max(2.0, 1.25 * pix), crisp);
     let dtMin = 3.0 + t * 0.002;
     // Entering a cloud: locate the boundary within the last stride (Illinois regula falsi), then
-    // start integrating a jittered fraction of a rim step past it. Starting anywhere within a far
+    // start integrating a quarter of a rim step past it. Starting anywhere within a far
     // stride (hundreds of metres deep) would light distant clouds as if from deep inside them.
     let tol = max(edgeW * 0.15, 1.0);
     if (nRef > 0) {
@@ -349,136 +361,166 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
       else { tIn = t; dIn = d; if (side == 2) { dPrev *= 0.5; } side = 2; }
       nRef--;
       t = tPrev + (tIn - tPrev) * dPrev / max(dPrev - dIn, 1e-3);
-      if (nRef == 0 || tIn - tPrev < tol) { nRef = 0; dPrev = -1.0; startIn = true; tEntry = t; t += 0.5 * jit2 * max(edgeW * 0.55, dtMin); }
+      if (nRef == 0 || tIn - tPrev < tol) { nRef = 0; dPrev = -1.0; startIn = true; tEntry = t; t += 0.25 * max(edgeW * 0.55, dtMin); }
       continue;
     }
-    // approach the surface with a per-pixel/per-step jittered stride: avoids "wood grain" banding
-    if (d > 0.0 && !startIn) { tPrev = t; dPrev = d; t += max(d * 0.75, min(minStep, 2.0 * d + max(2.0 * edgeW, 2.5 * pixC)) * (0.35 + rj)); continue; }
-    if (dPrev > 0.0 && t - tPrev > tol) {
-      tIn = t; dIn = d; nRef = 3; side = 0;
-      t = tPrev + (t - tPrev) * dPrev / max(dPrev - d, 1e-3);
-      continue;
-    }
-    if (dPrev > 0.0) { tEntry = tPrev + (t - tPrev) * dPrev / max(dPrev - d, 1e-3); }
-    startIn = false;
-    dPrev = -1.0;
-    let detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
-    if (DBG && u.dbgMode > 0 && u.dbgMode < 4) {
-      let e = 4.0 + t * 0.002;
-      var nrm = vec3f(sceneSDF(wp + vec3f(e, 0.0, 0.0), h, lv, lod) - sceneSDF(wp - vec3f(e, 0.0, 0.0), h, lv, lod),
-                      sceneSDF(wp + vec3f(0.0, e, 0.0), h + e, lv, lod) - sceneSDF(wp - vec3f(0.0, e, 0.0), h - e, lv, lod),
-                      sceneSDF(wp + vec3f(0.0, 0.0, e), h, lv, lod) - sceneSDF(wp - vec3f(0.0, 0.0, e), h, lv, lod));
-      nrm = normalize(nrm);
-      var c: vec3f;
-      if (u.dbgMode == 1) { c = vec3f(0.08) + vec3f(1.0, 0.85, 0.6) * max(dot(nrm, u.sunDir), 0.0) + vec3f(0.1, 0.15, 0.3) * (nrm.y * 0.5 + 0.5); }
-      else if (u.dbgMode == 2) { c = vec3f(exp(-lightTau(wp, h, d, lv, C, bs, lod + 0.5))); }
-      else {
-        let f = tsvTau(wp, h);
-        let wF = sunMapW(wp.xz);
-        let wC = (1.0 - wF) * sunMapCW(wp.xz);
-        c = vec3f(exp(-f.x - f.y * (1.0 - wF - wC) - sunMapAt(wp.xz, h, 0.0) * wF - sunMapCAt(wp.xz, h, 0.0) * wC));
+    let air = d > 0.0 && !startIn;
+    // approach the surface (each entry is located above: where the strides fall no longer shows as
+    // "wood grain", which their jitter was for)
+    if (air && tS < 0.0) { tPrev = t; dPrev = d; t += max(d * 0.75, min(minStep, 2.0 * d + max(2.0 * edgeW, 2.5 * pixC)) * (0.35 + rj)); continue; }
+    var entered = startIn;
+    if (!air && dPrev > 0.0) {
+      if (t - tPrev > tol) {
+        tIn = t; dIn = d; nRef = 3; side = 0;
+        t = tPrev + (t - tPrev) * dPrev / max(dPrev - d, 1e-3);
+        continue;
       }
-      return Out(vec4f(c * 0.12, 0.0), vec2f(t * 0.001, tOwn));
+      tEntry = tPrev + (t - tPrev) * dPrev / max(dPrev - d, 1e-3);
+      entered = true;
     }
-    let dens = densityFromSDF(d, wp, detailW, edgeW, 0.0);
-    // stride: aim for a fixed optical depth per step (larger once little light gets through),
-    // but stay fine inside the soft rim where most of the visible light is scattered: steps growing
-    // with the depth of full density (as fine in the medium's thin edge as in a uniform one, and no
-    // finer: by its depth in metres, the thin edge took a third more steps, each lit afresh)
-    let sigma = dens * SIGMA;
-    var dt = clamp((0.45 + 1.6 * (1.0 - T)) / max(sigma, 0.004), dtMin, 8.0 + t * 0.016);
-    let xd = -d;
-    dt = min(dt, max(edgeW * 0.55, (0.6 * (profileDepth(xd) + min(xd, 0.0)) + dtMin) / profile(xd))) * (0.75 + 0.5 * jit2);
-    if (dens > 0.003) {
-      nIn += 1.0;
-      // once little light gets through, deeper samples reuse the light of the previous one (the path
-      // toward the sun longer by the extra depth over how squarely the light came in)
-      let reuse = T < 0.22 || (T < 0.65 && mod1(nIn, 2.0) > 0.5);
-      let depthIn = -d;
-      let depthL = lightDepth(depthIn, edgeW);
-      // the light, the sky's included, where the ray, as far in as the light's depth, would be
-      let relL = dir * (tEntry + (t - tEntry) * depthL / max(depthIn, 1e-3));
-      var wpL = u.camPos + relL;
-      wpL.y = h0 + relL.y + dot(relL.xz, relL.xz) * INV2R;
-      if (reuse) { lastLp.own += max(profileDepth(depthL) - profileDepth(lastDepth), 0.0) * SIGMA / max(mix(lastLp.muF, lastLp.muN, lastLp.near), 0.1); }
-      else {
+    startIn = false;
+    let detailW = 1.0 - smoothstep(6000.0, 16000.0, t);
+    // In cloud the ray is taken in stretches, from one sample to the next (the first from where it
+    // came in, the last out into the air). A stretch's optical depth comes from the eroded depth at
+    // its two ends, the outline's ramp taken exactly between them (rampMean; in the air, as eroded as
+    // the sample before); its light is the lit samples' at its ends, each by its density, or the last
+    // lit sample's. (A sample's density and light for the whole step after it: a near cloud's frayed
+    // edge, where the density rises within metres and the steps are longer, came out as much cloud
+    // as the step's start happened to see, speckled from ray to ray.)
+    let x = -d;
+    var g = x - (xS - gS);
+    if (!air) {
+      dPrev = -1.0;
+      g = erodedDepth(x, wp, detailW, edgeW);
+      if (entered || tS < 0.0) { tS = select(t, tEntry, entered); xS = select(x, 0.0, entered); gS = select(g, g - x, entered); Sp = vec4f(0.0); }
+    }
+    let st = exp(-SIGMA * rampMean(gS, g, edgeW) * profile(0.5 * (xS + x)) * (t - tS));
+    let Tn = T * st;        // what gets through to this sample
+    var dt = 0.0;
+    var Sn = vec4f(0.0);    // this sample's light, and its density (none where it isn't lit)
+    if (!air) {
+      if (DBG && u.dbgMode > 0 && u.dbgMode < 4) {
+        let e = 4.0 + t * 0.002;
+        var nrm = vec3f(sceneSDF(wp + vec3f(e, 0.0, 0.0), h, lv, lod) - sceneSDF(wp - vec3f(e, 0.0, 0.0), h, lv, lod),
+                        sceneSDF(wp + vec3f(0.0, e, 0.0), h + e, lv, lod) - sceneSDF(wp - vec3f(0.0, e, 0.0), h - e, lv, lod),
+                        sceneSDF(wp + vec3f(0.0, 0.0, e), h, lv, lod) - sceneSDF(wp - vec3f(0.0, 0.0, e), h, lv, lod));
+        nrm = normalize(nrm);
+        var c: vec3f;
+        if (u.dbgMode == 1) { c = vec3f(0.08) + vec3f(1.0, 0.85, 0.6) * max(dot(nrm, u.sunDir), 0.0) + vec3f(0.1, 0.15, 0.3) * (nrm.y * 0.5 + 0.5); }
+        else if (u.dbgMode == 2) { c = vec3f(exp(-lightTau(wp, h, d, lv, C, bs, lod + 0.5))); }
+        else {
+          let f = tsvTau(wp, h);
+          let wF = sunMapW(wp.xz);
+          let wC = (1.0 - wF) * sunMapCW(wp.xz);
+          c = vec3f(exp(-f.x - f.y * (1.0 - wF - wC) - sunMapAt(wp.xz, h, 0.0) * wF - sunMapCAt(wp.xz, h, 0.0) * wC));
+        }
+        return Out(vec4f(c * 0.12, 0.0), vec2f(t * 0.001, tOwn));
+      }
+      let dens = saturate(g / edgeW) * profile(x);
+      // stride: aim for a fixed optical depth per step (larger once little light gets through),
+      // but stay fine inside the soft rim where most of the visible light is scattered: steps growing
+      // with the depth of full density (as fine in the medium's thin edge as in a uniform one, and no
+      // finer: by its depth in metres, the thin edge took a third more steps, each lit afresh), by
+      // twice it: a cloud's face in three lit samples (by 0.6 of it, four: a tenth more of the trace)
+      dt = clamp((0.45 + 1.6 * (1.0 - Tn)) / max(dens * SIGMA, 0.004), dtMin, 8.0 + t * 0.016);
+      dt = min(dt, max(edgeW * 0.55, (2.0 * (profileDepth(x) + min(x, 0.0)) + dtMin) / profile(x)));
+      // Which samples are lit: all until little gets through (LIT_T), each by a march of its own. (The
+      // deeper ones with the light march of the last, its path toward the sun longer by the depth:
+      // lit afresh on every other sample past a threshold, a sample more or less in a thin edge
+      // changed which ones, specks; and that one march's surroundings stood for all the cloud
+      // behind it, blotches on a near cloud's face that only the jitter had blurred.) A sample that
+      // isn't lit adds its cloud to the stretches around it.
+      let wl = select(smoothstep(LIT_T.x, LIT_T.y, Tn), 1.0, Sp.a <= 0.0);
+      if (dens > 0.003 && wl > 0.0) {
+        nIn += 1.0;
+        let depthIn = max(x, 1e-3);
+        let depthL = lightDepth(depthIn, edgeW);
+        let pd = profileDepth(depthL);
+        // the light, the sky's included, where the ray, as far in as the light's depth, would be
+        let relL = dir * (tEntry + (t - tEntry) * depthL / depthIn);
+        var wpL = u.camPos + relL;
+        wpL.y = h0 + relL.y + dot(relL.xz, relL.xz) * INV2R;
         // (at the view sample's own detail: rel below compares the two, and where the finest domes
         // fade with distance a coarser march would see a face on every dome's top)
-        lastLp = lightPath(wpL, wpL.y, -depthL, lv, C, bs, lod);
+        let lp = lightPath(wpL, wpL.y, -depthL, lv, C, bs, lod);
         // the smallest billows' faces, over 5 m toward the sun, against the face around them: each
         // bulge bright where it turns to the sun, dimmer where it turns away (detail up close, as
         // in the far towers' lobes); the light inside spreads, so only the surface's first metres
-        let rel = clamp(1.0 + 0.9 * (clamp((lastLp.d0 + depthL) / 5.0, -1.0, 1.0) - lastLp.nS), 0.3, 1.8);
-        lastRel = mix(1.0, rel, (1.0 - smoothstep(1500.0, 6000.0, t)) * exp(-profileDepth(depthL) / 12.0));
+        let rel = mix(1.0, clamp(1.0 + 0.9 * (clamp((lp.d0 + depthL) / 5.0, -1.0, 1.0) - lp.nS), 0.3, 1.8), (1.0 - smoothstep(1500.0, 6000.0, t)) * exp(-pd / 12.0));
         // which way the surface faces: up from one distance tap above, toward the sun from the
         // light march. Each bulge then catches its own sky light, even in shadow. And how open the
         // sky is over it: between the turrets and lobes and among the heaps, out along the large
-        // shapes' normal (lastOpenL); between the domes, at a point out along it and back toward the
-        // camera, the side of a visible surface that is open (lastOpen; up and back, it ran into every
-        // belly seen from below). (Only near the visible surface; deeper samples keep the last
+        // shapes' normal (openLarge); between the domes, at a point out along it and back toward the
+        // camera, the side of a visible surface that is open (up and back, it ran into every belly
+        // seen from below). (Only near the visible surface, SKY_T; deeper samples keep the last
         // estimate.)
-        if (T > 0.45) {
+        let ws = smoothstep(SKY_T.x, SKY_T.y, Tn);
+        if (ws > 0.0) {
           let S = 22.0 + t * 0.005;
-          lastNUp = clamp((cloudSDF(wpL + vec3f(0.0, S, 0.0), wpL.y + S, vec3f(macroAt(vec3f(wpL.x, wpL.y + S, wpL.z), lv), bs), C, lod) + depthL) / S, -1.0, 1.0);
+          let nUp = clamp((cloudSDF(wpL + vec3f(0.0, S, 0.0), wpL.y + S, vec3f(macroAt(vec3f(wpL.x, wpL.y + S, wpL.z), lv), bs), C, lod) + depthL) / S, -1.0, 1.0);
           let oL = openLarge(wpL, lv);
-          lastOpenL = oL.w;
-          lastGraze = 0.92 + 0.6 * pow(1.0 - saturate(-dot(dir, oL.xyz)), 3.0);
           let qo = wpL + normalize(oL.xyz - dir) * (2.5 * S);
-          lastOpen = smoothstep(0.0, 0.8, (cloudSDF(qo, qo.y, vec3f(macroAt(qo, lv), bs), C, lod) + depthL) / (2.5 * S));
+          let open = smoothstep(0.0, 0.8, (cloudSDF(qo, qo.y, vec3f(macroAt(qo, lv), bs), C, lod) + depthL) / (2.5 * S));
+          // (seen at a grazing angle, a surface sends more of the sky's light: from the bright horizon it
+          // comes in grazing and leaves grazing; a flat top seen 10° down 1.6-2 times what it sends up, by
+          // the reference, less on billows, whose faces tilt toward such a view)
+          let graze = 0.92 + 0.6 * pow(1.0 - saturate(-dot(dir, oL.xyz)), 3.0);
           // (how much of the sea below and of the cloud around is in the sun)
           let lit = seaLitBelow(wpL.xz, wpL.y - C.x);
-          lastSea = seaBounce(lit, u.ambSea, bAmb.up.rgb * AMB_K);
-          lastWalls = (1.0 - lastOpenL) * lit;
+          sky = mix(sky, vec4f(nUp, mix(0.6, 1.0, open) * (0.35 + 0.65 * oL.w) * graze, lit, (1.0 - oL.w) * lit), ws);
         }
+        // past the light march: the rest of this cloud, and the clouds beyond (sunScatter)
+        let far = tsvTau(wpL, wpL.y);
+        let pw = mix(powder, 1.0, 1.0 - exp(-pd * SIGMA));
+        let sc = sunColorAt(h);
+        var sunL = sc * sunScatter(lp, far, phase, pw, depthL) * rel;
+        if (DBG && u.dbgMode >= 5) {
+          // (5: the octaves alone, 6: the diffusion alone, 7: no sun)
+          let ms = msScatterP(lp.own + far.x + lp.other, phase) * pw * exp(-beyond(lp, far));
+          sunL = sc * select(select(0.0, sunScatter(lp, far, phase, pw, depthL) - ms, u.dbgMode == 6), ms, u.dbgMode == 5);
+        }
+        // sky light only reaches the first few tens of metres (short scale also hides the
+        // discontinuous interior of the distance field), and as much of it as the sky is open (a
+        // crease between walls at 30, 45 and 60° sends 0.8, 0.7 and 0.6 of an open top's, where the
+        // distance out of it is 0.87, 0.71 and 0.5 of the way, tools/light/reference.js; where the sky
+        // is closed, the walls that close it send light of their own)
+        let ao = mix(0.5, 1.0, exp(-pd / 55.0)) * sky.y;
+        // sky light by orientation: the deep blue zenith on tops, the sea below under bellies (warm
+        // where it is sunlit, the sky's blue where it lies in shadow), the golden sun-side or the cool
+        // violet anti-sun sky on the sides, and the sea's light on their lower half (more toward the
+        // sun: its glare comes that way)
+        let sea = seaBounce(sky.z, u.ambSea, bAmb.up.rgb * AMB_K);
+        let eSide = mix(skyAnti + sea * 0.15, skySunS + sea * 0.4, saturate(0.5 + 0.5 * lp.nS));
+        var eDir: vec3f;
+        if (sky.x > 0.0) { eDir = mix(eSide, ambUp, sky.x); } else { eDir = mix(eSide, sea, -sky.x); }
+        // and where the heaps around close the sky, the light of their sunlit flanks (a sunlit face sends
+        // ~0.1 of the sunlight, half of what it sends a shaded point reaches it: tools/light/reference.js),
+        // as much as the cloud around is lit, on faces turned from the sun (the flanks facing them are
+        // the lit ones), at the surface only (deep in a cloud nothing closes a sky: inside a tower it lit
+        // the mist)
+        let walls = sc * (0.05 * sky.w * saturate(0.5 - 0.5 * lp.nS) * exp(-pd / 55.0));
+        var amb = eDir * ao + walls;
+        if (DBG && (u.dbgMode == 5 || u.dbgMode == 6)) { amb *= 0.0; }
+        // (the cloud's light with a colour film's saturation: golden-hour orange on the lit faces, the
+        // sky's blue in the shade; the air's veil keeps the sky's own colour)
+        let Lc = sunL + amb;
+        Sn = vec4f(0.985 * max(mix(vec3f(luma(Lc)), Lc, CLOUD_SAT), vec3f(0.0)), dens * wl);
       }
-      lastDepth = depthL;
-      // past the light march: the rest of this cloud, and the clouds beyond (sunScatter)
-      let far = tsvTau(wpL, wpL.y);
-      let pw = mix(powder, 1.0, 1.0 - exp(-profileDepth(depthL) * SIGMA));
-      let sc = sunColorAt(h);
-      var sunL = sc * sunScatter(lastLp, far, phase, pw, depthL) * lastRel;
-      if (DBG && u.dbgMode >= 5) {
-        // (5: the octaves alone, 6: the diffusion alone, 7: no sun)
-        let ms = msScatterP(lastLp.own + far.x + lastLp.other, phase) * pw * exp(-beyond(lastLp, far));
-        sunL = sc * select(select(0.0, sunScatter(lastLp, far, phase, pw, depthL) - ms, u.dbgMode == 6), ms, u.dbgMode == 5);
-      }
-      // sky light only reaches the first few tens of metres (short scale also hides the
-      // discontinuous interior of the distance field), and as much of it as the sky is open (a
-      // crease between walls at 30, 45 and 60° sends 0.8, 0.7 and 0.6 of an open top's, where the
-      // distance out of it is 0.87, 0.71 and 0.5 of the way, tools/light/reference.js; where the sky
-      // is closed, the walls that close it send light of their own)
-      let ao = mix(0.5, 1.0, exp(-profileDepth(depthL) / 55.0)) * mix(0.6, 1.0, lastOpen) * (0.35 + 0.65 * lastOpenL);
-      // sky light by orientation: the deep blue zenith on tops, the sea below under bellies (warm
-      // where it is sunlit, the sky's blue where it lies in shadow), the golden sun-side or the cool
-      // violet anti-sun sky on the sides, and the sea's light on their lower half (more toward the
-      // sun: its glare comes that way)
-      let eSide = mix(skyAnti + lastSea * 0.15, skySunS + lastSea * 0.4, saturate(0.5 + 0.5 * lastLp.nS));
-      var eDir: vec3f;
-      if (lastNUp > 0.0) { eDir = mix(eSide, ambUp, lastNUp); } else { eDir = mix(eSide, lastSea, -lastNUp); }
-      // and where the heaps around close the sky, the light of their sunlit flanks (a sunlit face sends
-      // ~0.1 of the sunlight, half of what it sends a shaded point reaches it: tools/light/reference.js),
-      // as much as the cloud around is lit, on faces turned from the sun (the flanks facing them are
-      // the lit ones), at the surface only (deep in a cloud nothing closes a sky: inside a tower it lit
-      // the mist)
-      let walls = sc * (0.05 * lastWalls * saturate(0.5 - 0.5 * lastLp.nS) * exp(-profileDepth(depthL) / 55.0));
-      // (seen at a grazing angle, a surface sends more of the sky's light: from the bright horizon it
-      // comes in grazing and leaves grazing; a flat top seen 10° down 1.6-2 times what it sends up, by
-      // the reference, less on billows, whose faces tilt toward such a view)
-      var amb = eDir * ao * lastGraze + walls;
-      if (DBG && (u.dbgMode == 5 || u.dbgMode == 6)) { amb *= 0.0; }
-      // (the cloud's light with a colour film's saturation: golden-hour orange on the lit faces, the
-      // sky's blue in the shade; the air's veil keeps the sky's own colour)
-      let Lc = sunL + amb;
-      let S = sigma * 0.985 * max(mix(vec3f(luma(Lc)), Lc, CLOUD_SAT), vec3f(0.0));
-      let st = exp(-sigma * dt);
-      let Sint = (S - S * st) / sigma;
-      let th = airT(t, h0, dir.y, u.hazeK);
-      L += T * (Sint * th + (1.0 - st) * skyHaze * (1.0 - luma(th)));
-      let w = T * (1.0 - st);
-      zSum += w * t;
-      zW += w;
-      T *= st;
     }
+    if (Tn < T) {
+      let tm = 0.5 * (tS + t);
+      let th = airT(tm, h0, dir.y, u.hazeK);
+      let w = T - Tn;
+      L += w * ((Sp.rgb * Sp.a + Sn.rgb * Sn.a) / max(Sp.a + Sn.a, 1e-6) * th + skyHaze * (1.0 - luma(th)));
+      zSum += w * tm;
+      zW += w;
+      T = Tn;
+    }
+    if (air) { tS = -1.0; tPrev = t; dPrev = d; t += max(d * 0.75, min(minStep, 2.0 * d + max(2.0 * edgeW, 2.5 * pixC)) * (0.35 + rj)); continue; }
+    tS = t;
+    xS = x;
+    gS = g;
+    if (Sn.a > 0.0) { Sp = Sn; }
     t += dt;
   }
   if (done && T < 0.02) {

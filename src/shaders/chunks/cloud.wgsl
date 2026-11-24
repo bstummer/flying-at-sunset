@@ -125,6 +125,23 @@ fn profileMean(x: f32, r: f32) -> f32 {
   if (b - a < 0.5) { return profile(b); }
   return (profileDepth(b) - profileDepth(a)) / (b - a);
 }
+// The trace's density, in two parts (densityFromSDF's, without the finer noise near the camera): the
+// depth x (m, -distance) under the surface the detail noise has frayed, from where the outline's
+// ramp rises over edgeW; and that ramp's mean along a stretch of a ray (rampMean): its density is
+// then exact wherever the stretch's ends lie, where a sample's own stood for a step longer than the
+// ramp.
+fn erodedDepth(x: f32, wp: vec3f, detailW: f32, edgeW: f32) -> f32 {
+  let amp = ERODE * detailW;
+  if (x >= amp + edgeW) { return x; }
+  return x - amp * saturate((0.8 - textureSampleLevel(tDetail, sRep, detailAt(wp) * (1.0 / DETAIL_TILE), 0.0).r) / 0.45);
+}
+// (the ramp saturate(g / w) along a stretch over which the eroded depth runs from g0 to g1)
+fn rampInt(g: f32, w: f32) -> f32 { let a = clamp(g, 0.0, w); return a * a / (2.0 * w) + max(g - w, 0.0); }
+fn rampMean(g0: f32, g1: f32, w: f32) -> f32 {
+  let dg = g1 - g0;
+  if (abs(dg) < 0.01) { return saturate(g0 / w); }
+  return (rampInt(g1, w) - rampInt(g0, w)) / dg;
+}
 fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f32 {
   let x = -d;
   if (x <= 0.0) { return 0.0; }

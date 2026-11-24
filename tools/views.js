@@ -38,6 +38,12 @@ export const VIEWS = [
   // (a moment the author caught with P, flying out of a cloud's edge: its fog clears over the motion strip)
   { name: 'exit', params: { pose: '-1151.9,1431.9,-2975.1,-1.0983,0.0382,0.2111,92.9' }, brief: 'Out of a billow\'s side, banking: the far clouds\' outlines clean against the sky as the fog clears (no pale rim), the fog itself smooth (no lattice).',
     crops: { outlines: [0.29, 0.31, 0.52, 0.15], fog: [0.16, 0, 0.42, 0.3] } },
+  // (two moments the author caught with P, flying past clouds a few hundred metres off: their grain
+  // over the motion strip is the near clouds', which the history can't average as they move past)
+  { name: 'past', params: { pose: '-51.6,1641.7,-3229.7,-5.8792,-0.0261,-0.0343,73.1' }, brief: 'Past a near cloud and into its side: its soft edge and its face clean as they slide by, no grain or speckle, the far clouds clear beside it.',
+    crops: { edge: [0.38, 0.25, 0.2, 0.35] } },
+  { name: 'gap', params: { pose: '1454,1805.6,-2187.1,0.1262,0.1233,-0.0043,62.9' }, brief: 'Through a gap between near clouds toward the sun: their edges and thin veils soft and clean in flight, no grain, the sunlit sea beyond clear.',
+    crops: { edge: [0.45, 0.2, 0.25, 0.4] } },
   { name: 'seed3', params: { seed: '3' }, brief: 'Another world\'s start: the generator, not just the piece\'s seed; towers in view, nothing placed, nothing repeating.' },
   // (the pose places the bird diving steeply at 8 km: the camera behind it looks almost straight down)
   { name: 'down', params: { pose: '0,8000,0,0.45,-1.5,0' }, brief: 'Straight down from 8 km over the start: the sea as a map, heaps and billows at every size, towers in clusters, walls, lone giants and open stretches, never evenly spread, nothing repeating.',

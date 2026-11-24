@@ -479,6 +479,59 @@ still hold: `edge` (`0,1400,0,-1.0,-0.03,0`: in a billow's edge looking out; leg
 still) and `exitsun` (`-236.2,1494.8,-4685.5,0.3133,0.2089,-0.049,67.9`: out of a top toward the
 sun, one of the author's moments of leg 9, step 8).
 
+**The grain at near clouds' edges** (the author, 2026-11-24: "there is still the problem of grain /
+noise on the cloud edges", with four moments caught with P, each flying past a cloud a few hundred
+metres off; `screenshots/g-before` → `g-final`, 960×540, NVIDIA laptop). Leg 9 worked on the
+history; the noise was the trace's. The instruments: `?raw` (each frame's own trace, no history,
+CLAUDE.md §7), a frame against itself with other jitter; and a reference, the same shader in steps
+of 0.5 m and 3% of the depth, every sample lit afresh. Without the history 12.5% of the first
+moment's frame differed by 4 levels or more (35% at the near cloud's edge), through it 2.1%, the
+reference's 0.1%: the history doesn't limit it, it can only not average what moves past. Three
+causes, each found by turning it off:
+1. The density. A sample's own stood for the step after it (5–9 m near the camera), the first
+   sample and the steps jittered, through a frayed edge whose density rises within 2 m of wherever
+   the erosion (up to 6 m) leaves the surface: as much cloud as the jitter would have it. Now a
+   stretch's optical depth comes from the eroded depth at its two ends, the outline's ramp exact
+   between them (chunks/cloud.wgsl, `rampMean`), the last stretch out into the air: with a constant
+   light, a frame without history differs on 0.09%.
+2. The light's switches. Deeper samples took the last sample's light march (its path toward the
+   sun longer by the depth) by thresholds and every other sample's turn: a sample more or less in
+   a thin edge changed which ones were lit afresh (specks). With smooth weights the reuse itself
+   showed, once nothing was jittered: soft blotches on a near cloud's face, one march's
+   surroundings standing for all the cloud behind it (4.4 levels from the reference, the old
+   picture 2.8). Now no march is reused: every sample is lit by its own until little gets through
+   (`LIT_T`, a smooth weight; the sky's taps over `SKY_T`), a sample that isn't lit adds its
+   cloud to the stretches around it, and a stretch's light is its ends', each by its density. The
+   steps grow twice as fast with the depth: three lit samples a cloud's face (before: two marches
+   and their reuse).
+3. The jitter itself: the march's start, its strides toward a surface, its first sample in a
+   cloud, its steps there. None is left but the dither between the clipmap levels: each entry is
+   located by steps of its own, so where the strides fall no longer shows as "wood grain", which
+   their jitter was for.
+
+Grain over the strip, before → after: the four moments 1.44 → 0.54% (the view `past`), 2.02 →
+0.82, 1.46 → 0.48, 2.33 → 1.18 (`gap`); `tower` 0.49 → 0.19, `close` 0.49 → 0.21, `entry` 0.65 →
+0.15, `away` 0.30 → 0.13, `exit` 0.77 → 0.45, `giant` 0.84 → 0.68, `down` 0.82 → 0.72, `turn` 0.40
+→ 0.32, `sun` 0.31 → 0.24, `high2` 0.32 → 0.28, `start` 0.22 → 0.19, `side` 0.20 → 0.15, `skim`
+0.18 → 0.16, `anvil` 0.19 → 0.16, `seed3` 0.18 → 0.15, `under` 0.08 → 0.06. Shimmer at rest lower
+or the same in every view (`tower` 0.011 → 0.006%, `away` 0.008 → 0.003, `anvil` 0.050 → 0.034,
+`high2` 0.047 → 0.035; `gap` 0.008 → 0.010). The look: 2–45% of a view's pixels move by more than
+2 levels (the jitter's average against one exact march), its statistics don't: mean luminance
+within a level, its SD within 0.6 in every view and crop but `entry` (`tower`'s domes 184.4 →
+186.0, SD 22.6 → 22.1; `close`'s 203.2 → 205.2, SD 15.3 → 14.9: creases a shade softer). Nearer
+the reference than before: the first moment 2.8 → 1.6 levels on average (32 → 7% of its pixels off
+by 4 or more), the fourth 1.29 → 0.96 (luminance; a near cloud's deep side duskier, as the
+reference has it). `entry`: the lit strip with stair-stepped edges is gone (rays skimming just
+under the billow's top now get all its cloud: opaque, as the cloud is); fainter blocks are left,
+one of them dark (known issues). `inside` identical. Flights identical (all five).
+Cost (`node tools/cost.js`, 200 frames, A B B A A B): the trace +5 to +9% in the standing views
+(`start` +8, `sun` +8, `side` +6, `tower` +9, `high2` +9, `close` +5, `skim` +6), `past` +18%,
+`gap` +10% (light marches a pixel: `start` 2.0 → 2.3, `past` 2.8 → 4.7: a near cloud's thin edge
+and face are lit at every sample). Most of the way it read +22 to +30%: failed on the way, and
+what the loop's state costs (decisions). The author's other two moments, to add back as views when
+needed: `1553.3,1748.7,-2599.8,-5.4842,0.0578,0.8101,51` (banking past a near cloud),
+`744.6,1725.5,-810.5,0.9041,-0.0941,0.0389,81.5`.
+
 Not in a leg: the drift (the author's: nothing has to, for now); the shimmer at sunlit rims
 (0–0.11% a view in this capture, `geometry` 0.35%: within the limits, and each lever left costs
 5–46% of the trace, decisions); the cirrus and the high layers' tiling (seen in no capture);
@@ -961,6 +1014,36 @@ they hold until the author says otherwise.
 
 ### The trace and its cost
 
+- **The march without jitter, cheaper or simpler** (the grain at near clouds' edges, 2026-11-24;
+  the first moment's flight against a reference in fine steps, every sample lit, in levels, and
+  its grain; the old picture 2.8 and 2.1%). The light march reused deeper in, by a smooth weight
+  (lit afresh down to 30–50% getting through): 4.4, soft blotches on a near cloud's face; the
+  reused march held as it was (no longer path): 4.1; its distance taps coarser with depth:
+  blotchier (the light's depth and the march's surface no longer agree). Lit by what gets
+  through in two windows with a gap (the surface and one deep sample, two marches a face): 3.3
+  and dark contours where a window's edge crossed a face; three marches (the surface, a shallow
+  and a deep one): 2.7, smooth, but more grain far away (`down` 0.82 → 1.11%, a sample's weight
+  going with the ray). The weights' ranges where samples usually fall (the sky's taps over 50–65%
+  with a sample at ~70%): specks flickering at rest in a tower's shade (`close`'s shimmer 0.008 →
+  0.134%). The sky's taps at the surface sample alone: grain 0.9 → 2.1%. The octaves taken along
+  a stretch at two points, their path toward the sun between the ends' (they fall off within
+  metres at a 5° sun): 2.1 against the plain mean's 1.2, and more code. The steps of lit samples
+  still jittered: grain 1.4% against 0.9. A budget of optical depth between lit samples in thin
+  cloud: no cheaper.
+- **Samples of the distance alone between the lit ones** (the same work): near the camera a ray
+  crosses the 8 m domes and the frayed edge within a step, and a near cloud's thin outline steps
+  at the trace's pixel. Taken 2 m apart where a ray runs shallow (four parts a step), the first
+  moment's grain 0.9 → 0.5% (three frames of its flight), its outline clean, for +58% of the trace
+  there (15 more distance samples a pixel); only where the ray runs within 12° of the surface:
+  the gain gone (it is the oblique rays' first stretch that matters), over half the cost still
+  there.
+- **What the trace's loop carries** (the same work, DXC): the light march's result kept from
+  sample to sample (its ten numbers, for the reuse) cost every step of the loop, the two thirds
+  of them through clear air too: with it +6 to +15% at fewer marches than before, without it −3 to
+  −9% (and the sky's taps in four numbers for eight, 2% more). The in-cloud march as a loop inside
+  the march's: the same picture, the trace ×3. Unjittered steps are cheaper by themselves (the
+  old march with its in-cloud jitter off: −3 to −7%; the strides toward a surface too: −3%):
+  neighbouring pixels branch together.
 - **The approach's floor at two trace pixels everywhere** (leg 3): shimmer at rest halved, the trace
   +27–46% (grazing rays over the sea take every step that small); near a surface only, nearly as
   much for +8–10%. Six refinement steps at the entry, not three: shimmer 10–20% down for +5%. The
@@ -1098,8 +1181,11 @@ they hold until the author says otherwise.
   shows through it (far clouds, or the sky): its own shreds near the camera may smear in motion.
   Out of a cloud's edge the far clouds are a little soft for about a second (the history took the
   neighbourhood's mean while the fog cleared, and sharpens at the rate at rest; leg 9, step 8).
-  The shreds' edge seen nearly edge-on, a metre under a top (`entry`'s crop), is stippled at the
-  trace's pixel: it may shimmer in motion (the author's eyes). `under` (an anvil's underside) is navy since leg 8:
+  A metre under a top (`entry`), the rays that skim it: since 2026-11-24 they get all its cloud
+  (no lit strip of the sea beyond with stair-stepped edges), but faint blocks are left where the
+  camera's fog meets the surface seen from outside, one of them dark, a few pixels wide: the
+  stored shapes' texels at a grazing angle (leg 9, step 7), for a fifth of a second of the skim
+  flight. `under` (an anvil's underside) is navy since leg 8:
   the sea beneath lies in the anvil's shadow for tens of km at a 5° sun, so nothing warm comes up.
   Kept: physically right (the author, 2026-11-22).
 - **The shade's colour**: since leg 8 lighter and with form, but blue, not the reviews' lavender
@@ -1167,11 +1253,15 @@ they hold until the author says otherwise.
   billows, sized from 512 m cells, are rounder and larger than L0's. Levers: blending (+12–18%,
   decisions), L1's billow sizes nearer L0's (the bake's blend of each bubble's own by how near its
   surface is, over cells four times as wide).
-- **The grain** (tools/measure.js, since leg 9): over the motion strip, 0.17–0.97% of a frame
-  differs by 4 levels or more from the same flight rendered with other jitter (`close` 0.97%, `down`
-  0.73, `tower` 0.46, `turn` 0.44): the strip a turn or a pitch brings
-  in at the frame's edge, near outlines against farther clouds in a dive. No limit yet: a change in
-  it is a question for `grain.png`. Motion itself (smear, lag in turns) is for the author's eyes.
+- **The grain** (tools/measure.js, since leg 9): over the motion strip, 0.06–0.72% of a frame
+  differs by 4 levels or more from the same flight rendered with other jitter, 0.54 and 1.18% past
+  near clouds (`past`, `gap`; `down` 0.72, `giant` 0.68, `exit` 0.45): the march itself has no
+  jitter since 2026-11-24, what differs is the trace's pixel (the sub-pixel jitter the history
+  resolves at rest) where clouds move past: a very near cloud's thin outline stepping at that
+  pixel (samples of the distance alone would cure it, for half the trace again there:
+  decisions), the strip a turn or a pitch brings in at the frame's edge, near outlines against
+  farther clouds in a dive. `?raw` shows a frame's own trace. No limit yet: a change in it is a
+  question for `grain.png`. Motion itself (smear, lag in turns) is for the author's eyes.
 - **Sunlit rims**: with nothing moving 0.006–0.035% of a frame flickers (leg 3 halved
   it: strides no longer hop over crests by the jitter; leg 9 halved it again, the high layers sorted
   by the nearest depth around), along tower silhouettes against the sky and

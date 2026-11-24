@@ -113,7 +113,7 @@ export function render(time, dtFrame) {
     tCur: T.cloudCol, tCurDepth: T.cloudDepth, tHist: readA ? T.histA : T.histB, tHistFog: readA ? T.fogA : T.fogB, tSky: T.sky, tCirrus: T.cirrus,
     lowRes: [R.lowW, R.lowH], lowTex: [R.lowMaxW, R.lowMaxH], res: [w, h], jitter,
     camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY],
-    prevVP: prevVP || curVP, camDelta, histFrames: R.histFrames, sunDir: SUN_DIR, camPos: camR, hazeK: HAZE_K,
+    prevVP: prevVP || curVP, camDelta, histFrames: RAW ? 0 : R.histFrames, sunDir: SUN_DIR, camPos: camR, hazeK: HAZE_K,
     sunDisk, cirrusCol: scl(sunColorAt(CIRRUS_H), 1.0), cirrusOff: [fmod(O[0] + time * 6, CIRRUS_TILE), fmod(O[2] + time * 2, CIRRUS_TILE)],
     tLayers: T.layers, layerOff: [fmod(O[0] + time * WIND[0] * 1.5, LAYER_TILE), fmod(O[2] + time * WIND[2] * 1.5, LAYER_TILE)], layerCol: layerColUniform,
   });
@@ -193,6 +193,7 @@ const EXPOSURE = params.exp ?? 14.0;
 const TONEMAP = params.tm ?? 1, CONTRAST = params.con ?? 1.0;
 const VIEW = params.view ?? 0, DBG_MODE = params.dbg ?? 0;   // what goes into the final image (1..5), the cloud debug views (1..7)
 const JIT = params.jit ?? 0;   // (the test mode: the frame the jitter sequences start at)
+const RAW = params.raw;        // each frame's own trace, upsampled without the history: what the trace alone gives a frame
 const HAZE_K = params.haze ?? 2.6e-5;
 const RAYS_K = params.rays ?? 0.18;
 const BLOOM_UP_W = params.bloomw ?? 0.6;                              // weight of each coarser bloom level
