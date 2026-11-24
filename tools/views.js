@@ -41,6 +41,8 @@ export const VIEWS = [
     crops: { outlines: [0.29, 0.31, 0.52, 0.15], fog: [0.16, 0, 0.42, 0.3] } },
   { name: 'exitsun', params: { pose: '-236.2,1494.8,-4685.5,0.3133,0.2089,-0.049,67.9' }, brief: 'Out of a top toward the sun: the glow through the clearing fog, the towers\' outlines clean and not grainy.',
     crops: { towers: [0.55, 0.15, 0.4, 0.4] } },
+  // (a moment the author caught with P: a thin bright line across a far tower)
+  { name: 'line', params: { pose: '-475,1883.7,-246.7,-2.219,0.0079,-0.1648,60' }, brief: 'Far towers away from the sun, in haze: no thin bright line drawn across one.' },
   { name: 'seed3', params: { seed: '3' }, brief: 'Another world\'s start: the generator, not just the piece\'s seed.' },
   { name: 'geometry', params: { preset: 'side', dbg: '1' }, brief: 'The side view\'s cloud surface as normals: shapes without the light.',
     limits: { shimmerPercent: null } },

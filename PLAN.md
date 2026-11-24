@@ -450,6 +450,22 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
    (The container's build of the Windows checkout is 0.7 kB larger than Windows' own; not looked
    into, the captures agree.)
 
+**A line across a far tower** (the author, 2026-11-24; the view `line`, their pose): a thin bright
+line, stair-stepped below, across a tower ~60 km off, under its cap. Not the clouds (the trace's
+transmittance, light and depth clean there): the high layer at 6.3 km, the tower's top reaching
+through its height. Seen nearly edge-on, a dense streak of the sheet 50–60 km off squeezes into a
+band a few pixels high; in front of the tower above where the sheet meets it, behind it below, cut
+there by the clouds' depth, one a low-resolution pixel: stair-steps. And bright: the clouds sink
+into the haze with distance (airT), the layers only faded their opacity, so a layer as far off as
+the tower stayed far less hazed than it. Now the layers are in the clouds' air (airT and the
+horizon sky's colour, as the trace; the haze in chunks/atmo.wgsl, shared), and where a sheet meets
+a cloud it passes from in front to behind over a tenth of the distance. The line is gone (`line`,
+against the layers turned off: a faint trace). Elsewhere the layers' glow toward the sun a little
+softer and more golden (`start`, `sun`, `exitsun`, `high2`: their streaks near the horizon, up to
+41 levels on a few thousand pixels), the rest of each view as before; `side`, `giant`, `under`,
+`inside`, `geometry` identical (the trace's haze, moved to the chunk, the same). Cost (`node
+tools/cost.js`, 200 frames): the trace −1 to 0%, the TAAU +10–14% (~0.015 ms a frame).
+
 Not in a leg: the drift (the author's: nothing has to, for now); the shimmer at sunlit rims
 (0–0.11% a view in this capture, `geometry` 0.35%: within the limits, and each lever left costs
 5–46% of the trace, decisions); the cirrus and the high layers' tiling (seen in no capture);

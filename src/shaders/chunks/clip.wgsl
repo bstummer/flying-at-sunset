@@ -1,7 +1,8 @@
+#include "atmo.wgsl"
 
 // The clipmaps (render/stream.js): the clouds' constants, the level a sample uses, the distance to
-// the large shapes, the column data (shaders/cloud.js)
-const INV2R = 0.5 / (RG * 1000.0);   // a height's rise with distance (m) on the curved planet
+// the large shapes, the column data (shaders/cloud.js). (INV2R, a height's rise with distance on
+// the curved planet: atmo.wgsl)
 const SEA_BASE = 520.0;
 const EDGE_W = 80.0;        // soft boundary thickness (m)
 const LIGHT_NEAR = 1358.0;  // how far the trace's light march looks toward the sun through the billows; the far clouds' shadow starts there (lightPath's farM; past the sun map, the shadow volume's)

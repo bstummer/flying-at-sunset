@@ -7,14 +7,8 @@
 // The cloud raymarch, at low resolution: the clouds' light and transmittance, their depth in km and
 // how much light gets through the camera's own cloud (shaders/trace.js)
 override DBG = false;   // the debug views of ?dbg (render/setup.js)
-// The air between the camera and a cloud: haze (scale height 6 km, ?haze: it reaches the towers'
-// tops, so the farthest clouds are the haziest, as through the 100–200 km of visibility real air
-// has up there) and the atmosphere's molecules and aerosols (chunks/atmo.wgsl), their optical
-// depth along the ray in closed form (the planet's curvature in the height's slope). Blue fades
-// several times faster than red: distant clouds turn warm. The veil they sink into has the colour
-// of the horizon sky that way (golden toward the sun, blue away from it), as much of it as the air
-// takes of their light.
-const HAZE_H = 6000.0;
+// The air between the camera and a cloud: airT (chunks/atmo.wgsl), the clouds sinking into the
+// horizon sky's colour as much as it takes of their light.
 const CLOUD_SAT = 1.35;
 // The light is taken as at a cloud's edge this thick (m), whatever the outline's ramp (a pixel wide):
 // at a 5° sun the light fades within metres of a top, and lit as deep as that ramp is, the tops
@@ -43,16 +37,6 @@ fn profileInv(q: f32) -> f32 {
   let k = (1.0 - CLOUD_EDGE0) / w;
   if (q > w * (1.0 + CLOUD_EDGE0) * 0.5) { return q + w * (1.0 - CLOUD_EDGE0) * 0.5; }
   return 2.0 * q / (CLOUD_EDGE0 + sqrt(CLOUD_EDGE0 * CLOUD_EDGE0 + 2.0 * k * q));
-}
-fn layerOD(t: f32, h0: f32, dy: f32, H: f32) -> f32 {
-  let e0 = exp(-h0 / H);
-  let k = (dy + t * INV2R) / H;
-  if (abs(k) < 1e-7) { return e0 * t; }
-  return e0 * (1.0 - exp(-k * t)) / k;
-}
-fn airT(t: f32, h0: f32, dy: f32) -> vec3f {
-  return exp(-(u.hazeK * layerOD(t, h0, dy, HAZE_H) + RAY_S * 1e-3 * layerOD(t, h0, dy, RAY_H * 1000.0)
-               + (MIE_S + MIE_A) * 1e-3 * layerOD(t, h0, dy, MIE_H * 1000.0)));
 }
 
 // How open the sky is over the large shapes (the heaps, the swells and valleys of the sea, the
@@ -281,7 +265,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
         let Lc = sunL + eDir * mix(0.5, 1.0, exp(-profileDepth(depth) / 55.0)) * (0.35 + 0.65 * openL) * graze;
         let Sc = sigma * 0.985 * max(mix(vec3f(luma(Lc)), Lc, satO), vec3f(0.0));
         let st = exp(-sigma * dt);
-        let th = airT(t, h0, dir.y);
+        let th = airT(t, h0, dir.y, u.hazeK);
         sL = T * ((Sc - Sc * st) / sigma * th + (1.0 - st) * skyHaze * (1.0 - luma(th)));
         sTau = sigma * dt;
         sD = d;
@@ -488,7 +472,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
       let S = sigma * 0.985 * max(mix(vec3f(luma(Lc)), Lc, CLOUD_SAT), vec3f(0.0));
       let st = exp(-sigma * dt);
       let Sint = (S - S * st) / sigma;
-      let th = airT(t, h0, dir.y);
+      let th = airT(t, h0, dir.y, u.hazeK);
       L += T * (Sint * th + (1.0 - st) * skyHaze * (1.0 - luma(th)));
       let w = T * (1.0 - st);
       zSum += w * t;
@@ -504,7 +488,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
   }
   if (!done && T > 0.02) {
     // ran out of steps while grazing the far cloud sea: let it melt into the haze
-    let th = airT(t, h0, dir.y);
+    let th = airT(t, h0, dir.y, u.hazeK);
     L += T * skyHaze * (1.0 - luma(th) * 0.35);
     zSum += T * t;
     zW += T;

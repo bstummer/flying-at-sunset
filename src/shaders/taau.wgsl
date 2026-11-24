@@ -56,16 +56,16 @@ fn skyColor(dir: vec3f) -> vec3f {
 }
 
 // --- thin high layers, drawn as sheets at fixed heights (they are thin next to the distances they
-// are seen from) and sorted against the clouds by depth
-const LAYER_INV2R = 0.5 / (RG * 1000.0);
+// are seen from), in the same air as the clouds (airT, chunks/atmo.wgsl), and sorted against the
+// clouds by depth
 // distance along dir to height H over the curved planet (parabolic approximation), -1 if none
 fn distToHeight(h0: f32, dy: f32, H: f32) -> f32 {
   let c = h0 - H;
-  let D = dy * dy - 4.0 * LAYER_INV2R * c;
+  let D = dy * dy - 4.0 * INV2R * c;
   if (D < 0.0) { return -1.0; }
   let q = -0.5 * (dy + select(-1.0, 1.0, dy >= 0.0) * sqrt(D));
   if (abs(q) < 1e-9) { return -1.0; }
-  let r1 = q / LAYER_INV2R;
+  let r1 = q / INV2R;
   let r2 = c / q;
   let tn = min(r1, r2);
   let tf = max(r1, r2);
@@ -75,7 +75,7 @@ fn distToHeight(h0: f32, dy: f32, H: f32) -> f32 {
 fn highLayer(k: i32, dir: vec3f, tL: f32, behind: vec3f) -> vec4f {
   let H = select(LAYER_H1, LAYER_H0, k == 0);
   let p = (u.camPos.xz + dir.xz * tL + u.layerOff) / LAYER_TILE;
-  let slope = abs(dir.y + 2.0 * tL * LAYER_INV2R);        // ray slope at the layer
+  let slope = abs(dir.y + 2.0 * tL * INV2R);        // ray slope at the layer
   let foot = tL * 2.0 * u.tanHalf.y / u.res.y / max(slope, 0.03);
   let tx = textureSampleLevel(tLayers, sMip, p, log2(max(foot / 62.5, 1.0)));
   let dens = select(tx.g, tx.r, k == 0);
@@ -87,7 +87,11 @@ fn highLayer(k: i32, dir: vec3f, tL: f32, behind: vec3f) -> vec4f {
   let cosT = dot(dir, u.sunDir);
   let ph = HG(cosT, 0.7);
   let c = u.layerCol[k] * (0.22 + 3.2 * ph) * (0.7 + 0.5 * tx.b) + behind * 0.45;
-  return vec4f(c * a, a);
+  // the air between: as the clouds that far off, it sinks into the horizon sky's colour (unhazed, a
+  // layer 50–60 km off showed as a bright line across the hazed tower behind it)
+  let th = airT(tL, u.camPos.y, dir.y, u.hazeK);
+  let haze = skyLookup(tSky, normalize(vec3f(dir.x, max(dir.y, 0.004), dir.z)), u.sunDir, u.camPos.y * 0.001);
+  return vec4f((c * th + haze * (1.0 - luma(th))) * a, a);
 }
 
 struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f, @location(2) fog: f32 }
@@ -190,8 +194,17 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f, @location(2) f
   var back = sky;
   var frontL = vec3f(0.0);
   var frontT = 1.0;
-  if (t1 > 0.0) { if (t1 < cd) { frontL = l1.rgb; frontT = 1.0 - l1.a; } else { back = back * (1.0 - l1.a) + l1.rgb; } }
-  if (t0 > 0.0) { if (t0 < cd) { frontL = l0.rgb + frontL * (1.0 - l0.a); frontT *= 1.0 - l0.a; } else { back = back * (1.0 - l0.a) + l0.rgb; } }
+  // (where a sheet meets a cloud it passes from in front of it to behind it over a tenth of the
+  // distance, not at once: the clouds' depth is one a low-resolution pixel, and cut there the
+  // meeting stair-stepped into a line across a far tower)
+  if (t1 > 0.0) {
+    let f = saturate((cd - t1) / max(0.1 * cd, 50.0));
+    frontL = l1.rgb * f; frontT = 1.0 - l1.a * f; back = back * (1.0 - l1.a * (1.0 - f)) + l1.rgb * (1.0 - f);
+  }
+  if (t0 > 0.0) {
+    let f = saturate((cd - t0) / max(0.1 * cd, 50.0));
+    frontL = l0.rgb * f + frontL * (1.0 - l0.a * f); frontT *= 1.0 - l0.a * f; back = back * (1.0 - l0.a * (1.0 - f)) + l0.rgb * (1.0 - f);
+  }
   // (the scene's alpha: how much sky shows past the clouds, the sun rays' mask)
   return Out(res, vec4f(frontL + frontT * (back * res.a + res.rgb), res.a), fog);
 }

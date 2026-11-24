@@ -113,7 +113,7 @@ export function render(time, dtFrame) {
     tCur: T.cloudCol, tCurDepth: T.cloudDepth, tHist: readA ? T.histA : T.histB, tHistFog: readA ? T.fogA : T.fogB, tSky: T.sky, tCirrus: T.cirrus,
     lowRes: [R.lowW, R.lowH], lowTex: [R.lowMaxW, R.lowMaxH], res: [w, h], jitter,
     camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY],
-    prevVP: prevVP || curVP, camDelta, histFrames: R.histFrames, sunDir: SUN_DIR, camPos: camR,
+    prevVP: prevVP || curVP, camDelta, histFrames: R.histFrames, sunDir: SUN_DIR, camPos: camR, hazeK: HAZE_K,
     sunDisk, cirrusCol: scl(sunColorAt(CIRRUS_H), 1.0), cirrusOff: [fmod(O[0] + time * 6, CIRRUS_TILE), fmod(O[2] + time * 2, CIRRUS_TILE)],
     tLayers: T.layers, layerOff: [fmod(O[0] + time * WIND[0] * 1.5, LAYER_TILE), fmod(O[2] + time * WIND[2] * 1.5, LAYER_TILE)], layerCol: layerColUniform,
   });

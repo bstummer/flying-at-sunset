@@ -11,14 +11,15 @@
 // fog around the pixel now, the history is stale (out of a cloud's edge) and gives way to the
 // neighbourhood's mean. Behind them the
 // sky (the sky view, the cirrus veil, the sun's disk); the two high layers are sheets at their
-// heights, in front of or behind the clouds by depth. Outputs: the history, the scene, whose
+// heights in the clouds' air (hazed as the clouds are, chunks/atmo.wgsl), in front of or behind the
+// clouds by depth (passing from one to the other over a tenth of the distance where they meet). Outputs: the history, the scene, whose
 // alpha (how much sky shows past the clouds) masks the sun rays, and the history's fog.
 
 export const U_TAAU = {
   prevVP: 'mat4x4f',
   lowRes: 'vec2f', lowTex: 'vec2f', res: 'vec2f', jitter: 'vec2f', tanHalf: 'vec2f', cirrusOff: 'vec2f', layerOff: 'vec2f',
   camRight: 'vec3f', histFrames: 'f32', camUp: 'vec3f', camFwd: 'vec3f', camDelta: 'vec3f', sunDir: 'vec3f', camPos: 'vec3f',
-  sunDisk: 'vec3f', cirrusCol: 'vec3f',
+  sunDisk: 'vec3f', cirrusCol: 'vec3f', hazeK: 'f32',
   layerCol: 'vec3f[2]',      // sunlight at the height of each high layer
 };
 export { default as FS_TAAU } from './taau.wgsl';
