@@ -384,11 +384,20 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
      to the frame's first (the Mali's way: summed 26 ms, span 6.5) steers as the honest ones
      (clouds 0.75); stretched ×8 (even the span over the frames) distrusted, the canvas kept, the
      clouds back to 0.55–0.75; stretched ×3 the resolution steers to the stretched 12.5 ms (0.36),
-     under the time between frames, which can't be told from a GPU that busy. Expected on that
-     phone: the clouds at their floor and the canvas once or twice smaller (about 0.8 or 0.55 Mpx),
-     as before but for the right reason: at 1.13 Mpx and clouds 0.24 its frames took 20–25 ms.
-     Not known yet: the phone on this build; Safari and an integrated GPU (the author has neither
-     at hand).
+     under the time between frames, which can't be told from a GPU that busy.
+   - The phone on that build (9d4e3bd): the timestamps steer; the clouds at their floor (0.22),
+     the canvas made smaller twice in landscape (1220×462, 0.56 Mpx) and once in portrait
+     (640×1258, 0.8 Mpx); the span 12.6–16.8 ms; 55 fps over all legs, 57–59 once settled (turn,
+     dive, weave: hitches 0–1), where the build before managed 24–45. What was left, all in the
+     first leg: 10 and 5 hitches (up to 280–300 ms), the canvas made again, and after each time the
+     clouds set back to 0.32, which on 0.7 the pixels costs 1.5 times what had been too slow: the
+     phone fell behind again until the scale came down. Now the clouds stay at their floor when
+     the canvas shrinks and rise from there where there is room (render/resolution.js). Not
+     measured since; Safari and an integrated GPU not at all (the author has neither at hand).
+     What the phone says about phones: a mid-range Mali holds 60 fps at about 0.6–0.8 Mpx with
+     the clouds at their floor, blurry; the start (1.15 Mpx, clouds 0.36) is too much for it and
+     takes it a few seconds and one or two hitches to leave. One phone: the start stays as it is
+     (a smaller one would hold back stronger phones for good: the canvas never grows again).
 2. Done (2026-11-24). `bakeCost` (render/stream.js) is scaled by what the bakes take on the device,
    where it has timestamp queries (render/bakescale.js, tests/bakescale.test.js): the world group's
    measured time against the frame's estimate, both summed, fading by 0.9 a frame that baked,
@@ -983,9 +992,12 @@ they hold until the author says otherwise.
 
 - **Measured on few devices**: the NVIDIA laptop (headless, 640×360: 60 fps, 5.9 ms of GPU a frame, the
   clouds at their 0.75 ceiling), a desktop in Firefox (2173×1058: 60 fps at clouds 0.36) and a
-  mid-range Mali phone in Chrome (leg 12, step 1: 60 fps only at about 0.55 Mpx with the clouds at
-  their floor, blurry; at 1.13 Mpx 20–40 ms a frame). Never an integrated GPU or Safari (whose WGSL
-  compiler hasn't seen the shaders); `?bench` reports them.
+  mid-range Mali phone in Chrome (leg 12, step 1: 57–59 fps at 0.56–0.8 Mpx with the clouds at
+  their floor, blurry; the first seconds a few hitches while the canvas shrinks from the start's
+  1.15 Mpx). Never an integrated GPU or Safari (whose WGSL compiler hasn't seen the shaders);
+  `?bench` reports them. On the phone the world's bakes read 5.8× the NVIDIA laptop's estimate:
+  maybe overstated as the passes' sum was (the world's own timestamps span the overlap too), so
+  fewer bakes a frame and slower streaming, never a hitch.
 - **The world grows in a worker** (src/worker.js), so new areas no longer stall frames; the page
   applies what it sends within budgets (render/stream.js). The budget's GPU estimate (`bakeCost`) is
   one NVIDIA laptop's constants, scaled since leg 12 by what the bakes take on the device where it

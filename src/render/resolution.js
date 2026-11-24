@@ -103,9 +103,12 @@ export function adaptResolution(dtMs) {
     }
   }
 }
+// (the clouds stay at their floor, and rise from there where the fewer pixels leave room: set back
+// to 0.32 of 0.7 the pixels, they cost 1.5 times what was too slow, and a phone's Mali fell behind
+// again after each step until the scale came down, leg 12)
 function downgradePixels() {
   DR.slow = 0; DR.probe = null;
   if (R.maxPixels <= 0.55e6) return;
   R.maxPixels = Math.max(0.55e6, R.maxPixels * 0.7);
-  R.scale = 0.32; DR.ceiling = 0.75;
+  DR.ceiling = 0.75;
 }
