@@ -350,8 +350,8 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
    scene is the same (`start`, `sun`, `side`, `high2`), `away` −5%, `giant` −2%; `tower` +6% and
    `close` −6% (their towers and poses moved); the bakes within their noise, over 9% fewer
    bubbles.
-4. Not done: other seeds' starts (known issues): the spawn draw scores sites, not the towers that
-   grew in view. Low: only `?seed` reaches them.
+4. Dropped (the author, 2026-11-24: "doesn't matter"): other seeds' starts (known issues): the
+   spawn draw scores sites, not the towers that grew in view; only `?seed` reaches them.
 
 **Leg 12: reach, before `main`** (the branch is 51 commits ahead of what is published;
 `screenshots/l12-before` → `l12-s5`: every view identical, the steps below change no capture).
@@ -392,8 +392,9 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
      first leg: 10 and 5 hitches (up to 280–300 ms), the canvas made again, and after each time the
      clouds set back to 0.32, which on 0.7 the pixels costs 1.5 times what had been too slow: the
      phone fell behind again until the scale came down. Now the clouds stay at their floor when
-     the canvas shrinks and rise from there where there is room (render/resolution.js). Not
-     measured since; Safari and an integrated GPU not at all (the author has neither at hand).
+     the canvas shrinks and rise from there where there is room (render/resolution.js). (A second
+     run of 9d4e3bd, from the phone's cache, repeated its numbers: 56 fps, 5 hitches in the first
+     leg.) Not measured since; Safari and an integrated GPU not at all (the author has neither at hand).
      What the phone says about phones: a mid-range Mali holds 60 fps at about 0.6–0.8 Mpx with
      the clouds at their floor, blurry; the start (1.15 Mpx, clouds 0.36) is too much for it and
      takes it a few seconds and one or two hitches to leave. One phone: the start stays as it is
