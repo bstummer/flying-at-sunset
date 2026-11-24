@@ -5,7 +5,8 @@
 // fractions of the frame from its top left; without them, the middle. `limits`: a view's own
 // measurement limits (null: not judged), over tools/measure.js's LIMITS.
 // Keep existing views stable so captures stay comparable over time; add one for anything new
-// worth watching. The tower views look at towers the world generated near the start, so they
+// worth watching, and retire one whose work is done (each costs verify ~13 s here, ~40 s on CI;
+// PLAN.md keeps the retired ones' poses). The tower views look at towers the world generated near the start, so they
 // follow the world when it changes.
 
 export const VIEWS = [
@@ -31,22 +32,13 @@ export const VIEWS = [
     crops: { domes: [0.15, 0.1, 0.25, 0.25] } },
   { name: 'under', params: { preset: 'under' }, brief: 'Beneath an overhang, looking up at it: something to fly under, part of the tower it leans out from, nothing broken off.' },
   { name: 'inside', params: { preset: 'inside' }, brief: 'Inside a tower: surrounded by drifting mist and the light inside the cloud, not a white wall.' },
-  // (in the first metres of a billow over the start's sea, flying out of it; 70 m higher the view is clear)
   // (the skim flight 5.4 s in, its camera about to pass a metre under the top of the billow ahead)
   { name: 'entry', params: { pose: '116.8,1307.5,-314.7,0.354,0.105,0' }, brief: 'The camera crossing the top of a billow: one cloud inside and out, the clouds behind clear through its shreds, no blocks or seams.',
     crops: { top: [0.3, 0.3, 0.45, 0.3] } },
-  { name: 'edge', params: { pose: '0,1400,0,-1.0,-0.03,0' }, brief: 'In a billow\'s edge, looking out: a thin fog, the world past it clear and still in flight, not grainy and not washed out.',
-    crops: { horizon: [0.15, 0.29, 0.5, 0.1], ridge: [0.08, 0.46, 0.4, 0.12], sky: [0.3, 0.03, 0.4, 0.15] } },
-  // (moments the author caught with P, flying out of a cloud's edge: its fog clears over the motion strip)
+  // (a moment the author caught with P, flying out of a cloud's edge: its fog clears over the motion strip)
   { name: 'exit', params: { pose: '-1151.9,1431.9,-2975.1,-1.0983,0.0382,0.2111,92.9' }, brief: 'Out of a billow\'s side, banking: the far clouds\' outlines clean against the sky as the fog clears (no pale rim), the fog itself smooth (no lattice).',
     crops: { outlines: [0.29, 0.31, 0.52, 0.15], fog: [0.16, 0, 0.42, 0.3] } },
-  { name: 'exitsun', params: { pose: '-236.2,1494.8,-4685.5,0.3133,0.2089,-0.049,67.9' }, brief: 'Out of a top toward the sun: the glow through the clearing fog, the towers\' outlines clean and not grainy.',
-    crops: { towers: [0.55, 0.15, 0.4, 0.4] } },
-  // (a moment the author caught with P: a thin bright line across a far tower)
-  { name: 'line', params: { pose: '-475,1883.7,-246.7,-2.219,0.0079,-0.1648,60' }, brief: 'Far towers away from the sun, the farther the hazier, paler and bluer, the high layers in the same haze: no bright line across one.' },
   { name: 'seed3', params: { seed: '3' }, brief: 'Another world\'s start: the generator, not just the piece\'s seed; towers in view, nothing placed, nothing repeating.' },
-  { name: 'geometry', params: { preset: 'side', dbg: '1' }, brief: 'The side view\'s cloud surface as normals, shapes without the light: rounded billows at every size, no popcorn of one size, no sharp ridgelines.',
-    limits: { shimmerPercent: null } },
   // (the pose places the bird diving steeply at 8 km: the camera behind it looks almost straight down)
   { name: 'down', params: { pose: '0,8000,0,0.45,-1.5,0' }, brief: 'Straight down from 8 km over the start: the sea as a map, heaps and billows at every size, towers in clusters, walls, lone giants and open stretches, never evenly spread, nothing repeating.',
     crops: { billows: [0.62, 0.05, 0.25, 0.25], bird: [0.42, 0.43, 0.16, 0.16] } },

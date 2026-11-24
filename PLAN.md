@@ -450,7 +450,8 @@ from the new `giant` and `close`; `node tools/world/stats.js`, `catalog.js`).
    (The container's build of the Windows checkout is 0.7 kB larger than Windows' own; not looked
    into, the captures agree.)
 
-**A line across a far tower** (the author, 2026-11-24; the view `line`, their pose): a thin bright
+**A line across a far tower** (the author, 2026-11-24; their pose `-475,1883.7,-246.7,-2.219,0.0079,-0.1648,60`,
+the view `line` until the views were cut, below): a thin bright
 line, stair-stepped below, across a tower ~60 km off, under its cap. Not the clouds (the trace's
 transmittance, light and depth clean there): the high layer at 6.3 km, the tower's top reaching
 through its height. Seen nearly edge-on, a dense streak of the sheet 50–60 km off squeezes into a
@@ -465,6 +466,14 @@ softer and more golden (`start`, `sun`, `exitsun`, `high2`: their streaks near t
 41 levels on a few thousand pixels), the rest of each view as before; `side`, `giant`, `under`,
 `inside`, `geometry` identical (the trace's haze, moved to the chunk, the same). Cost (`node
 tools/cost.js`, 200 frames): the trace −1 to 0%, the TAAU +10–14% (~0.015 ms a frame).
+
+**Fewer views** (the author, 2026-11-24: each view costs verify ~13 s on the laptop, ~40 s on CI):
+21 → 17. Retired, their work done (poses kept here, to add back as a view when needed):
+`geometry` (the `side` preset with `dbg: '1'`: its normals; `--query "dbg=1"` shows any view's),
+`line` (above), and two of the four views out of the camera's own fog, which `entry` and `exit`
+still hold: `edge` (`0,1400,0,-1.0,-0.03,0`: in a billow's edge looking out; leg 9's grain at the
+still) and `exitsun` (`-236.2,1494.8,-4685.5,0.3133,0.2089,-0.049,67.9`: out of a top toward the
+sun, one of the author's moments of leg 9, step 8).
 
 Not in a leg: the drift (the author's: nothing has to, for now); the shimmer at sunlit rims
 (0–0.11% a view in this capture, `geometry` 0.35%: within the limits, and each lever left costs
@@ -1156,10 +1165,10 @@ they hold until the author says otherwise.
   surface is, over cells four times as wide).
 - **The grain** (tools/measure.js, since leg 9): over the motion strip, 0.17–0.97% of a frame
   differs by 4 levels or more from the same flight rendered with other jitter (`close` 0.97%, `down`
-  0.73, `tower` 0.46, `turn` 0.44, `edge` 0.44; `geometry` 1.8%): the strip a turn or a pitch brings
+  0.73, `tower` 0.46, `turn` 0.44): the strip a turn or a pitch brings
   in at the frame's edge, near outlines against farther clouds in a dive. No limit yet: a change in
   it is a question for `grain.png`. Motion itself (smear, lag in turns) is for the author's eyes.
-- **Sunlit rims**: with nothing moving 0.006–0.035% of a frame flickers (`geometry` 0.21%; leg 3 halved
+- **Sunlit rims**: with nothing moving 0.006–0.035% of a frame flickers (leg 3 halved
   it: strides no longer hop over crests by the jitter; leg 9 halved it again, the high layers sorted
   by the nearest depth around), along tower silhouettes against the sky and
   backlit rims, most toward the sun (`sun`). The history blends at half the rate where the image
