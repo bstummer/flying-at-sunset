@@ -24,8 +24,9 @@ export { default as CS_TSV } from './tsv.wgsl';
 // passes, each spread over many invocations (one walk a ray, its texture reads one after another,
 // kept the GPU waiting: two columns took as long as eight): the march past the window in pieces
 // (sunmap-tail.wgsl), the stretch from each texel to the next (sunmap.wgsl), then a scan along each
-// ray adding them up (sunmap-scan.wgsl), writing pairs of half floats into bSunMap (rows of SM_ROW
-// u32: 256 bytes, as a copy into a texture wants them), which render/sunmap.js copies into the map.
+// ray adding them up (sunmap-scan.wgsl), writing pairs of texels (two bytes each) into bSunMap (rows
+// of SM_ROW u32: 256 bytes, as a copy into a texture wants them), which render/sunmap.js copies
+// into the map.
 export const SM_ROW = 64;
 export const U_SUNMAP = {
   ...U_CLIP, ...U_CLOUD,

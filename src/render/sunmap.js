@@ -11,15 +11,18 @@
 // shadow volume's texels drew a tower's shadow there as blobs, and none of the billows'). Each texel
 // holds the light toward the sun that the clouds past the one it sits in let through (where it is
 // clear, all of them; past the window, through L1 and L2): the light diffuses through a point's own
-// cloud (lightPath follows it), and its shadow is what other clouds cast. The bake
-// (shaders/volumes.js) walks each ray from the sun once, so a texel costs a step or a few near a
-// surface, not a march of its own; a level holds the billows its texels can (the fine one the
-// turrets and the larger domes, the coarse one the lobes). The clouds hold still, so a level is
-// baked once where it lies: when its window moves (the camera wandered ~2 km off, ~5 km for the
-// coarse one), a slab of its columns a frame (two, the coarse one's one), all of it while none of it
-// is valid (the first frame, a jump). Past a level's valid window (fading over its last 1.5 km, the
-// coarse one's last 6 km) the light takes the coarse level, then the march's own steps and the
-// shadow volume. Memory: 14 and 3.7 MB (r16float), and under 1 MB of buffers. The cost (NVIDIA
+// cloud (lightPath follows it), and its shadow is what other clouds cast. Beside that light (a
+// byte) it holds its SM_ROOTth root (another), from which the shadow of the clouds near by is read
+// (chunks/cloud.wgsl, sunMapAt: between texels the light itself drew that shadow's edge as the
+// texels' outline). The bake (shaders/volumes.js) walks each ray from the sun once, so a texel
+// costs a step or a few near a surface, not a march of its own; a level holds the billows its
+// texels can (the fine one the turrets and the larger domes, the coarse one the lobes). The
+// clouds hold still, so a level is baked once where it lies: when its window moves (the camera
+// wandered ~2 km off, ~5 km for the coarse one), a slab of its columns a frame (two, the coarse
+// one's one), all of it while none of it is valid (the first frame, a jump). Past a level's valid
+// window (fading over its last 1.5 km, the coarse one's last 6 km) the light takes the coarse
+// level, then the march's own steps and the shadow volume. Memory: 14 and 3.7 MB (rg8unorm; the
+// coarse level's root is not read), and under 1 MB of buffers. The cost (NVIDIA
 // laptop): the fine level 0.11–0.15 ms a frame while it bakes (128 frames after its window moved),
 // its whole map 20–35 ms; the coarse one ~0.18 ms a frame (256 frames), its whole map ~45 ms (a
 // quarter as many texels, but four times as many steps where a stretch passes near a surface).
@@ -37,7 +40,7 @@ import { HS, lookupUniforms, newWindow, PERP, place, rays, slabUniforms } from '
 const TU = GPUTextureUsage;
 // the levels' windows, fine and coarse, and their maps
 export const SUNMAPS = SM_GRIDS.map(G => newWindow(G));
-const maps = SM_GRIDS.map(G => texture(SM_NW, SM_NA, 'r16float', { depth: G.nv, dim: '3d', usage: TU.TEXTURE_BINDING | TU.COPY_DST | TU.COPY_SRC }));
+const maps = SM_GRIDS.map(G => texture(SM_NW, SM_NA, 'rg8unorm', { depth: G.nv, dim: '3d', usage: TU.TEXTURE_BINDING | TU.COPY_DST | TU.COPY_SRC }));
 [T.sunMap, T.sunMapC] = maps;
 // the scan writes a slab here, then it is copied into the map; the march past the window and the
 // stretches between texels, a slab's (as large as the fine level's, which has the most rays)

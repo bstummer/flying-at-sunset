@@ -412,7 +412,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
           let f = tsvTau(wp, h);
           let wF = sunMapW(wp.xz);
           let wC = (1.0 - wF) * sunMapCW(wp.xz);
-          c = vec3f(exp(-f.x - f.y * (1.0 - wF - wC) - sunMapAt(wp.xz, h, 0.0) * wF - sunMapCAt(wp.xz, h, 0.0) * wC));
+          c = vec3f(exp(-f.x - f.y * (1.0 - wF - wC) - sunMapAt(wp.xz, h, 0.0).x * wF - sunMapCAt(wp.xz, h, 0.0) * wC));
         }
         return Out(vec4f(c * 0.12, 0.0), vec2f(t * 0.001, tOwn));
       }

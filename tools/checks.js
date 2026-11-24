@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { assertFreshBuild, launch, pageUrl, pool, ROOT, testRender, until, watchdog, watchPage } from './browser.js';
 import { flyAll, LOG } from './flights.js';
 import { decodePng } from './png.js';
+import { SM_ROOT } from '../src/constants.js';
 import { parseParams } from '../src/core/params.js';
 
 const AT_ONCE = 2;
@@ -27,7 +28,7 @@ export const CHECKS = [
   { name: 'steering', what: 'mouse, keys and touch bank, climb and dive the bird, and letting go levels it out', run: checkSteering },
   { name: 'reproducible', what: 'a capture renders the same, byte for byte, every time, and handing over more frames changes it not at all', run: checkReproducible },
   { name: 'out-of-memory', what: 'GPU memory running out for what never changes, at start, on a resize and for good: the page says so, retries smaller, keeps running, or says so', run: checkOutOfMemory },
-  { name: 'volumes', what: 'the baked world volumes: no NaNs, no cloud cut off at a volume\'s ceiling, sound column maps, the sun map baked and within 0..1', run: checkVolumes },
+  { name: 'volumes', what: 'the baked world volumes: no NaNs, no cloud cut off at a volume\'s ceiling, sound column maps, the sun map baked, within 0..1 and its second channel the root of its first', run: checkVolumes },
   { name: 'pointer-and-keys', what: 'the pointer leaving levels out; Cmd/Ctrl shortcuts don\'t steer; Meta clears held keys; P logs the moment\'s pose as a view', run: checkPointerAndKeys },
   { name: 'errors', what: 'the tools hear what nothing on screen shows: a WebGPU validation error, a lost device', run: checkErrors },
   { name: 'player', what: 'as a visitor sees it: the canvas fades in, the steering hint comes and goes, on a desktop, a phone, with ?debug and after a 12 s frame', run: checkPlayer, alone: true },
@@ -499,11 +500,11 @@ const readLevels = async () => {
     });
   }
   // (the sun map's levels: each one's window, and per texel column along the sun's way and across
-  // it, all heights, the mean of the light it lets through)
+  // it, all heights, the mean of the light it lets through: its texels' first channel)
   const sun = [];
   for (const [W, t] of [[D.SUNMAPS[0], D.T.sunMap], [D.SUNMAPS[1], D.T.sunMapC]]) {
     const sm = await D.readTexture(t, 0, t.d), mean = new Float64Array(t.w * t.h);
-    for (let k = 0; k < sm.length; k++) mean[k % (t.w * t.h)] += sm[k] / t.d;
+    for (let k = 0; k < sm.length; k += 2) mean[(k / 2) % (t.w * t.h)] += sm[k] / t.d;
     sun.push({ K0: W.K0, A0: W.A0, steps: W.steps, valid: W.valid, nw: t.w, na: t.h, mean: base64(mean) });
   }
   const b = D.bird;
@@ -577,7 +578,7 @@ async function checkStreaming(browser, { fail, note, problems, outDir }) {
 // the march past it takes over from the window's stretches (points 200 m apart against steps of
 // 80 m), and from the coarse level's, 49 km toward the sun, it crosses L1's edge within ~15 km: a
 // window that ends elsewhere sees a little other light there. After 8 km of flight the fine level's
-// differ by up to ~0.007, the coarse level's by ~0.045 (p99 0.018).
+// differ by up to ~0.012, the coarse level's by ~0.047 (p99 0.018).
 const SUN_TOLERANCE = [0.05, 0.08];
 export function compareSunMaps(a, b) {
   const [ma, mb] = [a.mean, b.mean].map((s) => new Float64Array(Uint8Array.from(Buffer.from(s, 'base64')).buffer));
@@ -685,7 +686,7 @@ async function checkVolumes(browser, { fail, note, problems }) {
   try {
     await page.goto(pageUrl({ test: '', frames: '2', w: '160', h: '90' }));
     await until(page, () => window.__done || window.__error);
-    const res = await page.evaluate(async () => {
+    const res = await page.evaluate(async (root) => {
       const D = window.__debug, N = 256, out = {};
       for (const [name, L] of [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]], ['shadow', D.TSVL]]) {
         const v = await D.readTexture(L.vol, 0, L.nz); // the channels of each texel, slice after slice
@@ -697,10 +698,16 @@ async function checkVolumes(browser, { fail, note, problems }) {
         }
         out[name] = { nan, topNeg };
       }
-      // (the sun map's levels: the light that gets through other clouds, 0..1)
+      // (the sun map's levels: the light that gets through other clouds, and its root, 0..1, a byte
+      // each: the root's power within a few of the light's steps)
       for (const [name, W, t] of [['sun map', D.SUNMAPS[0], D.T.sunMap], ['sun map coarse', D.SUNMAPS[1], D.T.sunMapC]]) {
         const sm = await D.readTexture(t, 0, t.d);
-        out[name] = { nan: sm.filter((x) => !Number.isFinite(x)).length, outside: sm.filter((x) => x < 0 || x > 1).length, baked: !!W.valid };
+        let unlike = 0, shade = 0;
+        for (let k = 0; k < sm.length; k += 2) {
+          if (Math.abs(sm[k + 1] ** root - sm[k]) > 0.03) unlike++;
+          if (sm[k] < 0.5) shade++;
+        }
+        out[name] = { nan: sm.filter((x) => !Number.isFinite(x)).length, outside: sm.filter((x) => x < 0 || x > 1).length, baked: !!W.valid, unlike, shade };
       }
       for (const [name, L] of [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]]]) {
         const c = await D.readTexture(L.col);
@@ -713,13 +720,15 @@ async function checkVolumes(browser, { fail, note, problems }) {
         out[name].columns = { bad, sunk, lowest };
       }
       return out;
-    });
+    }, SM_ROOT);
     for (const [name, r] of Object.entries(res)) {
       if (r.nan) fail(`${name}: ${r.nan} texels that are not finite`);
       if (r.topNeg) fail(`${name}: cloud in ${r.topNeg} texels of the volume's top slice (cut off at its ceiling)`);
       if (r.columns?.bad) fail(`${name}: ${r.columns.bad} column values that are not finite`);
       if (r.outside) fail(`${name}: ${r.outside} texels outside 0..1`);
       if (r.baked === false) fail(`${name}: not baked after the first frame`);
+      if (r.unlike) fail(`${name}: in ${r.unlike} texels the second channel is not the root of the first`);
+      if (r.shade === 0) fail(`${name}: no texel in shadow`);
       if (r.columns?.sunk) fail(`${name}: in ${r.columns.sunk} columns the heaps lower the sea instead of raising it`);
     }
     note(`sea surface from ${Math.min(res.L0.columns.lowest, res.L1.columns.lowest, res.L2.columns.lowest).toFixed(0)} m; no NaNs, nothing at a ceiling`);

@@ -55,8 +55,9 @@ export const CLIP_LEVELS = [
 // made what it baked depend on where the camera was); how far (texels along, across) the camera
 // may wander before its window moves, `steps` (~2 km; the coarse one's ~5 and 4 km); the columns
 // across baked a frame while it moves, `slab` (the whole window in SM_NA / slab frames); the march
-// past each in SM_PIECES pieces
-export const SM_NA = 256, SM_NW = 64, SM_H0 = 300, SM_PIECES = 7;
+// past each in SM_PIECES pieces. A texel holds the light that gets through and its SM_ROOTth root,
+// which the shadow of the clouds near by is read from (chunks/cloud.wgsl, sunMapAt)
+export const SM_NA = 256, SM_NW = 64, SM_H0 = 300, SM_PIECES = 7, SM_ROOT = 3;
 export const SM_GRIDS = [
   { da: 64, dv: 32, dw: 320, nv: 440, lv0: 0, steps: [6, 32], slab: 2 },
   { da: 256, dv: 128, dw: 1280, nv: 112, lv0: 1, steps: [4, 16], slab: 1 },
@@ -64,5 +65,5 @@ export const SM_GRIDS = [
 // what the shaders get from here: render/gpu.js declares these in front of each
 export const FOR_SHADERS = {
   CLOUD_TOP, SIGMA, CLOUD_EDGE0, CLOUD_EDGE_W, SHAPE_TILE, DETAIL_TILE, DETAIL_ROT, RG, RT, RAY_S, RAY_H, MIE_S, MIE_A, MIE_H, OZO_A,
-  SM_NA, SM_NW, SM_PIECES, SUN_COL_N, SUN_COL_DH, CIRRUS_H, CIRRUS_TILE, LAYER_H0, LAYER_H1, LAYER_TILE,
+  SM_NA, SM_NW, SM_PIECES, SM_ROOT, SUN_COL_N, SUN_COL_DH, CIRRUS_H, CIRRUS_TILE, LAYER_H0, LAYER_H1, LAYER_TILE,
 };

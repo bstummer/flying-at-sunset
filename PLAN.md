@@ -532,6 +532,40 @@ what the loop's state costs (decisions). The author's other two moments, to add 
 needed: `1553.3,1748.7,-2599.8,-5.4842,0.0578,0.8101,51` (banking past a near cloud),
 `744.6,1725.5,-810.5,0.9041,-0.0941,0.0389,81.5`.
 
+**A sunlit box on a cloud in shadow** (the author, 2026-11-24: "is this an issue with the
+shadows?", a moment caught with P, the view `backlit`; `screenshots/sm-before` → `sm-after`):
+looking straight into the sun, a bright rectangle on a round lobe 750 m off, its right and lower
+edges straight. Yes: not the lobe (its normals are round, `?dbg=1`), and of its light only the
+soft shadow of the clouds near by (`lightPath`'s other, each term shown alone). The lobe lies in
+the shadow of a cloud standing over 500 m toward the sun, and the box is that shadow's edge as the
+sun map's fine level holds it: texels 64 m across and 32 m apart in height, which lie end-on seen
+along the sun's rays (about 40 × 20 pixels of a 960-pixel frame there). The map held the light that gets through, and a
+lookup interpolated it; but the soft shadow fades with the optical depth far slower than that
+light (the octaves' e^(−τ/8), the diffusion): a hundredth of the way from a texel in shadow to one
+in the light a tenth of it was back, a tenth of the way a quarter, and toward the sun, where the
+forward lobe is at its brightest, that reads as lit. So the light's edge ran along the dark
+texels' outline, a staircase. Now a texel holds the light (as before, for the far clouds'
+shadow, e^−τ on all the light: there the interpolated light is a penumbra's ramp) and its cube
+root, from which the soft shadow is read at both its lookups: a byte each, rg8unorm for r16float,
+the same 14 and 3.7 MB, the same four taps. The box is gone: the lobe in soft shade, a faint glow
+left on its shoulder (known issues), the ridge behind it keeps its golden rim.
+The judge: in place of the map's near lookups and the march's own, a march of the first 1.4 km in
+steps of 4–12 m at the view's detail (not kept; ten views at 480×270, luminance): the mean
+distance from it 1.20 → 1.00 levels, the pixels over 8 levels too bright `backlit` 4.9 → 3.2%,
+`away` 7.5 → 4.0, `tower` 8.1 → 6.2, `start` 1.9 → 1.1, `sun` 2.1 → 1.3, `side` 2.6 → 2.0,
+`close` 2.4 → 1.7 (`gap` 4.6 → 4.5, `past` 1.3 → 1.2); too dark the same within 0.3 points.
+Pixels changed (> 2 levels): `away` 13%, `tower` 9%, `close` 8%, `backlit` 7%, `down` 5%, `side`
+and `turn` 4%, `sun`, `past`, `under`, `giant` and `start` 3%, the rest under 1.5% (`anvil`,
+`seed3`, `inside` within 1–7 levels on a few pixels: the light a byte now): the edges of near
+shadows, a little softer and a little larger; the sunlit heaps as large as before to the eye
+(`side`, `down`). Grain over the strip lower or the same (`backlit`'s lobe 0.20 → 0.12%, `close`
+0.21 → 0.17, `sun` 0.24 → 0.20, `start` 0.19 → 0.17, `tower` 0.19 → 0.18), shimmer at rest the
+same. The volumes check holds the second channel to the root of the first (the scan packs four
+bytes into a u32; with the channels swapped it fails on 64596 texels). Flights identical (all
+five). Cost (`node tools/cost.js`, 200 frames, A B B A A B, twice): the trace 0 to +1%; the map's
+bake −22 to +89% a view, each side's own runs up to ±39% apart (the first frame's bake). Failed on
+the way (decisions).
+
 Not in a leg: the drift (the author's: nothing has to, for now); the shimmer at sunlit rims
 (0–0.11% a view in this capture, `geometry` 0.35%: within the limits, and each lever left costs
 5–46% of the trace, decisions); the cirrus and the high layers' tiling (seen in no capture);
@@ -933,6 +967,21 @@ they hold until the author says otherwise.
   the blur for hundreds of metres: shadows as if from clouds 30 m taller, the near sea dark; the
   lookup snapped to a texel: blocks near the camera; a step's share inside from a distance and its
   slope took a bound beside a distance for a steep slope (cap the slope at 1).
+- **The sun map's light as a root for every lookup** (2026-11-24, the box on a cloud in shadow): one
+  channel holding a root of the light. The square root: the box fainter, its straight edges still
+  there. The cube root: gone, but every sunlit patch smaller (`side` 22% of its pixels by more than
+  2 levels, `down` 25%, the lit heaps eaten at their edges): the far clouds' shadow takes all the
+  light as e^−τ, and between texels the root darkens it. The cube root for the near lookups and,
+  from the same channel, the light for the far ones (linear between its darkest and 1): right
+  between a dark texel and a lit one, wrong where a texel holds thin cloud (`side` 13%). First
+  readings of the box that didn't hold: the map's texels inside the neighbouring cloud, leaving it
+  out as their own (it stands over 500 m off, by a march showing where the light's path leaves
+  its cloud and enters the next), and the lookup a texel farther toward the sun (`in`).
+- **A march of every cloud toward the sun as the map's judge** (2026-11-24: no map, steps of 8 to
+  40 m out to 30 km, and the same striding through clear air to 90 km: 0.24 levels apart in
+  `close`): 10–11 levels from the picture in `close`, 5–6 in `side`, whatever the map held. Not the map's fault:
+  the model's seam at 1.4 km (known issues). It judges the near lookups only with the far part
+  left as the build has it.
 - **Fold occlusion** (before leg 2's light): a tap up and back toward the camera; a 0.2 floor turned
   shade into gravel; a tap straight up can't tell a fold from a wall.
 - **The openness of the sky, first tries** (leg 8): a normal from the tap up and the light march's
@@ -1145,6 +1194,18 @@ they hold until the author says otherwise.
   Within a window the map's rays run straight in height, the march past it bends them with the
   planet from where it starts: over the coarse level's 49 km toward the sun a cloud 40 km off
   shades as if ~130 m taller (the fine level's 12 km: ~10 m).
+- **Near the camera the sun map's shadows are a texel coarse** (64 m across, 32 m in height: tens
+  of pixels within a kilometre). Since 2026-11-24 the soft shadow's edge fades evenly between
+  texels (no boxes seen along the sun's rays), but its line can lie a texel off, and lower than
+  the view's own clouds cast it: the map holds no domes under ~64 m (its lod, 1.2: the 30 m domes
+  and the detail volume's are missing, up to ~40 m of a top). `backlit`: a faint glow on the
+  lobe's shoulder, and the ridge's crest golden, where a march at the view's detail has both in
+  shadow (3% of its pixels over 8 levels brighter than that march; `tower` 6%, `gap` 4.5%).
+  **The seam between the soft and the hard shadow**, 1.4 km toward the sun (`LIGHT_NEAR`): a
+  cloud nearer casts the soft one (the octaves and part of the diffusion get past it), one
+  farther takes all the light, and the map's far lookup reads a texel up to 320 m before the
+  seam: a cloud 1.0–1.4 km off shades hard (`close`: a lobe in full shadow that a march split at
+  exactly 1.4 km leaves softly lit; neither is a real cloud's).
 - **The clouds hold still** (2026-11-22, the author: nothing has to drift, for now): the billows and
   the detail drifted with the wind and rose (frame.js until leg 7), and the sun map holds the
   billows. Drift brought back, the map has to be baked all the time (0.11–0.15 ms a frame, and it

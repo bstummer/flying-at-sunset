@@ -11,5 +11,5 @@
   let a = u.litR.y + pos.y * u.litR.w;
   let xz = hs * w + vec2f(-hs.y, hs.x) * a;
   let C = colAt(xz, select(1, 0, inLv(xz, 0)));
-  return vec4f(exp(-sunMapAt(xz, C.x + 0.5 * shellOf(C.y), 0.0)), 0.0, 0.0, 1.0);
+  return vec4f(exp(-sunMapAt(xz, C.x + 0.5 * shellOf(C.y), 0.0).x), 0.0, 0.0, 1.0);
 }

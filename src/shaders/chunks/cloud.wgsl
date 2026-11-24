@@ -193,13 +193,19 @@ fn smWeight(V: vec4f, xz: vec2f, fade: f32) -> f32 {
 }
 // the fine level: four taps half a texel apart across the rays (a shadow's edge is sharper than a
 // texel, and between texels it came out a staircase, in blocks tens of pixels wide near the camera):
-// the penumbra a cloud ~3 km off casts
-fn sunMapAt(xz: vec2f, h: f32, in: f32) -> f32 {
+// the penumbra a cloud ~3 km off casts. Twice: from the light that gets through, interpolated (x:
+// between a texel in shadow and one in the light the light rises evenly, as in a penumbra), and
+// from its SM_ROOTth root (y), for the soft shadow of the clouds near by (lightPath's other): that
+// one fades with the optical depth far slower than the light does (sunScatter's octaves, the
+// diffusion), so from the interpolated light it was back a tenth of the way from the dark texel,
+// its edge the dark texels' outline: seen along the sun's rays, where a texel lies end-on, a
+// sunlit box on a cloud in shadow. By the root it rises evenly to the eye.
+fn sunMapAt(xz: vec2f, h: f32, in: f32) -> vec2f {
   let uvw = smUVW(u.smA, u.smB, xz, h, in);
   let o = vec2f(0.5 / SM_NA, u.smB.w);
-  let t = textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, -o.x, -o.y), 0.0).r + textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, o.x, -o.y), 0.0).r
-        + textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, -o.x, o.y), 0.0).r + textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, o.x, o.y), 0.0).r;
-  return -log(max(0.25 * t, 1e-6));
+  let t = textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, -o.x, -o.y), 0.0).rg + textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, o.x, -o.y), 0.0).rg
+        + textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, -o.x, o.y), 0.0).rg + textureSampleLevel(tSunMap, sRep, uvw + vec3f(0.0, o.x, o.y), 0.0).rg;
+  return vec2f(-log(max(0.25 * t.x, 1e-6)), -SM_ROOT * log(max(0.25 * t.y, exp(-14.0 / SM_ROOT))));
 }
 fn sunMapW(xz: vec2f) -> f32 { return smWeight(u.smV, xz, 1500.0); }
 // the coarse level: one tap (where it is looked up, past the fine one, its texels are a few pixels
@@ -347,15 +353,17 @@ fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0:
   lp.muN = saturate(0.5 * lp.nS + 0.5 * nL);
   lp.muF = (gOut + 0.01) / (wOut + 0.02);
   // the sun map: the clouds past ~90 m and past ~1.4 km (each without the one its point is in:
-  // still in this cloud there, without this one); where its fine level fades, those past ~1.4 km
+  // still in this cloud there, without this one; those between, the soft shadow, by the root of
+  // the light at both: sunMapAt); where its fine level fades, those past ~1.4 km
   // from the coarse one (its texels 1.3 km long: within them, a point on a tower's side lit at a
   // grazing angle took the body of the tower beside it toward the sun for its own cloud, and lost
   // its shadow; the march's own steps see it)
   let hM = h0 + u.sunDir.y * LIGHT_NEAR;
   if (mwF > 0.0) {
-    let o1 = sunMapAt(wp0.xz + u.sunDir.xz * 91.6, h0 + u.sunDir.y * 91.6, 1.0 - lp.near);
-    lp.farM = sunMapAt(pM, hM, inside6);
-    let nearM = max(o1 - lp.farM, 0.0) * mwF;
+    let o1 = sunMapAt(wp0.xz + u.sunDir.xz * 91.6, h0 + u.sunDir.y * 91.6, 1.0 - lp.near).y;
+    let fm = sunMapAt(pM, hM, inside6);
+    lp.farM = fm.x;
+    let nearM = max(o1 - fm.y, 0.0) * mwF;
     lp.other += nearM;
     lp.otherD += nearM;
   }

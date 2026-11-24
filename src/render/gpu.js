@@ -52,7 +52,7 @@ context.configure({ device, format: CANVAS_FORMAT, alphaMode: 'opaque', usage: G
 const TU = GPUTextureUsage;
 export const RENDER = TU.TEXTURE_BINDING | TU.RENDER_ATTACHMENT;   // the usual: drawn into, then read
 let nextId = 0;
-const TEXEL_BYTES = { rgba16float: 8, rg16float: 4, r16float: 2, rgba8unorm: 4, r8unorm: 1, depth24plus: 4 };
+const TEXEL_BYTES = { rgba16float: 8, rg16float: 4, r16float: 2, rgba8unorm: 4, rg8unorm: 2, r8unorm: 1, depth24plus: 4 };
 // a texture and its view; `id` keys the cached bind groups
 export function texture(w, h, format, { depth = 1, dim = '2d', mips = 1, samples = 1, usage = RENDER } = {}) {
   const tex = device.createTexture({ size: [w, h, depth], format, dimension: dim, mipLevelCount: mips, sampleCount: samples, usage });
@@ -348,7 +348,7 @@ export async function readBuffer(b, n = b.size / 4) {
   return out;
 }
 // the texels of slices [z, z + nz) of a texture as numbers, rows packed
-const TEXEL = { rgba16float: [8, 4, true], r16float: [2, 1, true], rg16float: [4, 2, true], rgba32float: [16, 4, false], r32float: [4, 1, false], rgba8unorm: [4, 4, false] };
+const TEXEL = { rgba16float: [8, 4, true], r16float: [2, 1, true], rg16float: [4, 2, true], rgba32float: [16, 4, false], r32float: [4, 1, false], rgba8unorm: [4, 4, false], rg8unorm: [2, 2, false] };
 export async function readTexture(t, z = 0, nz = 1) {
   const [bytes, comps, isHalf] = TEXEL[t.format];
   const row = Math.ceil(t.w * bytes / 256) * 256;
@@ -361,7 +361,7 @@ export async function readTexture(t, z = 0, nz = 1) {
   const raw = buf.getMappedRange(), n = t.w * comps, out = new Float32Array(n * t.h * nz);
   for (let r = 0; r < t.h * nz; r++) {
     if (isHalf) { const h = new Uint16Array(raw, r * row, n); for (let k = 0; k < n; k++) out[r * n + k] = fromHalf(h[k]); }
-    else if (t.format === 'rgba8unorm') { const b = new Uint8Array(raw, r * row, n); for (let k = 0; k < n; k++) out[r * n + k] = b[k] / 255; }
+    else if (t.format.endsWith('8unorm')) { const b = new Uint8Array(raw, r * row, n); for (let k = 0; k < n; k++) out[r * n + k] = b[k] / 255; }
     else out.set(new Float32Array(raw, r * row, n), r * n);
   }
   buf.unmap();

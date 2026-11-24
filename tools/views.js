@@ -44,6 +44,10 @@ export const VIEWS = [
     crops: { edge: [0.38, 0.25, 0.2, 0.35] } },
   { name: 'gap', params: { pose: '1454,1805.6,-2187.1,0.1262,0.1233,-0.0043,62.9' }, brief: 'Through a gap between near clouds toward the sun: their edges and thin veils soft and clean in flight, no grain, the sunlit sea beyond clear.',
     crops: { edge: [0.45, 0.2, 0.25, 0.4] } },
+  // (a moment the author caught with P, looking along the sun's rays: there a texel of the sun map,
+  // 64 × 32 m and 320 m long, lies end-on, a rectangle on screen)
+  { name: 'backlit', params: { pose: '433.9,1691.7,-1104,0.05,0.0322,-0.0126,70.4' }, brief: 'Straight into the sun past a near lobe that lies in the shadow of the cloud behind it: its shade whole and soft, no bright box on it; only edges the sun really reaches shine.',
+    crops: { lobe: [0.42, 0.46, 0.27, 0.35] } },
   { name: 'seed3', params: { seed: '3' }, brief: 'Another world\'s start: the generator, not just the piece\'s seed; towers in view, nothing placed, nothing repeating.' },
   // (the pose places the bird diving steeply at 8 km: the camera behind it looks almost straight down)
   { name: 'down', params: { pose: '0,8000,0,0.45,-1.5,0' }, brief: 'Straight down from 8 km over the start: the sea as a map, heaps and billows at every size, towers in clusters, walls, lone giants and open stretches, never evenly spread, nothing repeating.',
