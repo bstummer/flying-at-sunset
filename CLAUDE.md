@@ -13,55 +13,49 @@ experience, as realistic as possible.
 **Above all, the piece should be as beautiful as possible.** Beauty ranks above features, cleverness
 and coverage: when two approaches compete, take the one that looks better, then make it fit the frame
 budget (§9). **Every frame should look like a photograph taken from an airplane window just before
-sunset.** It should feel peaceful, vast and quietly magical, and it must stay smooth, because
-stuttering breaks the spell.
+sunset.** Where what is physically right and what is beautiful part ways, beautiful wins, as a
+photographer wins it: by the exposure, the hour and where the camera stands, never by anything a
+viewer would call fake. It should feel peaceful, vast and quietly magical, and it must stay smooth,
+because stuttering breaks the spell.
 
 - **The clouds are the heart of the piece.** An endless sea of soft, billowing cloud stretching to the
   horizon, broken by enormous towers rising far above the bird: full and three-dimensional, with
-  rounded tops, soft wispy edges and a sense of enormous scale.
-- **Golden-hour light.** The sun sits low. Faces toward it glow gold, orange and peach, thin edges
-  shine where sunlight passes through, shaded sides fall into a luminous cool blue and violet (lit by
-  the sky and the light inside the cloud, never navy or brown). The sky fades from deep blue
-  overhead to gold near the sun; haze melts the farthest clouds into the sky: the farther, the hazier,
-  paler and bluer. Looking toward the sun is bright and dazzling.
-- **The paper bird.** Slightly off-white paper, crisp creases, a subtle paper texture. Small against
-  the landscape; its wings flex; it glows warmly when the sun is behind it.
+  rounded tops, soft wispy edges and a sense of enormous scale. Up close a cloud is mist, not a
+  surface: soft and smooth as in nature, but never perfectly even, its edge ragged.
+- **Golden-hour light.** The sun sits low, yet most of what is in view lies in its light. Faces
+  toward it glow gold, orange and peach, thin edges shine where sunlight passes through, shaded
+  sides are a luminous cool blue and violet, never navy or brown. The sky fades from deep blue
+  overhead to gold near the sun, and haze melts the farthest clouds into it. Looking toward the sun
+  is bright and dazzling; every other way is exposed as a photographer would expose it.
+- **The paper bird.** Slightly off-white paper with crisp creases, small against the landscape; its
+  wings flex, and it glows warmly when the sun is behind it. It reads as folded paper, never a
+  white dart, nor a ghost in shade or mist.
 - **The flight.** Gliding: diving builds speed, climbing trades it for height, turning banks
-  gracefully. From down at the cloud tops the bird can always fly up again: a held climb goes on,
-  more slowly once the speed is spent, up past the towers' heads. Smooth and forgiving, never
-  twitchy, on phones and computers alike. The bird can't crash: it can skim the cloud tops and fly
-  into clouds (briefly surrounded by drifting mist), but is gently kept from sinking deep into the
-  sea.
+  gracefully. From down at the cloud tops the bird can always fly up again, for as long as the
+  climb is held, past the towers' heads. Smooth and forgiving, never twitchy, on phones and
+  computers alike. The bird can't crash: it can skim the cloud tops and fly into clouds, but is
+  gently kept from sinking deep into the sea. Inside a cloud the fog has depth and shows the way
+  out; never an even card.
 - **The camera** follows with a slight, natural lag, swinging wide on turns and leaning into them.
-  Speed is tangible in a dive: near clouds rush past, far ones barely move. In a climb, held
-  for however long, the bird stays whole in the frame.
-- **A clean screen**: only a short hint on how to steer (in at ~1.8 s, out at ~10 s or after 3 s of
-  steering), and a note only when WebGPU is missing or something fails.
+  Speed is tangible from the first second: near clouds rush past, far ones barely move. The bird
+  stays whole in the frame, in a long climb too, and the frame is composed on tall screens as on
+  wide ones.
+- **A clean screen**: only a short hint on how to steer, which fades away, and a note only when
+  WebGPU is missing or something fails.
+- **Out, for now**: sound, a sun that sets, clouds that drift.
 
-What the author keeps coming back to:
+What the author keeps coming back to (what the result should be; how to get there is open):
 
-- **Random and irregular, as in nature.** No two clouds alike; no shape, feature or spacing that
-  repeats in a way the eye notices; flying around should keep surprising. Disliked: anything that
-  looks designed or placed (gumdrops of one size, towers spread evenly "like bushes planted in a
-  field" or "chess pieces on a board", narrow pillars, a building kit of set shapes), popcorn (bumps
-  of one size all over a surface), every cloud having every feature.
-- **Enormous towers**, rising far above the bird (you look up at a near one's top), at least one in view
-  from the start, broad at the base where they swell out of the sea: the sea and the towers are one
-  system, the same cloud piled higher. Crisp, sharply sculpted cauliflower domes with shadowed folds,
-  never soft pillows, yet never solid like rock or dough: light inside the cloud keeps the folds
-  luminous and glows through thin parts; a few huge lobes carrying smaller ones, carrying smaller
-  ones still; sides that bulge and lean, never carved cliffs; leaning, sheared and torn tops (flat
-  only as an anvil); overhangs and gaps to fly under; lone giants, walls, clusters, open stretches of
-  sea; rare wide flat anvils far away. A
-  spreading top needs a massive, broad column, never a thin stem ("like a mushroom").
-- **A billowy sea**: billows at every size (big rolling mounds covered in smaller bulges, covered in
-  smaller ones), crisp where sunlight catches them, soft edges, never sharp ridgelines. Not a flat
-  blanket, not smooth "sand dunes". Large relief: swells, deep valleys, heaps.
-- Not too much open space around the start. No compact round puffs floating high in the sky, nothing
-  that looks broken off.
-- **Like a photograph**: near clouds show more detail than far ones, never less (bulges on
-  bulges down to metres, ragged edges: close clouds as smooth pillows read as cotton wool a few
-  metres across, and the scale is lost); no render noise of any kind (a screen-door, a lattice).
+- **Irregular, as in nature.** No two clouds alike, and nothing the eye catches repeating or
+  looking placed: no bumps of one size ("popcorn"), no towers spread evenly ("chess pieces on a
+  board"), no kit of set shapes. Flying on keeps surprising.
+- **Enormous towers** that rise far above the bird, one of them within a minute or two of the
+  start, broad where they swell out of the sea (never a wide top on a thin stem, "like a
+  mushroom"); lone giants, walls and clusters with open sea between, some to fly under.
+- **Cloud, not pillow and not rock.** Crisply sculpted from afar, soft up close; never smooth
+  pillows all over, never solid like rock or dough.
+- **A billowy sea** with large relief: not a flat blanket, not "sand dunes", no sharp ridgelines.
+- **No render noise** of any kind (a screen-door, a lattice).
 
 ## 2. Hard rules
 

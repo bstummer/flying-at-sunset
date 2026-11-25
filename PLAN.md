@@ -6,7 +6,265 @@ that fails goes in the decisions with why and when (evidence for later, not a ru
 comes out; finished work gets a line or two under Done. How things work belongs in the module
 headers, how to work in CLAUDE.md.
 
-Nothing is under way: the next work comes from the author's requests and the known issues below.
+The next work is planned below: legs 13 to 22, from the review of 2026-11-25. A leg that is done
+moves to Done in a line or two, and what it tried and dropped goes in the decisions.
+
+## Next: legs 13 to 22
+
+From a review of 2026-11-25 (every view at 960×540 with its flight strip and held-still frames,
+ranked before this file was read, and a second reviewer who saw only the images) and the author's
+answers to it. Its verdict: **no view passes as a photograph.** Four or five toward the sun pass as
+paintings (`sun`, `gap`, `backlit`, `climb`); away from the sun, up close or inside, the piece
+reads as popcorn, rock, navy fog or a blank card. What holds: the image is steady, and the world's
+map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steering, frame rates.
+
+The aim is no frame that breaks the spell, not a photograph in every frame: beside the bird and
+inside cloud there is no photograph to match.
+
+### What hurts, most first
+
+1. **Up close a cloud is blank**: within about a kilometre a smooth gradient with a clean, soft
+   edge (`skim`, `past`, `exit`, the near sea). The author: it may stay smooth, as it is in
+   nature; what it lacks is unevenness, not detail. → 16
+2. **Away from the sun the picture is underexposed and the shade navy**: under luma 96 (of 255)
+   `side` 80% of the frame, `down` 73%, `belly` 86%, `under` 100%; nothing over 200 in `away`,
+   `side`, `down`. → 13
+3. **What the clouds are built from shows**: lit towers are bumps of one size (`giant`, `tower`,
+   `start`), the sea from above discs (`high2`), hazy faces ring outlines; no edge is ragged, so
+   surfaces read solid: popcorn lit, rock in shade (`belly`, `turn`). → 16, 17, 18
+4. **Inside and under cloud**: `inside` an even tan card, `entry` a cobalt wash, `under` murk. A
+   tower is 20 s to two minutes of card at cruise. → 19
+5. **The towers are never reached, and at the start nothing moves**: those in `start`'s frame
+   stand 28–50 km off (seven minutes and more), the nearest (9.8 km) out of frame; a 10 km head is
+   6.4 minutes of held climb; the clouds drift 15 px a second. → 14
+6. **Scale and distance don't read**: `giant`, 20 km off, looks like a mound 50 m away; toward the
+   sun haze empties the middle of the frame and cuts towers off their bases (`high2`, `seed3`).
+   → 17, 18, 20
+7. **Framing**: the bird centre-low at one size; on a phone held upright the start has no sun in
+   frame and its lower 40% is navy. → 13, 14, 15
+8. **The bird reads as a white dart** (no fold showing), a ghost in shade and fog. → 15
+9. **The sky**: its streaks all run one way; overhead mauve-grey; opposite the sun teal, where a
+   photograph has rose; backlit rims don't blaze. → 16, 20
+10. **The anvil is a mesa**: a lumpy plateau, no fibrous ice, no glow. → 21
+11. **Artefacts**: a straight vertical edge (`past`, 1 s on), a blue outline around near lit cloud
+    (`gap`), a checkerboard on thin far cloud in the first half second (`away`), a stair-stepped
+    fog edge (`exit`), orphan puffs and knobs. → 14, 16, 22
+12. **Loading** is an unlabelled gradient. → 22
+13. **The giants on the horizon look like "chess pieces planted on a chess board"** (the author;
+    `away`, `anvil`, `sun`). → 14, 17, 20
+
+The author's rulings with it: the sun may stand higher than 5°; where "physically right" and
+beautiful part ways, beautiful wins, and it stays realistic; no reference photographs (none is
+perfect, and the piece would be fitted to the few that were chosen); sound and a sun that sets are
+out for now.
+
+### How the legs run
+
+The legs are done in the order they stand in, by the session that takes them up: nobody picks
+the next one. Their descriptions are a plan, not rules: a session changes a step or a leg, or
+drops it, where it no longer makes sense, and says here what it did instead and why. If the order
+itself should change, the legs are moved in this file, so it always reads in the order of the work.
+
+Why this order: first the three that change every capture, so the cloud legs after them compare
+against captures that hold: the light and the exposure (13), the world around the start (14), the
+camera (15). Then the clouds, the heart: their edge (16: the top finding, and an experiment speaks
+for it), their shapes (17), the light on both (18). Then in cloud (19), the air and the sky (20),
+ice (21), loose ends and the review again (22).
+
+- A leg's first step is its cheapest experiment.
+- What a cloud leg costs the trace is measured (`node tools/cost.js`) and said; where it is too
+  much, the finest detail gives way first (CLAUDE.md §9).
+- After 15 and after 18, the review's method again: every view, and a reviewer who sees only the
+  images.
+- Taste stays the author's (CLAUDE.md §11), shown with a recommendation when its leg comes; where
+  the answer can wait, the leg goes on with the recommendation. The sun's height and warmth (13);
+  how near the first tower, and how the bird gets up one (14); the bird's size in the frame (15);
+  whether shreds are missed in flight (16); minutes in fog (19); layers at other heights (20); a
+  title while loading (22).
+
+### Leg 13: the photographer (the sun's height, the exposure, the film)
+
+Every heading exposed as a photographer would. Cheap, and every later leg is judged under it.
+
+1. **Instruments** (tools/measure.js): a view's *tone* (the share of the frame under luma 96 and
+   over 200, the colour of its darkest third and its brightest tenth), a crop's *texture* (its
+   contrast octave by octave: beads of one size are a bump in it, a blank gradient a steep slope),
+   a strip's *motion* (the share of pixels that change over it). They guard and don't steer: their
+   limits come from rows the author has approved.
+2. **The sun's height**, behind `?sun=`. Everything follows `SUN_DIR` (tried with one line of
+   constants.js): at 8° the sea is sunlit and `side` and `down` lose their navy, but the gold thins
+   and the view into the sun whitens; at 10° it is afternoon. Rows between 5° and 8° for the
+   author, as they come and with the warmth put back. After the choice the light's reference and
+   its tests are made again (the Monte Carlo is one sun's); `sunScatter`'s fit waits for leg 18.
+3. **Metering**, in cloud and out: shaders/exposure.wgsl has the frame's log-mean, and follows it
+   only in the camera's fog. Tried: at `?exp=22` (14 ships) `away`, `side`, `down` and `giant` turn
+   luminous, but `tower`'s and `close`'s lit faces wash out and `under` is murk still. So by the
+   frame, not by the heading, with the highlights held. The test mode stays deterministic.
+4. **Dodging** (a region of shade lifted, as in a darkroom), if metering leaves one dull.
+5. **The film**: the curve's toe, the split tone, the shade's tints (lavender needs red).
+
+Judged by the sheets and by the author in flight (nothing pumps in a turn through the sun); `sun`,
+`gap` and `backlit` stay as they are. Heed: exposure 17 and ACES alone were milky toward the sun,
+saturation in the final pass an orange dust band, a curve per channel tan.
+
+### Leg 14: within reach (the start, the way up)
+
+A tower ahead that the bird reaches in a minute or two and climbs in a few more; something moving
+past from the first second; no board of chess pieces.
+
+1. **The spawn draw** (world/cells.js) asks for a strong cell's flank 5–9 km ahead, beside the sun
+   and in frame on wide and tall screens, and for towers at every range in every quarter but the
+   sun's. Today the start lies in a calm hole: behind it nothing over 6 km stands for 60 km, then
+   38 towers in a band at 62–101 km, the chess pieces of `away` (the world itself is clustered,
+   not even). Heed: a tower across the sun is backlit and dull; a radius of clearance emptied
+   10–20 km. Every view changes with the world, and the poses caught with P land somewhere else:
+   each keeps its world by the old draw's number as a URL parameter, or is found again by its
+   brief.
+2. **The first frames**: the checkerboard on thin far cloud is the levels' dither before the
+   history holds it; the canvas could fade in later.
+3. **The start by the screen**: on a phone held upright the frame is 41° across, and the start
+   looks 26° off the sun. A view at another aspect needs a size of its own (tools/views.js,
+   screenshot.js, tests/views.test.js). A lower start, for speed that shows, once leg 16 has made
+   near clouds worth it.
+4. **The way up**: rising air along a living tower's flank (from the towers' summaries, sent with
+   the patch of domes: the probe can't tell a tower from the sea), or a faster climb (`vClimb`).
+   The feel is the author's.
+
+Judged by the time to the tower's flank and to its head (a flight for tools/flights.js), `start`
+at three aspects, and the author's flight. The fingerprint and the flight logs change: say how.
+
+### Leg 15: the camera and the bird
+
+The bird reads as folded paper, never a dart or a ghost; the frame is composed on tall screens too.
+
+1. **The camera** sits 18° over the bird's back, the wings nearly edge-on; higher, their upper
+   faces and creases show. Not farther: at 140 px a crease is a pixel or two. Its distance could
+   breathe more with the flight (4.1–5.4 m now), and the bird sit off the middle.
+2. **Tall screens**: more sky, less of the near sea. (A tall cloud ahead takes the horizon
+   whatever the camera does.)
+3. **The paper**: facets that shade apart; in shade lit by the bright horizon and the sea; in fog
+   less of the camera's mist in front of it.
+
+Judged by the bird's crops at three aspects; `climb` keeps it whole in the frame; the lag and the
+swing are the author's. The flight logs stay identical.
+
+### Leg 16: mist, not clay (the edge)
+
+A cloud here is a solid with an outline a pixel wide, even all the way round: popcorn where lit,
+rock in shade, a card up close. Its edge becomes ragged and uneven, long where the cloud is old
+and crisp where it grows. Softer, not more detailed.
+
+Why density and not shape (`?dbg=1`): within a few hundred metres the shapes have bumps to spare,
+which shade shouldn't show (small shading in shade is rock); under ~150 m the domes end (8 m
+cells), and finer ones would not show in a medium whose mean free path is 14–28 m.
+
+Tried in twenty lines, not kept: the camera's own `fray` (trace.wgsl) on every cloud within
+1.2–2.5 km (the main loop's density, a stretch's and a sample's, times it; steps of 2 m + 0.004 t
+at most through the edge's first 40 m; the light march's first two steps' extinction times it).
+`past` and `gap`, flat cards before, show soft masses of light and dark and a ragged outline;
+`close` loses its plaster and cracks; `sun` gets no veil over the sea; `skim`'s shade barely
+changes (its sky light doesn't read the fray). Nothing is crisp. Cost and motion: not measured.
+
+1. **One medium**: that fray as every cloud's, inside and out, from one function (the trace's two
+   loops, the probe, the mist puffs). The seams between the loops may go with it (`entry`, `exit`;
+   `past`'s edge and `gap`'s outline: find their causes first). Cost, grain and shimmer first.
+2. **Uneven along a cloud**: its reach by the billow volume's liveliness and a slow field, from
+   metres on a living head to about 100 m on old flanks; outside the surface too, so an old edge
+   trails off.
+3. **The light reads it**, the sky light too, or shade stays as even as it is.
+4. **Far away** it is under a pixel: the outline's width, soft on old parts, crisp on growing
+   ones. Toward the sun a thin edge is the silver lining (dropped as a shell of its own, leg 10).
+5. **Shreds** only if the author misses them in flight: finer octaves, and steps a pixel long
+   where they show, are the dear part.
+
+Judged by `past`, `gap`, `skim`, `exit`, `close`, `belly`, grain and shimmer no worse, and by the
+author in flight (an edge that moves ten pixels a frame is the history's to draw). Heed: 30 m
+eaten into the edge unlit read as out of focus, soft rims and a thinner edge too; a fringe of even
+thickness was glowing veils over the sea toward the sun; fine samples near a surface cost half
+the trace again there.
+
+### Leg 17: sizes as in nature (the shapes)
+
+No size, spacing or outline the eye picks out, on a near tower or on the horizon.
+
+What shows now (chunks/cloud.wgsl, cloudSDF; `?dbg=1`): on a tower's big bubbles the turrets are
+the lobes' own field again (`tb`): one lattice of 1280 m cells twice, 460 m of relief, then
+nothing until the 320 m domes at 45 m. Within a level sizes span 2–3×, in 70–90% of its cells. A
+sphere cut off at its shell (`octave`'s clip) is a disc from above and a ring on a hazy face.
+Liveliness scales the billows by 0.6–1 only. Past 13 km a tower is L1's 512 m cells and those
+lattices; past 40–55 km L2's 2 km cells, where every tower is a rounded cap on a column: the pawn.
+
+Ideas, each first on `?dbg=1`: the level a tower lacks (300–600 m); sizes within a level by a
+power law, dense on what carries them (leg 6's were sparse: lone balls); the cascade running all
+the way down only where the air is alive; a swell in place of the clip; L1's billows sized as
+L0's; the far towers keeping their own outlines (a later handover to L2, what L2 keeps of a head,
+a finer far level: memory, known issues).
+
+Judged by `giant`, `tower`, `start`, `high2` and `away`'s horizon; tools/world/levels.js and
+catalog.js. Heed the swings between popcorn and dough (decisions: each tuned one lattice a level).
+If it swings again, go on to the light, which carries more of the look.
+
+### Leg 18: the light on them
+
+With the edge and the shapes in place. The reference (tools/light/) keeps the energy honest, but
+its Monte Carlo is of smooth, even shapes, and real cloud is porous: its light spreads farther and
+shades less at small scales.
+
+- `sunScatter`'s fit at the sun's new height (leg 13 left it).
+- Lit faces nearly even: a bump shown by its neighbour's shadow and its rim, not by a highlight
+  of its own.
+- Deep folds luminous, never navy pits (`tower`, `close`); the shade smooth, warm where lit cloud
+  faces it.
+- Far towers with relief: lobes shading lobes past the sun map's fine level (known issues).
+- The film once more (leg 13), now that what it grades has changed.
+
+Judged by `giant`, `tower`, `close`, `away`, `down`. Heed: sky ×1.95 and a warm fill everywhere
+were milky; facing over 15 m pumice, over 60 m dough; a floor on the diffusion brown shade.
+
+### Leg 19: inside and under
+
+Fog worth flying through, with a way out to see, and an overhang that reads as one.
+
+- Near a surface it is leg 16's edge from inside.
+- Deep in, fog shows its density only where its light varies (leg 9), and at 30 m of sight
+  nothing has parallax. So the fog thins and thickens, and its light with it: brighter toward
+  where the light comes from, as diffusion has it. Depth, speed, and the way out.
+- `under`: metered (leg 13), then lit by the bright horizon under the overhang and the sunlit sea
+  beyond its shadow.
+- If minutes in fog still drag: a question for the author.
+
+Judged by `inside`, `entry`, `exit`, `under`, `belly` and their strips; in motion by the author.
+
+### Leg 20: the air and the sky
+
+Air that shows how far away things are, and a sky a photographer would know.
+
+- **Shadows in the air**: the haze is even because it ignores every shadow (the review's "haze
+  empties the middle of the frame"). Lit only where the sun reaches it (the sun map along the view
+  ray, in a pass of its own: the trace's 16 textures are taken), it has shafts from behind towers
+  and distance in layers.
+- **The haze's amount**: towers keep their bases toward the sun (`seed3`, `high2`); a tower 20 km
+  off has less contrast than the foreground (`giant`); one 60–100 km off is a pale shape, not a
+  lit piece with an outline (`away`).
+- **The sky**: a deeper blue overhead, rose opposite the sun, high cloud whose streaks turn.
+- **Layers at other heights**, if the author wants them (a sheet is not a puff).
+
+Judged by `sun`, `anvil`, `high2`, `seed3`, `away`, `climb`.
+
+### Leg 21: ice
+
+An anvil is smooth, fibrous, thin at its rim, and glows where the sun comes through. Old cloud
+high up is ice: no cauliflower, a long fringe drawn out along the wind, a thinner medium, an
+outline soft at any distance. The shaders have its height and its liveliness; the world could thin
+an anvil to its rim. Judged by `anvil`.
+
+### Leg 22: loose ends, then the review again
+
+- What is left of the artefacts: orphan puffs and knobs, sunlit turret tops afloat in shade.
+- Loading: a wordless gradient for 3.5 s, far longer on a slow device. A title until the canvas
+  comes? The clean screen is the author's.
+- Devices: what the cloud legs cost on the phone and on integrated graphics (`?bench`).
+- The review again, as it was made: the list above, with what is left of each.
 
 ## Done
 
@@ -242,6 +500,10 @@ until the author says otherwise.
   liveliness): far towers calmer, near ones pillows. The turrets only on the lobes' crowns: hardly a
   change (clipped to their shell, the lobes are plateaus). The turrets and lobes fading at twice the
   pixels a cell on towers: far towers cotton.
+- **Turrets the lobes' own size on a tower's big bubbles** (leg 11, still in the code; the review of
+  2026-11-25): it took the carpet of 640 m beads away and left the lobes' lattice twice over:
+  florets of one size with one size of bump on them (`giant`, `?dbg=1`), beads still to both
+  reviewers. Every try so far tuned one lattice a level; leg 17 changes the sizes within one.
 - **Billows of one size on every bubble** (before the legs, the author: "puffs all one size"): a 400 m
   crown carried lobes as big as a 4 km head's. Without the 640 m turrets a surface reads as smooth
   dough; a billow scale for heaps by their height took their turrets: dough again.
@@ -454,8 +716,10 @@ until the author says otherwise.
 - **Measured on few devices**: the NVIDIA laptop (60 fps, the clouds at their 0.75 ceiling at
   640×360), a desktop in Firefox (60 fps at 2173×1058, clouds 0.36), a mid-range Mali phone in Chrome
   (57–59 fps at 0.56–0.8 Mpx, the clouds at their floor, blurry; 4 hitches in the first seconds, one
-  of them the canvas shrinking from 1.15 Mpx). Never an integrated GPU or Safari (whose WGSL compiler
-  hasn't seen the shaders): `?bench` reports them. On the phone the world's bakes read 5.8× the
+  of them the canvas shrinking from 1.15 Mpx). Never Safari (whose WGSL compiler hasn't seen the
+  shaders), and of an integrated GPU only that the tools run on one (Intel gen-9, 2026-11-25: a
+  960×540 still with its bake takes 25–45 s, the views with their measurements over half an hour;
+  its frame rates are unknown): `?bench` reports them. On the phone the world's bakes read 5.8× the
   laptop's estimate, maybe overstated as the passes' sum was: fewer bakes a frame, slower streaming,
   never a hitch.
 - **The world's worker**: the bakes' estimate (`bakeCost`) is one laptop's constants, scaled by what
@@ -478,7 +742,7 @@ until the author says otherwise.
   (stats.js), the worst dying cells whose head outlived its column (age/life 1.1–1.7). A wider column
   fills in under overhangs: 21 within 100 km, on 8 towers, the nearest the 33rd tower from the start.
 - **Close-up surfaces** of towers can look blotchy in low sun (`close`): the lumps' own shade, the
-  light march's first ~90 m.
+  light march's first ~90 m. The review: plaster where lit, rock in shade (legs 16, 18).
 - **Past the sun map's fine level** (8 km across the sun's way, 8 km away from it, 12 km toward it)
   far towers' lobes are not shaded by the lobes beside them toward the sun (the coarse level's
   texels sit inside the tower's body). A reference with the fine level everywhere (230 MB) gives far
@@ -496,11 +760,13 @@ until the author says otherwise.
   nearer casts the soft one, one farther takes all the light, and the map's far lookup reads a
   texel up to 320 m before the seam, so a cloud 1.0–1.4 km off shades hard (`close`: a lobe in full
   shadow that a march split at exactly 1.4 km leaves softly lit; neither is a real cloud's).
-- **The clouds hold still** (the author, 2026-11-22: nothing has to drift, for now). With drift back,
+- **The clouds hold still** (the author, 2026-11-22: nothing has to drift, for now), **the sun
+  doesn't set and there is no sound** (the author, 2026-11-25: out for now). With drift back,
   the sun map bakes all the time (0.11–0.15 ms a frame, lagging the billows by 2 s, 7 m); or it holds
   the large shapes alone, and the light march the billows' shadows near by.
-- **Popcorn far away**: `away`'s horizon (60–80 km) is still beads: the 1280 m lobes, 90% of their
-  cells filled, the turrets faded by then. A real tower shows 2–4 dominant turrets, smaller domes on
+- **Popcorn** (leg 17): `away`'s horizon (60–80 km) is still beads: the 1280 m lobes, 90% of their
+  cells filled, the turrets faded by then; and so are the lit towers nearer by (`giant`, `tower`,
+  `start`: the review of 2026-11-25). A real tower shows 2–4 dominant turrets, smaller domes on
   their upper, sunward shoulders, older parts smoother (what failed: decisions). **Crowns perched on
   heads**: the first crowns, about a third of their head, remain (`start`'s middle tower's two
   bumps). **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird, `sun`,
@@ -511,24 +777,27 @@ until the author says otherwise.
 - **Silver linings** of far towers are a pixel wide: a backlit edge 10–20 km off lies within a trace
   pixel (60–80 m) and doesn't blaze (`sun`'s right tower, `anvil`). Thin cloud over the outline's
   footprint, the light march thinned alike, makes them for +7% of the trace (leg 10, step 3); the
-  author: not worth it (2026-11-23).
-- **Inside cloud**, deep in a tower (`inside`), is an even tan card (lit evenly by diffusion, its
-  density doesn't show); in motion faint mist puffs drift past and the brightness changes slowly
-  (the author's eyes). The puffs and the camera's shake go by `inCloud`, the density at the camera's
-  point. In cloud the history reprojects the fog by the depth of what shows through it: its own
-  shreds near the camera may smear in motion. Out of a cloud's edge far clouds are a little soft for
-  about a second (leg 9, step 8). A metre under a top (`entry`): faint blocks where the camera's fog
-  meets the surface seen from outside, one dark, a few pixels wide, for a fifth of a second of the
-  skim flight (the stored shapes' texels at a grazing angle, leg 9, step 7).
-- **The shade is blue**, not the reviews' lavender grey: the sky's own colour, tinted bluer (COOL_UP,
-  COOL_ANTI) and saturated (CLOUD_SAT). Lavender needs red in the shade's light, and the warm bounce
-  from sunlit cloud is there only where cloud around is lit. Without the tints, or with the
-  saturation on the sun's light alone, the author saw barely a difference (leg 8). `under` is navy
+  author: not worth it (2026-11-23). Leg 16's fringe is that thin cloud, there for its own sake.
+- **Inside cloud** (leg 19), deep in a tower (`inside`), is an even tan card (lit evenly by
+  diffusion, its density doesn't show); in motion faint mist puffs drift past and the brightness
+  changes slowly (the author's eyes). The puffs and the camera's shake go by `inCloud`, the density
+  at the camera's point. In cloud the history reprojects the fog by the depth of what shows through
+  it: its own shreds near the camera may smear in motion. Out of a cloud's edge far clouds are a
+  little soft for about a second (leg 9, step 8). A metre under a top (`entry`): faint blocks where
+  the camera's fog meets the surface seen from outside, one dark, a few pixels wide, for a fifth of
+  a second of the skim flight (the stored shapes' texels at a grazing angle, leg 9, step 7).
+- **The shade is blue**, navy at the exposure it has (leg 13), not the reviews' lavender grey: the
+  sky's own colour, tinted bluer (trace.wgsl: `ambUp`, `skyAnti`) and saturated (CLOUD_SAT).
+  Lavender needs red in the shade's light, and the warm bounce from sunlit cloud is there only
+  where cloud around is lit. Without the tints, or with the saturation on the sun's light alone,
+  the author saw barely a difference (leg 8). `under` is navy
   (the sea beneath lies in the anvil's shadow for tens of km) and the bird in shade nearly vanishes
-  into it: kept, physically right (the author, 2026-11-22).
-- **Near the camera** the sea into the sun is soft, glowing mush (`start` lower left, `seed3`; a soft
-  bluish patch beside the bird in `start`) and the shaded sea seen from above blotchy (`giant`'s
-  foreground): the light there is diffusion and sky light, smooth over tens of metres.
+  into it: kept as physically right on 2026-11-22, and no longer (the author, 2026-11-25: beautiful
+  wins where the two part; legs 13, 15, 19).
+- **Near the camera** (leg 16) every cloud within about a kilometre is a smooth gradient with a soft
+  edge, not the sea into the sun alone (`start` lower left, `seed3`; a soft bluish patch beside the
+  bird in `start`), and the shaded sea seen from above is blotchy (`giant`'s foreground): the light
+  there is diffusion and sky light, smooth over tens of metres, and under ~150 m the domes end.
 - **The light against its reference** (`node tools/light/reference.js`): an isolated small ball's lit
   side 5.7× (the trace can't see how little cloud lies behind a billow), its edge 1.75×; a tower's
   shade 3.4–3.7× a ball's, 0.6× a wall's (real towers lie between); tops with the sun behind
@@ -537,7 +806,7 @@ until the author says otherwise.
   toward the sun at the horizon) and 0.66–0.77 over one in shadow, a tower's shade 0.65×, a top
   beside a sunlit wall a kilometre off 0.36–0.81× (the lit map sees the sea's lit share, not a wall
   rising beyond it).
-- **Colour and range** (for the author): lit faces (190,145,108) where a sunset photo shows orange to
+- **Colour and range** (leg 13): lit faces (190,145,108) where a sunset photo shows orange to
   salmon, the shade at 45% of them (as of leg 2); toward the sun the haze is a milky band over the
   low sea (`high2`, `seed3`). Lit faces darker since leg 2 (`tower`'s 174 → 152 luminance), the
   exposure kept at 14 (raised, the glare toward the sun goes milky). The reviews disagree: deeper
@@ -545,7 +814,8 @@ until the author says otherwise.
   CLOUD_SAT, the exposure.
 - **Distant flat tops can look like floating lenses** (their bodies sink into haze and behind the
   curvature); real sunsets seen from an airliner show the same, but watch it.
-- **The cirrus and the two high layers tile** every 32 and 64 km (seen in no capture).
+- **The cirrus and the two high layers tile** every 32 and 64 km (seen in no capture), and their
+  streaks all run one way (leg 20).
 - `dropAdrift` also removes the tops of some dying towers whose columns evaporated (by design: no
   floating fragments): ~30% fewer towers reach the ceiling.
 - **Other places can be emptier** than the start (the spawn draw makes the start look good): ~30% of
@@ -555,7 +825,9 @@ until the author says otherwise.
 - **A lattice at the level handovers** (~10–13 and ~40–55 km: `away`'s middle distance, `anvil`'s
   far sea): pixels dither between two levels; the history averages it at rest, 12-frame captures
   show it. At 40–55 km it is L2's 2 km columns; at 10–13 km L1's billows, sized from 512 m cells,
-  rounder and larger than L0's. Levers: blending (+12–18%, decisions), L1's billow sizes nearer L0's.
+  rounder and larger than L0's. Levers: blending (+12–18%, decisions), L1's billow sizes nearer L0's
+  (leg 17); the first half second's checkerboard on thin far cloud is the same dither, before the
+  history holds it (leg 14).
 - **The grain** in flight (tools/measure.js): 0.06–0.72% of a frame over the motion strip, 0.54 and
   1.18% past near clouds (`past`, `gap`). The march has no jitter; what differs is the trace's pixel
   where clouds move past: a very near cloud's thin outline stepping at it (samples of the distance
@@ -568,7 +840,7 @@ until the author says otherwise.
   clamp and blend rate, the approach's floor (trace.wgsl).
 - **The held climb** (since 2026-11-24): its rate and feel are for the author's hands; `vClimb`
   (flight.js) is the lever (52: 27 m/s up at 30°; 44: 17 at 20°). The air is the same everywhere: lift
-  tied to the world's thermals (stronger under a growing tower) is an idea not tried.
+  tied to the world's thermals (stronger under a growing tower) is leg 14's.
 - **The measurements' limits** are set for 960×540: at smaller sizes sunlit rims make `high2` and
   `anvil` warn (CLAUDE.md §4).
 - The trace binds 16 sampled textures, core WebGPU's limit a stage: another needs two of them in one
