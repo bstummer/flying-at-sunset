@@ -78,12 +78,13 @@ towers that rise above the sea, but the bird is softly kept from sinking deep in
     volumes (128 m, 512 m and 2 km cells, reaching about 260 km). They are addressed toroidally,
     so as you fly only the strips that come into view are generated and baked. Rendering happens
     around a moving origin, so precision holds on endless flights.
-* **Light** — a short light march toward the sun with multiple-scattering octaves and a two-lobe
-  phase function (golden lit faces, bright silver linings when backlit), light diffusing through
-  the clouds (golden in thin parts, cooler where it has travelled far), sky light that depends on
-  which way each bulge faces (deep blue zenith, warm bounce from the sea below, golden or violet
-  sky on the sides), and a camera-centred *shadow volume* so heaps and towers cast long
-  shadows across the cloud sea and into its valleys.
+* **Light** — a short light march toward the sun with multiple-scattering octaves, a two-lobe
+  phase function and light diffusing through the clouds, all fitted to a Monte Carlo simulation of
+  the cloud medium (golden lit faces, rims that glow when backlit); sky light that depends on
+  which way each bulge faces and how open the sky is above it (deep blue zenith, light from the sea
+  below, warm where it lies in the sun, golden or violet sky on the sides); and a *sun map* along
+  the sun's rays around the camera, with a coarser shadow volume beyond it, so heaps and towers
+  cast long shadows across the cloud sea and into its valleys.
 * **Speed** — empty space skipping (the baked distance volumes, coarse to fine),
   optical-depth driven steps, clouds traced at a reduced, dynamically adjusted resolution and
   reconstructed with temporal upsampling (reprojection + variance clamping). Dynamic
@@ -94,8 +95,8 @@ towers that rise above the sea, but the bird is softly kept from sinking deep in
   paper layers let some light through, flexing wings, and mist when flying through cloud.
 * **Flight & camera** — an energy-based glider with coordinated banked turns and spring-smoothed
   input; a chase camera that lags, swings wide in turns, leans into them and widens its field of
-  view with speed. Drifting mist puffs and a lighter near-camera density give the feeling of
-  flying through cloud.
+  view with speed. In cloud, drifting mist puffs, the cloud fraying into shreds around the camera
+  and an exposure that adapts to the fog give the feeling of flying through it.
 * **Image** — HDR throughout, bloom, occlusion-aware sun rays, a hue-preserving filmic tone
   curve with a golden-hour split tone, vignette and fine grain.
 * **WebGPU** — all of it is drawn with WebGPU and shaders in WGSL (the piece was written for
@@ -106,7 +107,7 @@ towers that rise above the sea, but the bird is softly kept from sinking deep in
 Requires Node 22.12+.
 
 ```sh
-npm install      # also downloads the headless Chromium used for screenshots
+npm install      # also downloads the Chromium the tools run, headless
 npm run dev      # dev server, reloading on every edit
 npm run verify   # tests, build, checks and screenshots: run before every push
 ```
@@ -114,9 +115,10 @@ npm run verify   # tests, build, checks and screenshots: run before every push
 On a fresh Linux machine, also run `npx playwright install-deps chromium` once (it installs system
 libraries with apt, so it needs root or sudo). On a machine without a GPU, `npm run verify:ci` verifies
 as CI does, with SwiftShader, which WebGPU has on Linux only: on Windows or macOS, run it in a Linux
-container with Docker, `node tools/linux.js npm run verify:ci`; its screenshots match CI's.
+container with Docker, `node tools/linux.js npm run verify:ci`; its screenshots match CI's, but
+for a stray pixel a level off.
 
-The build is `dist/index.html`. GitHub Actions verifies every push. `main`'s, once verified, is deployed
-to Pages and published as the download above; every other branch's goes up at once, unverified, at
-`https://bstummer.github.io/flying-at-sunset/<branch>/`. [CLAUDE.md](CLAUDE.md) holds the project's
+The build is `dist/index.html`. GitHub Actions verifies every push that changes more than Markdown.
+`main`'s, once verified, is deployed to Pages and published as the download above; every other
+branch's goes up at once, unverified, at `https://bstummer.github.io/flying-at-sunset/<branch>/`. [CLAUDE.md](CLAUDE.md) holds the project's
 rules, architecture and workflow; [PLAN.md](PLAN.md) what was tried and failed, and what is still open.
