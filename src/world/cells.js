@@ -6,15 +6,17 @@
 // - growCell: a cell sends up pulses through its life, weak as it builds up, strongest in its prime;
 //   no bubble bigger than R_TH (a bigger cell sends more of them). Each pulse is lifted alone first
 //   (thermals.js): if it rises past H_FLAT it is tall and grown in full as 3D bubbles, else its
-//   pieces become 2D domes on the sea.
+//   pieces become 2D domes on the sea. Each 3D bubble carries how big its billows are (bs: a
+//   quarter to two thirds of its radius, drawn per bubble: the shaders grow lobes only on big ones)
+//   and how lively (act: young heads 1, fading with age, sooner in the wake: old parts soften).
 // - subsidenceAt: air sinking around a stronger cell nearby holds weaker ones down (a stronger
 //   inversion, less buoyancy, a lower top), which spaces the towers. A cell's outflow also sets off
 //   younger cells near it, mostly downwind, two generations deep.
 // - tierCell grows the cells of one grid cell, dropping a cell's 3D bubbles if any comes near the
 //   bird's start, bubbles a bigger one holds (pruneBubbles) and pieces that don't hang together with
 //   the sea (dropAdrift: cut off, they would evaporate first), and sums up each tower for the test
-//   views and the tools. Grid cells are cached (separately for the coarsest clipmap level, which
-//   leaves out small cells and small bubbles); worldGC forgets far ones. What a place holds never depends on
+//   views and the tools. Grid cells are cached (separately for the coarsest clipmap level, grown
+//   without the pieces under 600 m); worldGC forgets far ones. What a place holds never depends on
 //   what was asked before (tests/world.test.js). forEachDome, forEachSys: what lies over a box.
 // - The spawn draw, as the module loads: the restlessness field is drawn again (REST_O, up to 64
 //   draws) until the start is calm and open toward the sun, with strong cells 12–40 km off to its
@@ -27,15 +29,14 @@ import { clamp, lerp, mulberry32, PI, sat } from '../math.js';
 import { cellRng, gauss, hashU, poisson } from './noise.js';
 import { airAt, REST_O, restAt, seaLevelAt, setRestOffset } from './air.js';
 import { ellDist } from './shapes.js';
-import { H_FLAT, headUp, lift, nearStart, placeDome, R_TH, settle, START_Y } from './thermals.js';
+import { H_FLAT, headUp, lifeOf, lift, nearStart, placeDome, R_TH, replay, settle, START_Y } from './thermals.js';
 
 // A cell is a place where bubbles keep rising for a while. Its potential P (m) is the size of the
 // strongest bubbles it can send up: small cells are common, big ones rare (a power law), a little
 // more of them where the air is restless. Calm air holds even big ones down under its inversion
 // (they spread out into broad low heaps); restless air lets them through. It sends bubbles up at
 // intervals, weak while it builds up, strongest in its prime, dying down at the end; it may also
-// drift. Cells are kept by size in grids of three sizes (only for quick lookups; for the coarsest
-// clipmap level the small ones are grown without the bubbles their bubbles shed).
+// drift. Cells are kept by size in grids of three sizes (only for quick lookups).
 const P_MIN = 600, ALPHA = 2.0, P_CUT = 2800;
 const TOWER_RATE = params.towers ?? 1;
 const cellDensity = I => 0.36e-6 * (0.12 + 0.88 * I);       // cells per m^2 with P > P_MIN
@@ -45,12 +46,13 @@ const TIERS = [
   { S: 32000, pa: 3000, pb: 8000, salt: 0x70e5, cache: new Map(), coarse: new Map(), sites: new Map() },
 ];
 const TIER_REACH = 2;   // grid cells: how far a cell's clouds may reach from its own grid cell
-// coarse: low pulses without what their bubbles shed (all the coarsest level needs of them; tall
-// ones are grown in full but for the small bubbles it leaves out, so towers look the same from
-// every distance)
+// coarse: for the coarsest clipmap level, every pulse grown as for the others but without the pieces
+// under COARSE_R, which it can't hold (grown across its 524 km they would take seconds): its heaps
+// and towers are the others' (tools/world/levels.js)
+const COARSE_R = 600;
 function growCell(c, coarse, out3, out2) {
   const A = c.A, rng = mulberry32(c.seed);
-  const C = { A, age: c.age, depth: c.P < 1000 ? 2 : 3, rootsOnly: true, paths: [], heads: [] };
+  const C = { A, age: c.age, depth: c.P < 1000 ? 2 : 3, log: null, paths: [], heads: [] };
   // the top of the cloud the earlier bubbles have built by time t (they rise through it)
   C.cloudTop = t => {
     let top = -1e9;
@@ -76,20 +78,15 @@ function growCell(c, coarse, out3, out2) {
     const rho = 0.6 * c.P * Math.sqrt(q) * (1 - 0.5 * Math.min(s, 1));
     const lx = c.x + c.vx * (t - c.age) + Math.cos(a) * rho, lz = c.z + c.vz * (t - c.age) + Math.sin(a) * rho;
     const zs = clamp(sea[0] + sea[1] * (lx - sea[3]) + sea[2] * (lz - sea[4]), zc - 1500, zc + 1500);
-    // the bubble alone first: how high it gets decides whether this pulse stays low (its path is
-    // the same whatever it sheds: that draws from streams of its own)
-    let list = [];
-    const path = [t, zs];
-    Object.assign(C, { rootsOnly: true, trails: false, path, top: -1e9 });
-    let hd = lift(C, lx, zs - 0.6 * r0, lz, r0, w0, 1, t, 0, 0, C.depth, mulberry32(seed), list, null);
+    // the bubble alone first: how high it gets decides whether this pulse stays low; then what it
+    // shed (its path is the same whatever it sheds: that draws from streams of its own)
+    const path = [t, zs], log = [], list = [];
+    Object.assign(C, { log, trails: false, path, top: -1e9 });
+    const hd = lift(C, lx, zs - 0.6 * r0, lz, r0, w0, 1, t, 0, 0, C.depth, mulberry32(seed), [], null);
     const tall = Math.max(C.top, hd.y + headUp(A, hd)) >= zs + H_FLAT;
     path.push(Math.max(hd.t, t + 1), hd.y + 0.5 * hd.r);
-    if (tall || !coarse) {
-      // (what the coarsest level would leave out is not grown for it)
-      Object.assign(C, { rootsOnly: false, trails: tall, path: [], minR: !tall ? 150 : coarse ? 600 : 250 });
-      list = [];
-      hd = lift(C, lx, zs - 0.6 * r0, lz, r0, w0, 1, t, 0, 0, C.depth, mulberry32(seed), list, null);
-    }
+    Object.assign(C, { log: null, trails: tall, minR: coarse ? COARSE_R : tall ? 250 : 150 });
+    replay(C, log, hd, list);
     C.paths.push(path);
     if (!hd.still) C.heads.push(hd);
     // what it left, aged to the moment the world shows: tall pulses as bubbles (3D), low ones as
@@ -108,11 +105,31 @@ function growCell(c, coarse, out3, out2) {
       }
     } else {
       // (bubbles too small to matter beside the billows are left out whole, wake and all)
-      for (const e of list) if (e.r > 420) settle(c, e, pieces);
+      // a head evaporates no slower than the column under it: as far as the middle of the wake it
+      // left, above the lowest third of its rise (near the sea the moist air keeps the column); a
+      // crown without a wake of its own, as its parent (a wide top on a stem the dry air has eaten
+      // would be a mushroom)
+      const stem = new Map();
+      for (const e of list) {
+        if (e.head || e.r <= 420 || e.y < zs + (e.of.y - zs) / 3) continue;
+        const l = stem.get(e.of), ev = (c.age - e.t) / lifeOf(c, e);
+        if (l) l.push(ev); else stem.set(e.of, [ev]);
+      }
+      for (const e of list.filter(e => e.head).sort((p, q) => q.depth - p.depth)) {
+        const l = stem.get(e);
+        if (l) e.colEv = l.sort((p, q) => p - q)[l.length >> 1];
+        else if (e.parent && e.parent.colEv !== undefined) e.colEv = e.parent.colEv;
+      }
+      for (const e of list) if (e.r > 420) settle(c, e, pieces, true);
       for (const p of pieces) {
         if (Math.max(p.rh, p.ryU) < 200 || p.y + p.ryU < zs - 150) continue;
         const rmin = Math.min(p.rh * Math.min(p.an, 1 / p.an), p.ryU, p.ryD);
-        out3.push({ x: p.x, y: p.y, z: p.z, rh: p.rh, ryU: p.ryU, ryD: p.ryD, an: p.an, ang: p.ang, k: p.kf * rmin,
+        // how big the billows on it are: a quarter to two thirds of its radius, each bubble its own
+        // (one boils in small turrets, its neighbour in broad lobes); and how lively they still are:
+        // the eddies die down as a piece ages, sooner in the wake than in a head (old parts soften)
+        const bs = p.rh * lerp(0.25, 0.7, hashU(Math.floor(p.x), Math.floor(p.z), 0xb105) / 4294967296);
+        const act = Math.exp(-p.age / 700) * (p.kind === 0 ? 0.8 : 1);
+        out3.push({ x: p.x, y: p.y, z: p.z, rh: p.rh, ryU: p.ryU, ryD: p.ryD, an: p.an, ang: p.ang, k: p.kf * rmin, bs, act,
           br: Math.max(p.rh * Math.max(p.an, 1 / p.an), p.ryU, p.ryD), cell: c });
       }
     }
@@ -287,7 +304,6 @@ export function worldGC(cx, cz) {
   }
 }
 function forEachTierCell(T, x0, z0, x1, z1, fn, coarse) {
-  if (coarse && T.small) return;     // (what small cells make is finer than the coarsest level)
   const R = T.small ? 1 : TIER_REACH;
   const i0 = Math.floor(x0 / T.S) - R, i1 = Math.floor(x1 / T.S) + R, j0 = Math.floor(z0 / T.S) - R, j1 = Math.floor(z1 / T.S) + R;
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
@@ -295,12 +311,11 @@ function forEachTierCell(T, x0, z0, x1, z1, fn, coarse) {
     if (b[2] > x0 && b[0] < x1 && b[3] > z0 && b[1] < z1) fn(c);
   }
 }
-// every dome whose footprint touches the box (rootsOnly: only those that grew straight out of
-// the sea: the coarsest level)
-export function forEachDome(x0, z0, x1, z1, fn, rootsOnly = false) {
+// every dome whose footprint touches the box (coarse: as the coarsest level sees them)
+export function forEachDome(x0, z0, x1, z1, fn, coarse = false) {
   for (const T of TIERS) forEachTierCell(T, x0, z0, x1, z1, c => {
-    for (const d of c.domes) if ((!rootsOnly || d.root) && d.x + d.reach > x0 && d.x - d.reach < x1 && d.z + d.reach > z0 && d.z - d.reach < z1) fn(d);
-  }, rootsOnly);
+    for (const d of c.domes) if (d.x + d.reach > x0 && d.x - d.reach < x1 && d.z + d.reach > z0 && d.z - d.reach < z1) fn(d);
+  }, coarse);
 }
 // every grid cell holding bubbles (3D) near the box (coarse: as the coarsest level sees them)
 export function forEachSys(x0, z0, x1, z1, fn, coarse = false) {

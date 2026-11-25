@@ -1,8 +1,8 @@
 // WebGPU: the device and the canvas; textures, buffers, samplers, uniforms, pipelines, passes
 //
 // pipeline() (render) and compute() put a header in front of each shader (a .wgsl file with its
-// chunks, tools/wgsl.js): the constants JS and WGSL share (SHARED: CLOUD_TOP and the noise tiles,
-// from constants.js), its uniform struct U (bound as u, laid out by WGSL's rules from the shader
+// chunks, tools/wgsl.js): the constants JS and WGSL share (SHARED: constants.js's FOR_SHADERS, the
+// ceiling, the noise tiles, the atmosphere), its uniform struct U (bound as u, laid out by WGSL's rules from the shader
 // module's U_... fields), the samplers (sLin, sNear, sRep, sVol, sMip, sShadow) and every resource
 // its code names outside comments, all registered here: textures tX, storage textures oX (a compute
 // shader's output) and storage buffers bX (a struct one holds is declared in a chunk its shaders
@@ -14,10 +14,14 @@
 // every pass until a submit go into one buffer at 256-byte steps (dynamic offsets); flush() writes
 // it and submits. Pipelines compile in parallel (pipelinesReady). The device is awaited at the top
 // level: without WebGPU the page shows its note and this module throws, which stops the page.
+// Running out of memory: an error scope opens here, around everything the modules make as they
+// load (main.js closes it before the first frame: keptFailed), and render/targets.js opens its own
+// around the size-dependent targets; gpuBytes() counts what texture() and buffer() made (from the
+// formats: the driver's own padding aside).
 
 import { TEST } from '../core/params.js';
 import { canvas, fail } from '../core/page.js';
-import { CLOUD_TOP, DETAIL_TILE, SHAPE_TILE } from '../constants.js';
+import { FOR_SHADERS } from '../constants.js';
 
 // (without WebGPU the piece cannot run: say why, and stop)
 const NEEDS = 'This piece needs WebGPU. Please open it in a recent version of Chrome, Edge, Safari or Firefox.';
@@ -33,6 +37,11 @@ export const TIMESTAMPS = device.features.has('timestamp-query');
 // (a lost device, e.g. after a GPU reset: main.js reloads the page)
 export const gpuState = { lost: null };
 device.lost.then(info => { gpuState.lost = info; });
+// (the textures and buffers made as the modules load, which never shrink: whether one ran out)
+device.pushErrorScope('out-of-memory');
+export const keptFailed = () => device.popErrorScope().then(e => Boolean(e), () => false);
+let bytes = 0;
+export const gpuBytes = () => bytes;
 
 // the canvas (tests copy its texture to read the image back)
 export const context = canvas.getContext('webgpu');
@@ -43,9 +52,11 @@ context.configure({ device, format: CANVAS_FORMAT, alphaMode: 'opaque', usage: G
 const TU = GPUTextureUsage;
 export const RENDER = TU.TEXTURE_BINDING | TU.RENDER_ATTACHMENT;   // the usual: drawn into, then read
 let nextId = 0;
+const TEXEL_BYTES = { rgba16float: 8, rg16float: 4, r16float: 2, rgba8unorm: 4, rg8unorm: 2, r8unorm: 1, depth24plus: 4 };
 // a texture and its view; `id` keys the cached bind groups
 export function texture(w, h, format, { depth = 1, dim = '2d', mips = 1, samples = 1, usage = RENDER } = {}) {
   const tex = device.createTexture({ size: [w, h, depth], format, dimension: dim, mipLevelCount: mips, sampleCount: samples, usage });
+  for (let k = 0; k < mips; k++) bytes += Math.max(1, w >> k) * Math.max(1, h >> k) * depth * samples * (TEXEL_BYTES[format] || 4);
   return { tex, view: tex.createView(), w, h, d: depth, format, id: ++nextId };
 }
 // one mip level of a texture: to draw into, or to read while drawing the next
@@ -57,6 +68,7 @@ export const slices = (t, z, n = 1) => Array.from({ length: n }, (_, k) => ({ vi
 // a storage buffer (also copied from and written by the queue); `id` keys the cached bind groups
 export function buffer(size, usage = 0) {
   const buf = device.createBuffer({ size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | usage });
+  bytes += size;
   return { buf, size, id: ++nextId };
 }
 
@@ -75,6 +87,7 @@ const SAMPLERS = {
   sRep: smp('linear', 'repeat'),
   sVol: smp('linear', 'repeat', 'clamp-to-edge'),      // the clipmap volumes: toroidal across, clamped in height
   sMip: smp('linear', 'repeat', 'repeat', 'linear'),
+  sMipClamp: smp('linear', 'clamp-to-edge', 'clamp-to-edge', 'linear'),
   sShadow: device.createSampler({ compare: 'less-equal', magFilter: 'linear', minFilter: 'linear' }),
 };
 const SAMPLER_NAMES = Object.keys(SAMPLERS);
@@ -83,9 +96,9 @@ const SAMPLER_NAMES = Object.keys(SAMPLERS);
 // filtered) or 'depth'; and every storage texture a compute shader writes (oX: its format). A
 // pipeline binds those its shaders mention.
 const TEXTURES = {
-  tTrans: '2d', tMS: '2d', tSky: '2d', tShape: '3d', tDetail: '3d', tTsv: '3d',
-  tVol0: '3d', tVol1: '3d', tVol2: '3d', tCol0: '2d', tCol1: '2d', tCol2: '2d', tCol: '2d',
-  tCirrus: '2d', tLayers: '2d', tCur: '2d', tCurDepth: '2d', tHist: '2d', tSrc: '2d', tBird: 'raw', tScene: '2d',
+  tTrans: '2d', tMS: '2d', tSky: '2d', tShape: '3d', tDetail: '3d', tTsv: '3d', tSunMap: '3d', tSunMapC: '3d', tLit: '2d',
+  tVol0: '3d', tVol1: '3d', tVol2: '3d', tBs0: '3d', tBs1: '3d', tBs2: '3d', tCol0: '2d', tCol1: '2d', tCol2: '2d', tCol: '2d',
+  tCirrus: '2d', tLayers: '2d', tCur: '2d', tCurDepth: '2d', tHist: '2d', tHistFog: '2d', tSrc: '2d', tBird: 'raw', tScene: '2d',
   tBloom: '2d', tRays: '2d', tDbg: '2d', tDbg2: '2d', tShadowMap: 'depth',
   oShape: 'rgba16float', oDetail: 'rgba8unorm',
 };
@@ -101,7 +114,8 @@ const texKind = kind => TEX_KINDS[kind] ? ['texture', ...TEX_KINDS[kind]]
 // every storage buffer, by its WGSL name: its WGSL type (structs are declared by the shaders that
 // use them); `uniform`: a shader that only reads it binds it as a uniform buffer (the trace reads
 // the ambient light in its hottest loop)
-const BUFFERS = { bAmb: { type: 'Ambient', uniform: true }, bProbe: { type: 'Probe' }, bBub: { type: 'array<vec4f>' }, bTsv: { type: 'array<u32>' } };
+const BUFFERS = { bAmb: { type: 'Ambient', uniform: true }, bExpo: { type: 'Exposure', uniform: true }, bProbe: { type: 'Probe' }, bBub: { type: 'array<vec4f>' }, bTsv: { type: 'array<u32>' }, bSunMap: { type: 'array<u32>' },
+  bSmTail: { type: 'array<vec2f>' }, bSmSeg: { type: 'array<vec2f>' } };
 const BINDING = {};
 [...Object.keys(TEXTURES), ...Object.keys(BUFFERS)].forEach((n, k) => { BINDING[n] = 16 + k; });
 
@@ -126,6 +140,7 @@ function struct(fields) {
 // the uniforms of all draws until the next submit, in one buffer (each draw at its own offset)
 const ARENA = 1 << 20;
 const arena = device.createBuffer({ label: 'uniforms', size: ARENA, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+bytes += ARENA;
 const arenaData = new ArrayBuffer(ARENA), arenaF = new Float32Array(arenaData), arenaI = new Int32Array(arenaData);
 let arenaUsed = 0;
 
@@ -192,7 +207,12 @@ const FULLSCREEN = /* wgsl */ `
 const fullscreenModule = device.createShaderModule({ label: 'fullscreen', code: FULLSCREEN });
 const pipelines = [], compiling = [];
 // constants JS and WGSL share, declared in front of every shader (f32)
-const SHARED = Object.entries({ CLOUD_TOP, SHAPE_TILE, DETAIL_TILE }).map(([k, v]) => `const ${k} = ${Number.isInteger(v) ? v.toFixed(1) : v};
+// (a 3-array goes in as a vec3f; a 3x3, row-major in JS, by columns: DETAIL_ROT * p in WGSL is the JS
+// one applied to p)
+const wgslOf = v => !Array.isArray(v) ? (Number.isInteger(v) ? v.toFixed(1) : `${v}`)
+  : v.length === 3 ? `vec3f(${v.map(wgslOf).join(', ')})`
+    : `mat3x3f(${[0, 1, 2].flatMap(c => [0, 1, 2].map(r => wgslOf(v[r * 3 + c]))).join(', ')})`;
+const SHARED = Object.entries(FOR_SHADERS).map(([k, v]) => `const ${k} = ${wgslOf(v)};
 `).join('');
 // What a pipeline's shaders share: the header that declares its uniforms, samplers and the
 // resources its code names, and the bind group layout to match. writes: the storage buffers a
@@ -328,7 +348,7 @@ export async function readBuffer(b, n = b.size / 4) {
   return out;
 }
 // the texels of slices [z, z + nz) of a texture as numbers, rows packed
-const TEXEL = { rgba16float: [8, 4, true], r16float: [2, 1, true], rgba32float: [16, 4, false], r32float: [4, 1, false], rgba8unorm: [4, 4, false] };
+const TEXEL = { rgba16float: [8, 4, true], r16float: [2, 1, true], rg16float: [4, 2, true], rgba32float: [16, 4, false], r32float: [4, 1, false], rgba8unorm: [4, 4, false], rg8unorm: [2, 2, false] };
 export async function readTexture(t, z = 0, nz = 1) {
   const [bytes, comps, isHalf] = TEXEL[t.format];
   const row = Math.ceil(t.w * bytes / 256) * 256;
@@ -341,7 +361,7 @@ export async function readTexture(t, z = 0, nz = 1) {
   const raw = buf.getMappedRange(), n = t.w * comps, out = new Float32Array(n * t.h * nz);
   for (let r = 0; r < t.h * nz; r++) {
     if (isHalf) { const h = new Uint16Array(raw, r * row, n); for (let k = 0; k < n; k++) out[r * n + k] = fromHalf(h[k]); }
-    else if (t.format === 'rgba8unorm') { const b = new Uint8Array(raw, r * row, n); for (let k = 0; k < n; k++) out[r * n + k] = b[k] / 255; }
+    else if (t.format.endsWith('8unorm')) { const b = new Uint8Array(raw, r * row, n); for (let k = 0; k < n; k++) out[r * n + k] = b[k] / 255; }
     else out.set(new Float32Array(raw, r * row, n), r * n);
   }
   buf.unmap();

@@ -11,16 +11,19 @@
 //   modes      test (core/capture.js); bench (core/benchmark.js) and debug (core/readout.js), both
 //              off in the test mode
 //   the world  seed (7: world/noise.js), towers (1: the density of convective cells, world/cells.js)
-//   the bird   preset (a test view), pose (x,y,z[,yaw,pitch,bank]): where it starts,
+//   the bird   preset (a test view), pose (x,y,z[,yaw,pitch,bank,speed]): where it starts,
 //              flight/presets.js
 //   the look   view (0; 1..5: what goes into the final image), dbg (0; 1..7: the cloud debug views,
-//              also render/setup.js), tm (1: hue-preserving filmic, 0: ACES), con (1: contrast), haze
-//              (2.8e-5), exp (14: exposure), rays (0.18), bloom (0.09), bloomw (0.6: each coarser
-//              level's weight), bclamp (3000): render/frame.js
+//              also render/setup.js), raw (each frame's own trace, upsampled without the history:
+//              what a frame alone gives), tm (1: hue-preserving filmic, 0: ACES), con (1: contrast),
+//              haze (2.6e-5), exp (14: exposure), rays (0.18), bloom (0.09), bloomw (0.6: each
+//              coarser level's weight), bclamp (3000): render/frame.js
 //   benchmark  benchSeconds (8), benchWarmup (2): core/benchmark.js
 //   test mode  dt (0.0166), freeze: main.js; frames (24), keep (1), every (1), log, live, script:
 //              core/capture.js; w (960), h (540), scale (0.5): render/targets.js; closeup
-//              (right,up,forward): flight/camera.js; cpuprof: render/timing.js
+//              (right,up,forward): flight/camera.js; cpuprof: render/timing.js; jit (0: the frame
+//              the jitter sequences start at, render/frame.js: two renders of one flight that
+//              differ only in their noise, tools/measure.js)
 
 const flag = { flag: true };
 const text = { read: (raw) => raw, kind: 'text' };
@@ -43,15 +46,15 @@ const INT32 = 2 ** 31;
 export const PARAMS = {
   test: flag, bench: flag, debug: flag,
   seed: number(-INT32, INT32 - 1, { whole: true }), towers: number(0, 100),
-  preset: text, pose: numbers(3, 6),
-  view: number(0, 5, { whole: true }), dbg: number(0, 7, { whole: true }), tm: number(0, 1, { whole: true }),
+  preset: text, pose: numbers(3, 7),
+  view: number(0, 5, { whole: true }), dbg: number(0, 7, { whole: true }), raw: flag, tm: number(0, 1, { whole: true }),
   con: number(0, 10), haze: number(0, 1), exp: number(0, 1e6), rays: number(0, 100),
   bloom: number(0, 1), bloomw: number(0, 0.99), bclamp: number(0, 1e9),
   benchSeconds: number(0.05, 600), benchWarmup: number(0, 600),
   dt: number(0, 1), frames: number(1, 1e6, { whole: true }), keep: number(1, 1000, { whole: true }),
   every: number(1, 1000, { whole: true }), freeze: flag, log: flag, live: flag, script: text,
   w: number(1, 8192, { whole: true }), h: number(1, 8192, { whole: true }), scale: number(0.01, 1),
-  closeup: numbers(3, 3), cpuprof: flag,
+  closeup: numbers(3, 3), cpuprof: flag, jit: number(0, 1023, { whole: true }),
 };
 
 export function parseParams(search) {

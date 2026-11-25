@@ -30,9 +30,9 @@ fn skyColor(dir: vec3f) -> vec3f {
   var c = skyLookup(tSky, dir, u.sunDir, h);
   // high cirrus veil
   if (dir.y > 0.003) {
-    let hc = 9800.0 - u.camPos.y;
+    let hc = CIRRUS_H - u.camPos.y;
     let t = hc / max(dir.y, 0.02);
-    let p = (u.camPos.xz + dir.xz * t + u.cirrusOff) / 32000.0;
+    let p = (u.camPos.xz + dir.xz * t + u.cirrusOff) / CIRRUS_TILE;
     let cs = textureSampleLevel(tCirrus, sRep, p, 0.0);
     let a = cs.r * smoothstep(0.003, 0.08, dir.y);
     let cosT = dot(dir, u.sunDir);
@@ -56,16 +56,16 @@ fn skyColor(dir: vec3f) -> vec3f {
 }
 
 // --- thin high layers, drawn as sheets at fixed heights (they are thin next to the distances they
-// are seen from) and sorted against the clouds by depth
-const LAYER_INV2R = 0.5 / 6360000.0;
+// are seen from), in the same air as the clouds (airT, chunks/atmo.wgsl), and sorted against the
+// clouds by depth
 // distance along dir to height H over the curved planet (parabolic approximation), -1 if none
 fn distToHeight(h0: f32, dy: f32, H: f32) -> f32 {
   let c = h0 - H;
-  let D = dy * dy - 4.0 * LAYER_INV2R * c;
+  let D = dy * dy - 4.0 * INV2R * c;
   if (D < 0.0) { return -1.0; }
   let q = -0.5 * (dy + select(-1.0, 1.0, dy >= 0.0) * sqrt(D));
   if (abs(q) < 1e-9) { return -1.0; }
-  let r1 = q / LAYER_INV2R;
+  let r1 = q / INV2R;
   let r2 = c / q;
   let tn = min(r1, r2);
   let tf = max(r1, r2);
@@ -73,9 +73,9 @@ fn distToHeight(h0: f32, dy: f32, H: f32) -> f32 {
 }
 // premultiplied colour + alpha of high layer k at distance tL along dir
 fn highLayer(k: i32, dir: vec3f, tL: f32, behind: vec3f) -> vec4f {
-  let H = select(7700.0, 6300.0, k == 0);
-  let p = (u.camPos.xz + dir.xz * tL + u.layerOff) / 64000.0;
-  let slope = abs(dir.y + 2.0 * tL * LAYER_INV2R);        // ray slope at the layer
+  let H = select(LAYER_H1, LAYER_H0, k == 0);
+  let p = (u.camPos.xz + dir.xz * tL + u.layerOff) / LAYER_TILE;
+  let slope = abs(dir.y + 2.0 * tL * INV2R);        // ray slope at the layer
   let foot = tL * 2.0 * u.tanHalf.y / u.res.y / max(slope, 0.03);
   let tx = textureSampleLevel(tLayers, sMip, p, log2(max(foot / 62.5, 1.0)));
   let dens = select(tx.g, tx.r, k == 0);
@@ -87,10 +87,14 @@ fn highLayer(k: i32, dir: vec3f, tL: f32, behind: vec3f) -> vec4f {
   let cosT = dot(dir, u.sunDir);
   let ph = HG(cosT, 0.7);
   let c = u.layerCol[k] * (0.22 + 3.2 * ph) * (0.7 + 0.5 * tx.b) + behind * 0.45;
-  return vec4f(c * a, a);
+  // the air between: as the clouds that far off, it sinks into the horizon sky's colour (unhazed, a
+  // layer 50–60 km off showed as a bright line across the hazed tower behind it)
+  let th = airT(tL, u.camPos.y, dir.y, u.hazeK);
+  let haze = skyLookup(tSky, normalize(vec3f(dir.x, max(dir.y, 0.004), dir.z)), u.sunDir, u.camPos.y * 0.001);
+  return vec4f((c * th + haze * (1.0 - luma(th))) * a, a);
 }
 
-struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
+struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f, @location(2) fog: f32 }
 @fragment fn fs(@builtin(position) pos: vec4f) -> Out {
   let uv = pos.xy / u.res;
   let ndc = uv * 2.0 - 1.0;
@@ -118,32 +122,70 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
   m1 /= 9.0;
   m2 /= 9.0;
   let sd = sqrt(max(m2 - m1 * m1, vec4f(0.0)));
-  let dkm = textureLoad(tCurDepth, clamp(vec2i(lpr), vec2i(0), vec2i(u.lowRes) - 1), 0).r;
+  // (the clouds' depth, km, to reproject the history by; and how much light gets through the camera's
+  // own cloud, here and its range around: whatever the depth, that fog lies in front of the high layers)
+  let ip = clamp(vec2i(lpr), vec2i(0), vec2i(u.lowRes) - 1);
+  let cdep = textureLoad(tCurDepth, ip, 0).rg;
+  var dkm = cdep.x;
+  var fogLo = cdep.y;
+  var fogHi = cdep.y;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      let d = textureLoad(tCurDepth, clamp(ip + vec2i(x, y), vec2i(0), vec2i(u.lowRes) - 1), 0).rg;
+      dkm = min(dkm, d.x);
+      fogLo = min(fogLo, d.y);
+      fogHi = max(fogHi, d.y);
+    }
+  }
   var prel = dir * dkm * 1000.0 + u.camDelta;
   if (dkm > 5000.0) { prel = dir * 1.0e7; }
   let pc = u.prevVP * vec4f(prel, 1.0);
   let puv = pc.xy / pc.w * 0.5 + 0.5;
-  var valid = select(0.0, u.histValid, pc.w > 1e-6);
+  var valid = select(0.0, 1.0, pc.w > 1e-6 && u.histFrames > 0.5);
   valid *= step(0.0, puv.x) * step(puv.x, 1.0) * step(0.0, puv.y) * step(puv.y, 1.0);
-  var res = cur;
+  // (without history where a turn brings in the frame's edge: the neighbourhood's mean, softer than
+  // one jittered sample for the frames until the history has more; the first frame keeps its own
+  // sample, which the slow blend carries for many frames)
+  var res = select(cur, mix(m1, cur, 0.5), u.histFrames > 0.5);
+  var fog = cdep.y;
   if (valid > 0.5) {
     let hist = sampleHist(puv);
-    var lo = m1 - 1.25 * sd;
-    var hi = m1 + 1.25 * sd;
+    // how far the history lies from where it would at infinity, in pixels: the parallax of the
+    // camera's own movement, which one depth a pixel (a weighted mean) can place wrongly (ghosts at
+    // the edges between near and far). A turn, a bank, the camera's shake move the image by a
+    // rotation alone, which reprojects exactly: judged by all the motion, every turn tightened the
+    // clamp and the blend followed each frame's jittered rims (grain at the clouds' edges in flight)
+    let pci = u.prevVP * vec4f(dir * 1.0e7, 1.0);
+    let motion = length((puv - (pci.xy / pci.w * 0.5 + 0.5)) * u.res);
+    // the clamp box: tight in motion (no ghosts), wider where the image holds still, so the history
+    // settles over the jitter sequence instead of following each frame's crisp rims
+    let gam = mix(2.4, 1.25, saturate(motion * 0.5));
+    var lo = m1 - gam * sd;
+    var hi = m1 + gam * sd;
     lo = min(lo, cur);
     hi = max(hi, cur);
     let hc = clamp(hist, lo, hi);
     let fd = lp - lpr;
     let wcur = exp(-2.2 * dot(fd, fd));
-    let motion = length((puv - uv) * u.res);
-    let alpha = mix(0.07, 0.38, saturate(motion / 18.0)) * (0.55 + 0.45 * wcur);
-    res = mix(hc, cur, alpha);
+    // (and over the history's first 8 frames, their plain mean: from the start the first frame's one
+    // sample would linger for seconds at the slow rate)
+    let alpha = max(mix(0.035, 0.38, saturate(motion / 12.0)) * (0.55 + 0.45 * wcur), select(0.0, 1.0 / (u.histFrames + 1.0), u.histFrames < 8.0));
+    // the camera's own fog the history holds, against the range of it around now: past it by more
+    // than a drift through thin fog, the history is stale, and gives way to the neighbourhood's mean
+    // (a jittered sample there was grain while the fog cleared). Out of a cloud's edge, the fog it
+    // held lingered on the far clouds' outlines, where the clamp box spans cloud and sky: a pale rim
+    // for a second, as nothing moves there to quicken the blend. At the shreds' edges the range
+    // spans them.
+    let hFog = textureSampleLevel(tHistFog, sLin, puv, 0.0).r;
+    let stale = saturate(8.0 * (max(max(fogLo - hFog, hFog - fogHi), 0.0) - 0.06));
+    res = mix(mix(hc, m1, stale), cur, alpha);
+    fog = mix(mix(hFog, cdep.y, stale), cdep.y, alpha);
   }
   let sky = skyColor(dir);
   // high layers: behind the clouds they join the sky, in front of them they veil the clouds
-  let cd = select(dkm * 1000.0, 1.0e9, dkm > 5000.0);
-  var t0 = distToHeight(u.camPos.y, dir.y, 6300.0);
-  var t1 = distToHeight(u.camPos.y, dir.y, 7700.0);
+  let cd = select(select(dkm * 1000.0, 1.0e9, dkm > 5000.0), 0.0, cdep.y < 0.999);
+  var t0 = distToHeight(u.camPos.y, dir.y, LAYER_H0);
+  var t1 = distToHeight(u.camPos.y, dir.y, LAYER_H1);
   var l0 = vec4f(0.0);
   var l1 = vec4f(0.0);
   if (t0 > 0.0) { l0 = highLayer(0, dir, t0, sky); }
@@ -152,8 +194,17 @@ struct Out { @location(0) hist: vec4f, @location(1) scene: vec4f }
   var back = sky;
   var frontL = vec3f(0.0);
   var frontT = 1.0;
-  if (t1 > 0.0) { if (t1 < cd) { frontL = l1.rgb; frontT = 1.0 - l1.a; } else { back = back * (1.0 - l1.a) + l1.rgb; } }
-  if (t0 > 0.0) { if (t0 < cd) { frontL = l0.rgb + frontL * (1.0 - l0.a); frontT *= 1.0 - l0.a; } else { back = back * (1.0 - l0.a) + l0.rgb; } }
+  // (where a sheet meets a cloud it passes from in front of it to behind it over a tenth of the
+  // distance, not at once: the clouds' depth is one a low-resolution pixel, and cut there the
+  // meeting stair-stepped into a line across a far tower)
+  if (t1 > 0.0) {
+    let f = saturate((cd - t1) / max(0.1 * cd, 50.0));
+    frontL = l1.rgb * f; frontT = 1.0 - l1.a * f; back = back * (1.0 - l1.a * (1.0 - f)) + l1.rgb * (1.0 - f);
+  }
+  if (t0 > 0.0) {
+    let f = saturate((cd - t0) / max(0.1 * cd, 50.0));
+    frontL = l0.rgb * f + frontL * (1.0 - l0.a * f); frontT *= 1.0 - l0.a * f; back = back * (1.0 - l0.a * (1.0 - f)) + l0.rgb * (1.0 - f);
+  }
   // (the scene's alpha: how much sky shows past the clouds, the sun rays' mask)
-  return Out(res, vec4f(frontL + frontT * (back * res.a + res.rgb), res.a));
+  return Out(res, vec4f(frontL + frontT * (back * res.a + res.rgb), res.a), fog);
 }

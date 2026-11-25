@@ -1,6 +1,7 @@
-// Static textures, generated once (render/setup.js): the noise volumes (the cloud shapes: signed
-// distances to random spheres on four lattices; the detail: Worley and Perlin noise), the cirrus
-// and the two high layers (tileable value-noise fbm, chunks/vnoise.wgsl), the layers with mip levels
+// Static textures, generated once (render/setup.js): the noise volumes (the billows: signed distances
+// to random spheres on two bent lattices and fields of domes on two more; the detail: Worley and
+// Perlin noise, and domes on domes), the cirrus and the two high layers (tileable value-noise fbm,
+// chunks/vnoise.wgsl), the layers with mip levels
 
 // the noise volumes, each written whole by one compute dispatch (cells: lattice cells per tile of
 // each channel)

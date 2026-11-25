@@ -1,9 +1,13 @@
 // GPU timing with timestamp queries, where the browser has them (gpuTimer, else null): it drives
-// dynamic resolution (render/resolution.js) and feeds the readout and the benchmark. Each group of
-// passes (tBegin .. tEnd) writes two timestamps: at the start of its first pass and at the end of
-// each pass (the last one stays); a group without passes this frame (the world, mostly) took no GPU
-// time. They are read back once the GPU is done. ?cpuprof: their sums over a test run
-// (window.__gpu, tools/screenshot.js --profile).
+// dynamic resolution (render/resolution.js), scales the world bakes' estimate (render/stream.js)
+// and feeds the readout and the benchmark. Each group of passes (tBegin .. tEnd) writes two
+// timestamps: at the start of its first pass and at the end of each pass (the last one stays); a
+// group without passes this frame (the world, mostly) took no GPU time. They are read back once the
+// GPU is done; tEnd(then): then(ms) gets the group's time when it is. Per frame, the groups' times
+// summed and the span from its first pass's start to its last pass's end (where passes overlap,
+// as on tile-based GPUs, the sum counts the overlap again: the span is the frame's GPU time):
+// onFrame (the benchmark), frames() and their smoothed spanMs and sumMs (render/resolution.js). ?cpuprof: their sums over a test run (window.__gpu,
+// tools/screenshot.js --profile).
 
 import { params } from '../core/params.js';
 import { device, enc, hooks, TIMESTAMPS } from './gpu.js';
@@ -14,7 +18,7 @@ export const gpuTimer = TIMESTAMPS ? (() => {
   const querySet = device.createQuerySet({ type: 'timestamp', count: N });
   const resolveBuf = device.createBuffer({ size: N * 8, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
   const free = [];
-  let made = 0, pairs = 0, groups = [], cur = null, toMap = null, fresh = {};
+  let made = 0, pairs = 0, groups = [], cur = null, toMap = null, fresh = {}, frames = [];
   const ms = {}, sum = {}, maps = new Set();
   const record = (label, v) => {
     ms[label] = ms[label] === undefined ? v : ms[label] * 0.85 + v * 0.15;
@@ -29,10 +33,10 @@ export const gpuTimer = TIMESTAMPS ? (() => {
     return { querySet, beginningOfPassWriteIndex: cur.q, endOfPassWriteIndex: cur.q + 1 };
   };
   const timer = {
-    ms, sum,
-    onFrame: null,   // called with each measured frame's GPU time (the benchmark)
+    ms, sum, spanMs: 0, sumMs: 0,
+    onFrame: null,   // called with each measured frame's GPU time, its groups summed, and its span (the benchmark)
     begin(label) { cur = { label, q: -1 }; },
-    end() { if (cur) groups.push(cur); cur = null; },
+    end(then) { if (cur) { cur.then = then; groups.push(cur); } cur = null; },
     // after the last pass of a frame: resolve its timestamps into a buffer to read
     resolve() {
       if (!groups.length) return;
@@ -53,22 +57,31 @@ export const gpuTimer = TIMESTAMPS ? (() => {
       if (!buf) { for (const g of gs) record(g.label, 0); return; }
       const m = buf.mapAsync(GPUMapMode.READ).then(() => {
         const t = new BigUint64Array(buf.getMappedRange());
-        let frameMs = 0;
+        let frameMs = 0, lo = null, hi = null;
         for (const g of gs) {
           const v = g.q < 0 ? 0 : Number(t[g.q + 1] - t[g.q]) / 1e6;
-          if (v >= 0 && v < 1e5) { record(g.label, v); frameMs += v; }       // (else not a valid pair)
+          if (!(v >= 0 && v < 1e5)) continue;       // (not a valid pair)
+          record(g.label, v); frameMs += v; if (g.then) g.then(v);
+          if (g.q >= 0) { if (lo === null || t[g.q] < lo) lo = t[g.q]; if (hi === null || t[g.q + 1] > hi) hi = t[g.q + 1]; }
         }
-        if (timer.onFrame) timer.onFrame(frameMs);
+        const span = lo === null ? 0 : Number(hi - lo) / 1e6;
+        if (span < 1e5) {
+          if (frames.length < 240) frames.push([frameMs, span]);
+          timer.spanMs = timer.spanMs ? timer.spanMs * 0.85 + span * 0.15 : span;
+          timer.sumMs = timer.sumMs ? timer.sumMs * 0.85 + frameMs * 0.15 : frameMs;
+          if (timer.onFrame) timer.onFrame(frameMs, span);
+        }
         buf.unmap();
         free.push(buf);
       }, () => {}).finally(() => maps.delete(m));
       maps.add(m);
     },
     poll() { const f = fresh; fresh = {}; return f; },     // the results read since the last poll
+    frames() { const f = frames; frames = []; return f; },  // [sum, span] of each frame read since the last call
     total() { let t = 0; for (const k in ms) t += ms[k]; return t; },
     settled() { return Promise.all([...maps]); },
   };
   return timer;
 })() : null;
 export const tBegin = l => { if (gpuTimer) gpuTimer.begin(l); };
-export const tEnd = () => { if (gpuTimer) gpuTimer.end(); };
+export const tEnd = then => { if (gpuTimer) gpuTimer.end(then); };

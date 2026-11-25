@@ -1,25 +1,30 @@
 // The streamed world volumes: clipmaps around the camera
 //
 // LEVELS: three levels (cells of 128 m, 512 m and 2 km, reaching ±16, ±65 and ±262 km), each a
-// 256×256×nz distance volume of the large shapes and a 256×256 map of column data, centred on the
+// 256×256×nz distance volume of the large shapes, one of their billows (how big and how lively
+// those of the nearest bubble are) and a 256×256 map of column data, centred on the
 // camera and addressed toroidally: once the camera is more than `step` cells off its centre the
 // window shifts, and only the blocks that entered it are made. TSVL, the shadow volume (the optical depth toward the
-// sun), is marched through the coarser levels and shifts once they are settled. A shifting level
+// sun, through the cloud a texel sits in and through the clouds beyond it: the light takes the first past the light
+// march's reach, the second past the sun map's window, render/sunmap.js), is marched through the coarser levels and
+// shifts once they are settled. A shifting level
 // asks the world's worker (core/world.js) for all its blocks at once; a block's column data goes
 // into the column map, its bubbles into the frame's bubble arena, to be baked (shaders/volumes.js).
 // Until a shift is baked a level is valid only where its old and new windows overlap, and the
 // shaders fall back to a coarser one. A frame applies what has come within budgets (2 ms of this
-// thread; GPU time as bakeCost estimates it), the first frame and the tests' frames all of it. The
+// thread; GPU time as bakeCost estimates it, scaled by what the bakes took on this GPU where it has
+// timestamp queries: BAKES, render/bakescale.js), the first frame and the tests' frames all of it. The
 // bake reads the sea's slope from neighbouring columns, which wrap at the edge: the shaders keep two
 // cells clear of it, and the old edge beside an entering strip is baked again, so a streamed level
 // holds what a fresh start bakes (tools/checks.js streaming). Render space: the world minus an
 // origin snapped to ORIGIN_Q (originOf), so floats keep their precision on endless flights.
 
 import { PI } from '../math.js';
-import { ORIGIN_Q, SUN_DIR } from '../constants.js';
+import { CLIP_LEVELS, ORIGIN_Q, SUN_DIR } from '../constants.js';
 import { COARSE } from '../core/page.js';
 import { forgetFar, request } from '../core/world.js';
 import { buffer, device, dispatch, enc, flush, pass, slices, texture } from './gpu.js';
+import { bakeScale } from './bakescale.js';
 import { NOUT, TSV_ROW } from '../shaders/volumes.js';
 import { worldGC } from '../world/cells.js';
 import { P, T } from './setup.js';
@@ -30,16 +35,16 @@ import { P, T } from './setup.js';
 // only where the old and new windows overlap (the shaders fall back to a coarser level).
 // Render space = world minus an origin snapped to ORIGIN_Q (keeps float precision on endless flights).
 const CLIP_N = 256, CLIP_M = CLIP_N - 1;
-export const LEVELS = [
-  { cell: 128, cellV: 128, nz: 112, maxD: 1200, minBR: 0, lod: 0, step: 16, chunk: 32 },
-  { cell: 512, cellV: 256, nz: 56, maxD: 4000, minBR: 200, lod: 1, step: 8, chunk: 32 },
-  { cell: 2048, cellV: 512, nz: 32, maxD: 12000, minBR: 900, lod: 2, step: 4, chunk: 16 },
-];
+// (the grids: constants.js; step: how far the camera may wander off the centre, chunk: a block)
+export const LEVELS = CLIP_LEVELS.map((L, k) => ({ ...L, step: [16, 8, 4][k], chunk: [32, 32, 16][k] }));
 export const TSVL = { cell: 768, cellV: 360, nz: 40, step: 8, chunk: 32, tsv: true };
 const TU = GPUTextureUsage;
 for (const L of [...LEVELS, TSVL]) {
-  L.vol = texture(CLIP_N, CLIP_N, 'r16float', { depth: L.nz, dim: '3d', usage: TU.TEXTURE_BINDING | TU.COPY_SRC | (L.tsv ? TU.COPY_DST : TU.RENDER_ATTACHMENT) });
-  if (!L.tsv) L.col = texture(CLIP_N, CLIP_N, 'rgba16float', { usage: TU.TEXTURE_BINDING | TU.COPY_DST | TU.COPY_SRC });
+  L.vol = texture(CLIP_N, CLIP_N, L.tsv ? 'rg16float' : 'r16float', { depth: L.nz, dim: '3d', usage: TU.TEXTURE_BINDING | TU.COPY_SRC | (L.tsv ? TU.COPY_DST : TU.RENDER_ATTACHMENT) });
+  if (!L.tsv) {
+    L.bs = texture(CLIP_N, CLIP_N, 'rg16float', { depth: L.nz, dim: '3d', usage: TU.TEXTURE_BINDING | TU.COPY_SRC | TU.RENDER_ATTACHMENT });
+    L.col = texture(CLIP_N, CLIP_N, 'rgba16float', { usage: TU.TEXTURE_BINDING | TU.COPY_DST | TU.COPY_SRC });
+  }
   L.gi = null; L.gj = 0; L.valid = null; L.pending = 0;
 }
 T.tsv = TSVL.vol;
@@ -53,6 +58,7 @@ let bubUsed = 0;
 export const bakeQueue = [];
 export const worldStats = { jobs: 0, bubbles: 0, maxBub: 0, ms: 0 };
 const CPU_BUDGET = 2, GPU_BUDGET = COARSE ? 1 : 2;   // ms a frame
+export const BAKES = bakeScale();
 let camXZ = [0, 0];
 
 // the blocks of global cell rectangle [i0, i1) x [j0, j1) of level L (blocks never wrap around
@@ -102,12 +108,13 @@ function shiftLevel(L, cx, cz) {
   L.pending = queueBatch(L, blocks);
   if (!L.pending) L.valid = [ti, tj, ti + CLIP_N, tj + CLIP_N];
 }
-// What a job's GPU work costs, estimated (ms on the GPU measured): a bake pass loops over the
-// block's bubbles in every texel, the shadow volume marches every texel toward the sun.
+// What a job's GPU work costs, estimated (ms one NVIDIA laptop's GPU took; BAKES scales them to
+// this one's): a bake pass loops over the block's bubbles in every texel, the shadow volume
+// marches every texel toward the sun.
 function bakeCost(job) {
   if (job.fill) return 0;
   if (job.L.tsv) return 0.1 + 1.5e-5 * job.ni * job.nj * job.L.nz;
-  return job.L.nz / NOUT * (0.02 + 1.5e-4 * job.req.reply.nb);
+  return job.L.nz / NOUT * (0.013 + 1.0e-4 * job.req.reply.nb);
 }
 function runJob(job, O) {
   const L = job.L, tx = job.gi & CLIP_M, ty = job.gj & CLIP_M;
@@ -132,9 +139,13 @@ function runJob(job, O) {
     const b0 = bubUsed;
     if (nb) device.queue.writeBuffer(T.bub.buf, b0 * 48, bub);
     bubUsed += nb;
-    const vals = { tCol: L.col, bBub: T.bub, nb, b0, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0 };
+    // (the largest lobes are baked in render space: the block's corner there, the billow warp)
+    const vals = Object.assign({
+      tCol: L.col, bBub: T.bub, tShape: T.shape, nb, b0, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0,
+      p0: [job.gi * L.cell - O[0], job.gj * L.cell - O[2]],
+    }, warpPhases(O));
     const viewport = [tx, ty, job.ni, job.nj];
-    for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.bake, slices(L.vol, z, NOUT), vals, { viewport }); }
+    for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.bake, [...slices(L.vol, z, NOUT), ...slices(L.bs, z, NOUT)], vals, { viewport }); }
   }
   worldStats.jobs++;
   if (--L.pending === 0) L.valid = [L.gi, L.gj, L.gi + CLIP_N, L.gj + CLIP_N];
@@ -149,7 +160,8 @@ export function shiftWorld(camPos, frame) {
   if (!LEVELS[1].pending && !LEVELS[2].pending) shiftLevel(TSVL, camXZ[0], camXZ[1]);
 }
 // In the frame (render/frame.js): work through the queue, as far as the replies have come, within
-// the budgets (all: everything, the first frame's and the tests')
+// the budgets (all: everything, the first frame's and the tests'). Returns the GPU time estimated
+// for what it baked (unscaled: frame.js hands it to BAKES with what it took).
 export function streamWorld(O, all) {
   bubUsed = 0;
   const t0 = performance.now();
@@ -162,7 +174,7 @@ export function streamWorld(O, all) {
       if (job.L.tsv && (LEVELS[1].pending || LEVELS[2].pending)) break;
       if (job.req && !job.req.reply) break;     // (its data hasn't come yet)
       const cost = bakeCost(job);
-      if (!all && n && (gpu + cost > GPU_BUDGET || performance.now() - t0 > CPU_BUDGET)) break;
+      if (!all && n && ((gpu + cost) * BAKES.k > GPU_BUDGET || performance.now() - t0 > CPU_BUDGET)) break;
       bakeQueue.shift();
       runJob(job, O);
       gpu += cost; n++;
@@ -170,6 +182,7 @@ export function streamWorld(O, all) {
     if (!all) break;
   }
   worldStats.ms = performance.now() - t0;
+  return gpu;
 }
 // render-space uniforms of the world volumes
 const _lvA = new Float32Array(12), _lvV = new Float32Array(12);
@@ -184,12 +197,16 @@ export function worldUniforms(O) {
   LEVELS.forEach((L, k) => map(L, k, _lvA, _lvV));
   const ta = new Float32Array(4), tv = new Float32Array(4);
   map(TSVL, 0, ta, tv);
-  // phases of the billow warp's waves at the origin (computed in double precision)
-  const ph = (kx, kz) => { const a = kx * O[0] + kz * O[2]; return a - 2 * PI * Math.floor(a / (2 * PI)); };
-  return {
+  return Object.assign({
     tVol0: LEVELS[0].vol, tVol1: LEVELS[1].vol, tVol2: LEVELS[2].vol, tCol0: LEVELS[0].col, tCol1: LEVELS[1].col, tCol2: LEVELS[2].col,
+    tBs0: LEVELS[0].bs, tBs1: LEVELS[1].bs, tBs2: LEVELS[2].bs,
     lvA: _lvA, lvV: _lvV, tsvA: ta, tsvV: tv,
-    warpPh: [ph(0, 8.37e-4), ph(3.41e-4, 0), ph(1.49e-4, 2.53e-4), ph(9.29e-4, 0)], warpPh2: [ph(0, 3.97e-4), ph(1.93e-4, -2.91e-4)],
-  };
+  }, warpPhases(O));
+}
+// the phases of the billow warp's waves at the origin (computed in double precision;
+// chunks/lobes.wgsl)
+function warpPhases(O) {
+  const ph = (kx, kz) => { const a = kx * O[0] + kz * O[2]; return a - 2 * PI * Math.floor(a / (2 * PI)); };
+  return { warpPh: [ph(0, 8.37e-4), ph(3.41e-4, 0), ph(1.49e-4, 2.53e-4), ph(9.29e-4, 0)], warpPh2: [ph(0, 3.97e-4), ph(1.93e-4, -2.91e-4)] };
 }
 export const originOf = p => [Math.round(p[0] / ORIGIN_Q) * ORIGIN_Q, 0, Math.round(p[2] / ORIGIN_Q) * ORIGIN_Q];

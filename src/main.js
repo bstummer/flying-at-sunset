@@ -3,7 +3,8 @@
 // translucent paper, a gentle glider.
 //
 // The start, the main loop (frameStep: input, flight, camera and the world's windows, then the
-// frame), the steering hint, a lost device and window.__debug. The imports run in the order things
+// frame), the steering hint, a lost device, window.__debug, and P (the pose of the moment, as a view).
+// The imports run in the order things
 // are set up (CLAUDE.md §6): the world's worker starts first and grows the world around the start
 // while the GPU device comes and the shaders compile. The first frame, and in the test mode every
 // frame, waits for what it asked the world's worker for; in the test mode each also waits for the
@@ -11,13 +12,15 @@
 
 import { BENCH, params, TEST } from './core/params.js';
 import { canvas, COARSE, fail, hintEl, refuse } from './core/page.js';
-import { busy as worldBusy, keepPatch, patchAt, started } from './core/world.js';
-import { device, gpuState, pipelinesReady, readBuffer, readTexture } from './render/gpu.js';
+import { busy as worldBusy, keepPatch, patchAt, patchStats, started } from './core/world.js';
+import { device, gpuBytes, gpuState, keptFailed, pipelinesReady, readBuffer, readTexture } from './render/gpu.js';
 import { cloudTopAt, seaTopAt, towersNear } from './world/queries.js';
 import { generateStatic, T } from './render/setup.js';
 import { LEVELS, shiftWorld, TSVL, worldStats } from './render/stream.js';
+import { SUNMAPS } from './render/sunmap.js';
 import { R, resize } from './render/targets.js';
 import { inCloud, probeBusy, probeData, updateInCloud } from './render/probe.js';
+import { PROBE_AT } from './shaders/probe.js';
 import { bird_, newBird, updateFlight } from './flight/flight.js';
 import { input, updateInput } from './core/input.js';
 import { cam, updateCamera } from './flight/camera.js';
@@ -46,7 +49,7 @@ function loop(now) {
     if (!gpuState.lost) fail('Something went wrong while rendering — ' + (e && e.message || e));
   }
 }
-let held = false, dtMs = 0;   // held: a frame that waits for its world
+let held = false, dtMs = 0, dtStep = 0;   // held: a frame that waits for its world; dtStep: the last step (s)
 function frameStep(now) {
   requestAnimationFrame(loop);
   // (tests: each frame waits for the probe of the last one, as if the GPU were always that quick)
@@ -63,17 +66,19 @@ function frameStep(now) {
     last = t;
     if (TEST) dt = FIXED_DT;
     clock += dt;
+    dtStep = dt;
     if (!resize()) return;   // GPU memory ran out: retrying smaller next frame
     updateInput(dt, clock);
     keepPatch(bird_.pos[0], bird_.pos[2]);
     updateFlight(bird_, params.freeze ? 0 : dt, clock, input, probeData);
+    recordPose(clock);
     updateCamera(dt, frame === 0, clock, R.w / R.h, inCloud);
     updateInCloud(dt);
     shiftWorld(cam.pos, frame);
     if ((TEST || frame === 0) && worldBusy()) { held = true; return; }
   }
   if (TEST) beforeFrame();
-  render(clock);
+  render(clock, dtStep);
   if (frame === 2 && startWall < 0) { canvas.classList.add('on'); startWall = now; }
   // hint, by the wall clock so it behaves the same at any frame rate: in 1.8 s after the bird
   // shows, out 8.2 s after it came in, or once the visitor has steered a while. Each clock starts
@@ -102,26 +107,61 @@ device.lost.then(async info => {
 });
 document.addEventListener('visibilitychange', () => { last = -1; });
 window.__debug = {
-  bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, worldStats, device, T, readTexture,
-  // (struct Probe and struct Ambient, chunks/probe.wgsl and chunks/ambient.wgsl)
+  bird: bird_, cam, R, seaTopAt, cloudTopAt, towersNear, input, DR, LEVELS, TSVL, SUNMAPS, worldStats, patchStats, device, T, readTexture,
+  // (struct Probe, each field its vec4f; struct Ambient and struct Exposure, chunks/ambient.wgsl and exposure.wgsl)
   probe: async () => {
     const b = Array.from(await readBuffer(T.probe)), a = Array.from(await readBuffer(T.amb));
-    return { sun: b.slice(0, 4), ambUp: b.slice(4, 7), ambDn: b.slice(8, 11), medium: b.slice(12, 16), mistL: b.slice(16, 19), floorD: b[20],
-      amb: { up: a.slice(0, 3), sunSide: a.slice(4, 7), antiSun: a.slice(8, 11) } };
+    const e = Array.from(await readBuffer(T.expo));
+    return { ...Object.fromEntries(Object.entries(PROBE_AT).map(([k, o]) => [k, b.slice(o, o + 4)])),
+      amb: { up: a.slice(0, 3), sunSide: a.slice(4, 7), antiSun: a.slice(8, 11) }, expo: { mean: e[0], adapted: e[1], fog: e[2], exposure: e[3] } };
   },
 };
+// P: the bird's pose as a view for tools/views.js, logged and copied (how a moment seen in flight
+// reaches a session, in the deployed piece too). The pose from POSE_LEAD before the key: a capture's
+// still comes 12 frames of the test's time step after the pose it starts from, so it lands on the
+// moment (the flight in between unsteered).
+const POSE_LEAD = 12 * 0.0166, poses = [];
+function recordPose(t) {
+  poses.push([t, ...bird_.pos, bird_.yaw, bird_.gamma, bird_.bank, bird_.speed]);
+  while (poses.length > 1 && poses[1][0] <= t - POSE_LEAD) poses.shift();
+}
+addEventListener('keydown', e => {
+  if (e.code !== 'KeyP' || e.repeat || e.metaKey || e.ctrlKey || e.altKey || !poses.length) return;
+  const r = (v, d) => +v.toFixed(d);
+  const [, x, y, z, yaw, pitch, bank, speed] = poses[0];
+  const pose = [r(x, 1), r(y, 1), r(z, 1), r(yaw, 4), r(pitch, 4), r(bank, 4), r(speed, 1)].join(',');
+  const world = ['seed', 'towers'].filter(k => params[k] !== null).map(k => `, ${k}: '${params[k]}'`).join('');
+  const entry = `{ name: 'new-view', params: { pose: '${pose}'${world} }, brief: '' },`;
+  console.log(entry);
+  // (the clipboard API wants a secure context: from file://, a selected textarea)
+  const fallback = () => {
+    const a = document.createElement('textarea');
+    a.value = entry;
+    a.style.cssText = 'position:fixed;opacity:0';
+    document.body.append(a);
+    a.select();
+    try { document.execCommand('copy'); } catch (_) { /* the log has it */ }
+    a.remove();
+  };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(entry).catch(fallback); else fallback();
+});
 // A promise that fails unheard would leave a blank or frozen page: say so instead.
 addEventListener('unhandledrejection', e => {
   if (!gpuState.lost && !window.__error) fail('Something went wrong — ' + (e.reason && e.reason.message || e.reason));
 });
 // The start: the shaders compile in parallel without blocking the page, while the worker grows the
 // world around the start and looks for ?preset's place; then the bird is placed, the domes around
-// it are at hand (core/world.js), the static data is generated and the flight starts.
+// it are at hand (core/world.js), the static data is generated and the flight starts. (If what the
+// modules made as they loaded ran out of GPU memory, every frame would draw nothing: say so.)
 try { await pipelinesReady(); } catch (e) { fail('Shader error — ' + e.message); throw e; }
 const start = await started;
 if (start.pose?.refused) refuse(start.pose.refused);
 Object.assign(bird_, newBird(start.sea0));
 placeBird(bird_, start.pose?.refused ? null : start.pose, params.pose);
 await patchAt(bird_.pos[0], bird_.pos[2]);
-try { generateStatic(); } catch (e) { fail('Something went wrong while starting — ' + (e && e.message || e)); throw e; }
-requestAnimationFrame(loop);
+if (await keptFailed()) {
+  fail(`Out of GPU memory: the piece needs about ${Math.round(gpuBytes() / 1e6)} MB of it to start, and more for the screen. Closing other tabs or apps may help.`);
+} else {
+  try { generateStatic(); } catch (e) { fail('Something went wrong while starting — ' + (e && e.message || e)); throw e; }
+  requestAnimationFrame(loop);
+}

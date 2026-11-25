@@ -7,7 +7,8 @@
 // it is answered from a patch of domes the worker sends, 24 km across, the next asked for once the
 // bird is within 6 km of its edge (half a minute ahead at top speed). They are the world's domes in
 // the world's order, so the surface is the same to the last bit. Outside a patch this thread grows
-// the world's cells itself, as the Node tools do: a stall.
+// the world's cells itself, as the Node tools do: a stall. patchStats says how it went (the
+// top-speed check, tools/checks.js).
 
 import WorldWorker from '../worker.js?worker&inline';
 import { fail } from './page.js';
@@ -43,15 +44,24 @@ export const started = ask({ kind: 'start' });
 const HALF = 12000, EDGE = 6000;   // m
 let patch = null, next = null;
 const inside = (box, x, z, m) => x > box[0] + m && x < box[2] - m && z > box[1] + m && z < box[3] - m;
+// how far before the edge the next patch is asked for (m), the patches asked for, the longest one
+// took to come (ms), the nearest the bird came to the edge of the patch it had (m; below 0: past it);
+// the lookups this thread answered by growing cells itself
+export const patchStats = { edge: EDGE, asked: 0, maxWait: 0, minLead: Infinity, grown: 0, grownMs: 0 };
 function askPatch(x, z) {
   const box = [x - HALF, z - HALF, x + HALF, z + HALF];
   next = request({ kind: 'patch', x0: box[0], z0: box[1], x1: box[2], z1: box[3] });
-  next.box = box;
+  next.box = box; next.t = performance.now();
+  patchStats.asked++;
   return next;
 }
 // once a frame, at the bird: take a patch that has come, ask for the next when near the edge
 export function keepPatch(x, z) {
-  if (next && next.reply) { patch = { box: next.box, domes: next.reply.domes }; next = null; }
+  if (patch) { const b = patch.box; patchStats.minLead = Math.min(patchStats.minLead, x - b[0], b[2] - x, z - b[1], b[3] - z); }
+  if (next && next.reply) {
+    patchStats.maxWait = Math.max(patchStats.maxWait, performance.now() - next.t);
+    patch = { box: next.box, domes: next.reply.domes }; next = null;
+  }
   if (!next && (!patch || !inside(patch.box, x, z, EDGE))) askPatch(x, z);
 }
 // (the first, before the first frame)
@@ -60,6 +70,11 @@ export function patchAt(x, z) {
   return new Promise(done => { r.done = () => { keepPatch(x, z); done(); }; });
 }
 setDomeSource((x, z, each) => {
-  if (!patch || !inside(patch.box, x, z, 0)) return forEachDome(x, z, x, z, each);
+  if (!patch || !inside(patch.box, x, z, 0)) {
+    const t0 = performance.now();
+    forEachDome(x, z, x, z, each);
+    patchStats.grown++; patchStats.grownMs += performance.now() - t0;
+    return;
+  }
   for (const d of patch.domes) if (d.x + d.reach > x && d.x - d.reach < x && d.z + d.reach > z && d.z - d.reach < z) each(d);
 });

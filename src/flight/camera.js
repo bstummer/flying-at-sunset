@@ -1,6 +1,7 @@
 // The chase camera
 //
-// It lags, swings wide and leans into turns (roll 0.42 × bank); a 74° horizontal field of view,
+// It lags, swings wide and leans into turns (roll 0.42 × bank), looks down a dive along the flight
+// and up a climb by two thirds of its angle, the bird whole in the frame; a 74° horizontal field of view,
 // the vertical one kept within 47–78° (47° on 16:9 and wider screens, 59° at 4:3, up to 78° on
 // portrait ones), widening by up to 24% toward top speed; a subtle shake at speed and in cloud.
 // updateCamera(dt, snap, time, aspect, inCloud) follows bird_ (aspect: the canvas's width over
@@ -21,6 +22,11 @@ export const baseFovY = aspect => clamp(2 * Math.atan(Math.tan(37 * DEG) / aspec
 // how near the chase camera can come to the bird: 4.1 m behind it, less up to 0.48 m in a hard
 // climb (dist below), with room for its spring (render/bird.js sizes the bird's targets by it)
 export const CAM_NEAREST = 3.0;
+// in a climb the camera sits behind the bird on a slope 0.8 of the flight's (0.55 in a dive, where
+// it looks down along the flight) and looks ahead along the same: it sinks behind the bird, which
+// stays whole in the frame for as long as the climb is held, and looks up as far as it did when it
+// sat on the dive's slope (17° in a 26° climb), where the bird sank under the frame's bottom edge
+const CLIMB_SLOPE = 0.8;
 
 export function updateCamera(dt, snap, time, aspect, inCloud) {
   const b = bird_;
@@ -38,7 +44,7 @@ export function updateCamera(dt, snap, time, aspect, inCloud) {
   }
   const sp = sat((b.speed - FLIGHT.vCruise) / (FLIGHT.vMax - FLIGHT.vCruise));
   // lagging heading -> the camera swings wide in turns
-  const flatFwd = norm([b.vel[0], b.vel[1] * 0.55, b.vel[2]]);
+  const flatFwd = norm([b.vel[0], b.vel[1] * (b.vel[1] > 0 ? CLIMB_SLOPE : 0.55), b.vel[2]]);
   if (!cam.fwdSmooth || snap) cam.fwdSmooth = flatFwd;
   cam.fwdSmooth = norm(mix3(cam.fwdSmooth, flatFwd, 1 - Math.exp(-2.1 * dt)));
   const dist = 4.1 + 1.3 * sp + clamp(b.accel, -6, 8) * 0.08;
@@ -50,8 +56,10 @@ export function updateCamera(dt, snap, time, aspect, inCloud) {
   }
   cam.prevPos = cam.pos;
   cam.pos = add(b.pos, cam.offset);
-  // look a little ahead of and above the bird
-  const target = add(add(b.pos, scl(b.vel, 7.0)), [0, 0.55, 0]);
+  // look a little ahead of and above the bird (in a climb along CLIMB_SLOPE of its slope, as the
+  // camera sits)
+  const ahead = [b.vel[0], b.vel[1] * (b.vel[1] > 0 ? CLIMB_SLOPE : 1), b.vel[2]];
+  const target = add(add(b.pos, scl(ahead, 7.0)), [0, 0.55, 0]);
   let fwd = norm(sub(target, cam.pos));
   cam.roll = snap ? b.bank * 0.42 : damp(cam.roll, b.bank * 0.42, 3.0, dt);
   // subtle shake at speed and in cloud

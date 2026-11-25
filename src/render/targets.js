@@ -1,18 +1,20 @@
 // The size-dependent render targets, and resize(): the canvas in device pixels (at most 2 per CSS
 // pixel and R.maxPixels in all: 2.3 Mpx, 1.15 Mpx on touch devices; ?w × ?h in the test mode). R
-// holds the sizes and the clouds' scale. Running out of GPU memory shows in an error scope after
-// the fact: the next frame makes the targets again, smaller. Other modules' targets go in the same
-// scope (sizedTargets: render/bird.js's).
+// holds the sizes, the clouds' scale and the GPU memory (counted from the formats, render/gpu.js)
+// of what never changes (R.keptBytes: the volumes and tables made before the first targets) and of
+// the targets. Running out of GPU memory shows in an error scope after the fact: the next frame
+// makes the targets again, smaller. Other modules' targets go in the same scope (sizedTargets:
+// render/bird.js's).
 
 import { params, TEST } from '../core/params.js';
 import { canvas, COARSE } from '../core/page.js';
-import { device, forgetBindGroups, texture } from './gpu.js';
+import { device, forgetBindGroups, gpuBytes, texture } from './gpu.js';
 import { T } from './setup.js';
 
-export const R = { w: 0, h: 0, lowW: 0, lowH: 0, lowMaxW: 0, lowMaxH: 0, scale: TEST ? (params.scale ?? 0.5) : 0.5, histValid: 0 };
+export const R = { w: 0, h: 0, lowW: 0, lowH: 0, lowMaxW: 0, lowMaxH: 0, scale: TEST ? (params.scale ?? 0.5) : 0.5, histFrames: 0, keptBytes: 0, sizedBytes: 0 };
 const HALF4 = 'rgba16float';
 export const bloomLevels = [];
-const SIZED = ['cloudCol', 'cloudDepth', 'histA', 'histB', 'scene', 'rayA', 'rayB'];
+const SIZED = ['cloudCol', 'cloudDepth', 'histA', 'histB', 'fogA', 'fogB', 'scene', 'rayA', 'rayB'];
 // the size-dependent targets of other modules (render/bird.js): their keys in T, and how to make
 // them for a canvas of w × h, in the same error scope as these
 const others = [];
@@ -30,11 +32,15 @@ function allocate(w, h) {
   R.lowMaxW = Math.ceil(w * 0.75); R.lowMaxH = Math.ceil(h * 0.75);
   // (running out of memory shows only later: an error scope reports it, and the next frame
   // allocates smaller)
+  const before = gpuBytes();
+  if (!R.keptBytes) R.keptBytes = before;
   device.pushErrorScope('out-of-memory');
   T.cloudCol = texture(R.lowMaxW, R.lowMaxH, HALF4);
-  T.cloudDepth = texture(R.lowMaxW, R.lowMaxH, 'r16float');
+  T.cloudDepth = texture(R.lowMaxW, R.lowMaxH, 'rg16float');   // (the clouds' depth, and the light through the camera's own cloud)
   T.histA = texture(w, h, HALF4);
   T.histB = texture(w, h, HALF4);
+  T.fogA = texture(w, h, 'r8unorm');   // (the camera's own fog the history holds)
+  T.fogB = texture(w, h, 'r8unorm');
   T.scene = texture(w, h, HALF4);
   for (const make of others) make(w, h);
   // bloom chain
@@ -48,7 +54,8 @@ function allocate(w, h) {
   T.rayA = texture(rw, rh, HALF4);
   T.rayB = texture(rw, rh, HALF4);
   R.rayW = rw; R.rayH = rh;
-  R.histValid = 0;
+  R.histFrames = 0;
+  R.sizedBytes = gpuBytes() - before;
   const gen = ++allocGen;
   device.popErrorScope().then(e => {
     if (gen !== allocGen) return;

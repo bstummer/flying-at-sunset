@@ -20,12 +20,8 @@ import { fileURLToPath } from 'node:url';
 
 export const RECORDED = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures', 'world-fingerprint.json');
 
-// The clipmap levels as the page's bake jobs ask for them (LEVELS in src/render/stream.js).
-const LEVELS = [
-  { cell: 128, lod: 0, chunk: 32, maxD: 1200, minBR: 0 },
-  { cell: 512, lod: 1, chunk: 32, maxD: 4000, minBR: 200 },
-  { cell: 2048, lod: 2, chunk: 16, maxD: 12000, minBR: 900 },
-];
+// (the clipmap levels as the page's bake jobs ask for them: constants.js, in blocks of render/stream.js's)
+const CHUNK = [32, 32, 16];
 
 export function summary(values) {
   let sum = 0, abs = 0, sq = 0, at = 0, k = 0;
@@ -57,15 +53,16 @@ export function fingerprint(W) {
   }
   // column blocks and bubble blocks, near the start and in the restless air off to the right of
   // the sun where the towers stand
-  for (const L of LEVELS) {
+  for (const [l, L] of W.CLIP_LEVELS.entries()) {
+    const chunk = CHUNK[l];
     const cols = [], bubs = [];
     const blocks = L.lod === 0 ? [[-32, -32], [0, -64], [112, -192], [176, -224]] : L.lod === 1 ? [[-32, -32], [0, -32], [32, -64], [64, -32]] : [[-16, -16], [0, 0], [16, -32]];
     for (const [gi, gj] of blocks) {
-      const out = new Float32Array(L.chunk * L.chunk * 4);
-      W.fillColumns(L.cell, L.lod, gi, gj, L.chunk, L.chunk, out);
+      const out = new Float32Array(chunk * chunk * 4);
+      W.fillColumns(L.cell, L.lod, gi, gj, chunk, chunk, out);
       cols.push(...out);
       const bub = new Float32Array(4096 * 12), ox = gi * L.cell, oz = gj * L.cell;
-      const n = W.gatherBubbles(ox, oz, ox + L.chunk * L.cell, oz + L.chunk * L.cell, L.maxD + 300, L.minBR, ox, oz, bub, 4096, L.lod >= 2);
+      const n = W.gatherBubbles(ox, oz, ox + chunk * L.cell, oz + chunk * L.cell, L.maxD + 300, L.minBR, ox, oz, bub, 4096, L.lod >= 2);
       bubs.push(n);
       for (let k = 0; k < n * 12; k++) bubs.push(bub[k]);
     }

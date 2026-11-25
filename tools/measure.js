@@ -6,6 +6,13 @@
 //   shimmer.png       where the image flickers while nothing moves, in magenta: the flight held and
 //                     the clock stopped (?freeze&dt=0), so only the clouds' jittered trace and its
 //                     temporal upsampling change from frame to frame
+//   grain.png         where the flight is grainy: the motion strip's frames against the same flight
+//                     rendered with its jitter sequences 8 frames on (?jit). Whatever moves moves
+//                     alike in both; only the noise the history can't average in motion differs
+//                     (the author's "noise that changes as you move", at clouds' edges in turns and
+//                     dives), which the shimmer at rest is blind to, and frames a step apart mix
+//                     with all that moves. Over the strip: the still alone, 12 frames in, shows a
+//                     history still young
 //   motion.png        the flight on from the still, a quarter of a second a frame, left to right,
 //                     top to bottom: what a still can't show
 //
@@ -13,29 +20,35 @@
 // analysis is in tools/image.js.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { bandedShare, bandingView, crop, flicker, heatImage, shrink, tile, zoom } from './image.js';
+import { bandedShare, bandingView, crop, flicker, heatImage, pairDiff, shrink, tile, zoom } from './image.js';
 import { encodePng } from './png.js';
 
 export const MEASURE = {
   motion: { frames: 8, every: 15 }, // frames of the strip, and how many frames apart (dt 1/60 s)
   shimmer: { frames: 8, threshold: 6 }, // frames held still (the jitter cycles over 16), and the levels a pixel may change by
+  grain: { jit: 8, threshold: 4 }, // the jitter's other start (frames), and the levels the two renders may differ by
   banding: { radius: 6, gain: 32, edge: 6 },
   crop: { zoom: 3, centre: [0.375, 0.375, 0.25, 0.25] }, // the default crop: the middle quarter across
 };
 
 // Percent of the frame: banded, the share in visible bands (tools/image.js bandedShare);
-// shimmer, the share that flickers by `threshold` levels or more while nothing moves.
+// shimmer, the share that flickers by `threshold` levels or more while nothing moves. (grain,
+// the share where two renders of the flight differing in their jitter differ by `threshold` or
+// more, over the strip's frames, the frame and each crop, has no limit yet.)
 export const LIMITS = { bandedPercent: 1, shimmerPercent: 0.5 };
 
 // The URL parameters that make the page hand over what the measurements need: the frames of the
 // motion strip from the still on (the first is the still itself), and the frames held still.
 export const motionParams = () => ({ keep: String(MEASURE.motion.frames), every: String(MEASURE.motion.every) });
 export const shimmerParams = () => ({ freeze: '', dt: '0', keep: String(MEASURE.shimmer.frames) });
+// (and the strip again, the jitter sequences started elsewhere)
+export const grainParams = () => ({ ...motionParams(), jit: String(MEASURE.grain.jit) });
 
-// `motion`: decoded frames, the still first; `still`: decoded frames held still; `crops`:
-// { name: [x, y, w, h] } as fractions of the frame; `limits`: the view's own (tools/views.js).
-// Returns { measurements, warnings, files }.
-export function measureView({ motion, still, crops, limits, dir }) {
+// `motion`: decoded frames, the still first; `still`: decoded frames held still; `grain`: the motion's
+// frames rendered with other jitter (none: not measured); `crops`: { name: [x, y, w, h] } as
+// fractions of the frame; `limits`: the view's own (tools/views.js). Returns { measurements,
+// warnings, files }.
+export function measureView({ motion, still, grain, crops, limits, dir }) {
   mkdirSync(dir, { recursive: true });
   const files = [];
   const save = (name, image) => {
@@ -51,6 +64,13 @@ export function measureView({ motion, still, crops, limits, dir }) {
   save('motion.png', tile(motion.map((f) => shrink(f, 2)), { columns: 4, gap: 4 }));
 
   const measurements = { bandedPercent: round(bandedShare(first)), shimmerPercent: round(held.percent) };
+  if (grain?.length) {
+    const pairs = grain.slice(0, motion.length).map((g, k) => [motion[k], g]);
+    const noisy = pairDiff(pairs, { threshold: MEASURE.grain.threshold, regions: crops ?? { centre: MEASURE.crop.centre } });
+    save('grain.png', heatImage(first, noisy.heat, MEASURE.grain.threshold));
+    measurements.grainPercent = round(noisy.percent);
+    measurements.grain = Object.fromEntries(Object.entries(noisy.regions).map(([name, v]) => [name, round(v)]));
+  }
   return { measurements, warnings: checkLimits(measurements, { ...LIMITS, ...limits }), files };
 }
 
@@ -70,10 +90,16 @@ export function checkLimits(measurements, limits = LIMITS) {
     .map(([metric, limit]) => ({ metric, value: measurements[metric], limit }));
 }
 
-const LABELS = { bandedPercent: 'banded', shimmerPercent: 'shimmer' };
+const LABELS = { bandedPercent: 'banded', shimmerPercent: 'shimmer', grainPercent: 'grain' };
+
+// (each measurement taken, and the grain's in each crop)
+const labelled = (m) => [
+  ...Object.entries(LABELS).filter(([k]) => Number.isFinite(m[k])).map(([k, label]) => [label, m[k]]),
+  ...Object.entries(m.grain ?? {}).map(([name, v]) => [`grain ${name}`, v]),
+];
 
 export function describeMeasurements(m) {
-  return m ? Object.entries(LABELS).map(([k, label]) => `${label} ${m[k]}%`).join(' · ') : '';
+  return m ? labelled(m).map(([label, v]) => `${label} ${v}%`).join(' · ') : '';
 }
 
 export function describeWarning({ metric, value, limit }) {
@@ -83,9 +109,10 @@ export function describeWarning({ metric, value, limit }) {
 // How the measurements changed between two captures, as "label before → after".
 export function measurementChanges(a, b) {
   if (!a || !b) return [];
-  return Object.entries(LABELS)
-    .filter(([k]) => Number.isFinite(a[k]) && Number.isFinite(b[k]) && a[k] !== b[k])
-    .map(([k, label]) => `${label} ${a[k]}% → ${b[k]}%`);
+  const before = new Map(labelled(a));
+  return labelled(b)
+    .filter(([label, v]) => before.has(label) && before.get(label) !== v)
+    .map(([label, v]) => `${label} ${before.get(label)}% → ${v}%`);
 }
 
 function round(v) {

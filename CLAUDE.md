@@ -19,18 +19,22 @@ stuttering breaks the spell.
 - **The clouds are the heart of the piece.** An endless sea of soft, billowing cloud stretching to the
   horizon, broken by enormous towers rising far above the bird: full and three-dimensional, with
   rounded tops, soft wispy edges and a sense of enormous scale.
-- **Golden-hour light.** The sun sits low. Faces toward it glow gold and peach, thin edges shine where
-  sunlight passes through, shaded sides fall into cool blue and violet. The sky fades from deep blue
-  overhead to gold near the sun; haze melts the farthest clouds into the sky. Looking toward the sun
-  is bright and dazzling.
+- **Golden-hour light.** The sun sits low. Faces toward it glow gold, orange and peach, thin edges
+  shine where sunlight passes through, shaded sides fall into a luminous cool blue and violet (lit by
+  the sky and the light inside the cloud, never navy or brown). The sky fades from deep blue
+  overhead to gold near the sun; haze melts the farthest clouds into the sky: the farther, the hazier,
+  paler and bluer. Looking toward the sun is bright and dazzling.
 - **The paper bird.** Slightly off-white paper, crisp creases, a subtle paper texture. Small against
   the landscape; its wings flex; it glows warmly when the sun is behind it.
 - **The flight.** Gliding: diving builds speed, climbing trades it for height, turning banks
-  gracefully. Smooth and forgiving, never twitchy, on phones and computers alike. The bird can't crash:
-  it can skim the cloud tops and fly into clouds (briefly surrounded by drifting mist), but is gently
-  kept from sinking deep into the sea.
+  gracefully. From down at the cloud tops the bird can always fly up again: a held climb goes on,
+  more slowly once the speed is spent, up past the towers' heads. Smooth and forgiving, never
+  twitchy, on phones and computers alike. The bird can't crash: it can skim the cloud tops and fly
+  into clouds (briefly surrounded by drifting mist), but is gently kept from sinking deep into the
+  sea.
 - **The camera** follows with a slight, natural lag, swinging wide on turns and leaning into them.
-  Speed is tangible in a dive: near clouds rush past, far ones barely move.
+  Speed is tangible in a dive: near clouds rush past, far ones barely move. In a climb, held
+  for however long, the bird stays whole in the frame.
 - **A clean screen**: only a short hint on how to steer (in at ~1.8 s, out at ~10 s or after 3 s of
   steering), and a note only when WebGPU is missing or something fails.
 
@@ -43,33 +47,21 @@ What the author keeps coming back to:
   of one size all over a surface), every cloud having every feature.
 - **Enormous towers**, rising far above the bird (you look up at a near one's top), at least one in view
   from the start, broad at the base where they swell out of the sea: the sea and the towers are one
-  system, the same cloud piled higher. Crisp, sharply sculpted cauliflower domes with deep shadowed
-  folds, dense and solid, never soft pillows; leaning, sheared and torn tops; overhangs and gaps to fly
-  under; lone giants, walls, clusters, open stretches of sea; rare wide flat anvils far away. A
+  system, the same cloud piled higher. Crisp, sharply sculpted cauliflower domes with shadowed folds,
+  never soft pillows, yet never solid like rock or dough: light inside the cloud keeps the folds
+  luminous and glows through thin parts; a few huge lobes carrying smaller ones, carrying smaller
+  ones still; sides that bulge and lean, never carved cliffs; leaning, sheared and torn tops (flat
+  only as an anvil); overhangs and gaps to fly under; lone giants, walls, clusters, open stretches of
+  sea; rare wide flat anvils far away. A
   spreading top needs a massive, broad column, never a thin stem ("like a mushroom").
 - **A billowy sea**: billows at every size (big rolling mounds covered in smaller bulges, covered in
   smaller ones), crisp where sunlight catches them, soft edges, never sharp ridgelines. Not a flat
   blanket, not smooth "sand dunes". Large relief: swells, deep valleys, heaps.
 - Not too much open space around the start. No compact round puffs floating high in the sky, nothing
   that looks broken off.
-
-The inspiration photos (five, sent with the author's requests; not in this repository):
-
-1. **Portrait, from an airliner at sunset.** An orange-gold sky with layered stratiform bands above;
-   below, a deep sea of lumpy cumulus heaps in mauve and violet shade; near the horizon several towers
-   with bright sunlit tops whose bodies sink into haze (the tops seem to float); big billowing masses
-   lit pinkish from the side in front.
-2. **Portrait, into the sun.** A single huge cumulonimbus with a wide, flat anvil spreading far to both
-   sides, almost black against the setting sun just left of it; the anvil's underside dark and level.
-   The sea below in its shadow; at the bottom edge billowy tops catch pink light.
-3. **Portrait, sun on the horizon.** The sun in a narrow band of clear golden sky between a dark
-   overcast deck above and a rugged sea of cumulus heaps below: the heaps dark with brilliant golden
-   rims (backlit); a tall turret on the right glowing along its sunward side.
-4. **Landscape, close up.** Massive cumulus at sunset filling the frame: big rounded lobes covered in
-   smaller bulges and those in smaller ones, peach and pink in the light, blue-lavender in the shade.
-   The reference for "billows at every size".
-5. **Landscape, daylight.** A field of white cumulus heaps with crisp cauliflower bulges at many scales
-   against a blue-grey sky: sharp, bright sunlit edges, soft grey shade between the bulges.
+- **Like a photograph**: near clouds show more detail than far ones, never less (bulges on
+  bulges down to metres, ragged edges: close clouds as smooth pillows read as cotton wool a few
+  metres across, and the scale is lost); no render noise of any kind (a screen-door, a lattice).
 
 ## 2. Hard rules
 
@@ -98,19 +90,21 @@ The inspiration photos (five, sent with the author's requests; not in this repos
 
 | Command | What it does |
 |---|---|
-| `npm install` | Installs the dev dependencies (Vite, Playwright) and Playwright's headless Chromium, the only browser the tools use. |
+| `npm install` | Installs the dev dependencies (Vite, Playwright) and Playwright's Chromium, the only browser the tools use, always headless (`tools/install-chromium.js`): on Windows the full build, whose Dawn compiles the shaders with DXC as visitors' Chrome does; elsewhere the headless shell. |
 | `npm run dev` | Vite's dev server: the sources as ES modules, reloading on every edit. |
-| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the shaders' includes, the screenshot tool's arguments and compares, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
+| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the bakes' scale (`render/bakescale.js`), whether the GPU's timestamps may steer (`render/gputrust.js`), the screenshot tool's arguments and compares, the cost tool's runs, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
 | `npm run build` | `dist/index.html`. Fails on any other output, or a module from outside `src/`. |
 | `npm run check` | `tools/check-build.js`: one self-contained file within the size budget, and the `src/` lint. |
-| `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
-| `npm run verify` | test + build + check + shot with `--checks` (`tools/checks.js`: streaming, flight, steering, captures that repeat byte for byte, running out of GPU memory, the baked volumes, pointer and keys, errors the tools must hear, what a visitor sees, the benchmark). Args after `--` go to the capture (`npm run verify -- --size 640x360`). About 3–4 min on a desktop GPU. **The definition-of-done command.** |
+| `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `grain.png` and the share where the flight (the motion strip's frames) differs from itself rendered with other jitter (the grain the history can't average in motion, over the frame and each crop), `motion.png` (the flight on from the still, a strip of frames). Measurements past their limits warn. Fails on any console, page or WebGPU error, network request or timeout. |
+| `npm run verify` | test + build + check + shot with `--checks` (`tools/checks.js`: streaming, the domes kept ahead of the bird at top speed, flight, steering, captures that repeat byte for byte, running out of GPU memory, the baked volumes, pointer and keys, errors the tools must hear, what a visitor sees, the benchmark). Args after `--` go to the capture (`npm run verify -- --size 640x360`). About 7 min on a desktop GPU (the NVIDIA laptop: the views ~3.5, the checks ~3.5). **The definition-of-done command.** |
 | `npm run verify:ci` | verify as CI runs it: SwiftShader, 320×180, 8 frames, no measurements. The one to run without a GPU (cloud sessions; `node tools/linux.js npm run verify:ci` on Windows and macOS). |
 | `node tools/screenshot.js --compare A B [--views a,b]` | Before/after sheet `screenshots/compare/A_vs_B.png` with a diff column, per view how many pixels differ and how the measurements changed, and for each view that changed `compare/A_vs_B/<view>.png`: A, B and the diff at full size, then the view's crops zoomed. |
-| `node tools/checks.js [names]` | The behaviour checks alone (`streaming flight steering reproducible out-of-memory volumes pointer-and-keys errors player benchmark`), writing into `screenshots/checks/`. |
+| `node tools/checks.js [names]` | The behaviour checks alone (`streaming top-speed flight steering reproducible out-of-memory volumes pointer-and-keys errors player benchmark`), writing into `screenshots/checks/`. |
+| `node tools/cost.js [--against HEAD] [--views a,b] [--frames 200] [--rounds 3]` | What a change costs the GPU: the working tree's build against another commit's (built in a temporary git worktree), interleaved A B B A A B, a view at a time, with `?cpuprof`; per view and pass the totals, the change and each side's spread (a change within it is noise), every run in `screenshots/cost/<label>.json`. After committing a change, `--against HEAD~1`. About 6 minutes for the six default views on a desktop GPU. The same build against itself reads the trace within 0–2%: a change past ~3% is real (`world` and `sunmap` swing far more: the first frame's bakes). |
 | `node tools/flights.js [--label L]`, `--compare A B` | The scripted flights' logs (15 s each, from the start and diving into the cloud tops) into `screenshots/flights/<label>.json`; compare says per flight "identical" or where they part and by how much. |
 | `npm run map` | `tools/world/map.js`: a top-down map of the world (restlessness, towers by height), without rendering. |
 | `node tools/world/fingerprint.js [--write]` | Whether the CPU world is the one recorded in `tests/fixtures/world-fingerprint.json`; `--write` records it after a deliberate change. |
+| `node tools/light/reference.js [--cases top,face] [--shade] [--fresh]` | The trace's light against a Monte Carlo of the medium (`tools/light/`): per shape (tops, slopes, faces, walls lit from behind, balls) and view, the radiance a real cloud sends and the trace's (its model, `tools/light/model.js`); then the shade (`--shade` alone): in colour under the page's sky, in another cloud's shadow, beside a sunlit wall, folds, an overhang over a sea lit or in shadow. The Monte Carlo's numbers are kept in `screenshots/light/` (minutes to make again; made again when the medium in `constants.js` or the sky changes). The sky is read out of the built page once (`tools/light/sky.js`; again when the atmosphere changes). |
 | `node tools/linux.js <command>` | Runs a command in a Linux container like CI's runner (Docker): SwiftShader captures on Windows and macOS (§4). |
 
 The tools test `dist/index.html` as built, and refuse one older than its sources: `npm run build` first
@@ -125,15 +119,25 @@ take most of a run on SwiftShader).
 
 **The benchmark** (`?bench`, `src/core/benchmark.js`): the piece flies a fixed route from the start (level,
 a long turn, a dive and climb, a weave) as in normal use, measuring each leg, then shows a summary
-(frame times, GPU time, the clouds' resolution, hitches, the GPU, browser and screen) with a button to
-copy it. It is how numbers from real computers and phones reach a session: ask the user to run it on
+(frame times, GPU time (its passes summed, and the span from the first to the last), the clouds'
+resolution, hitches, the GPU, browser and screen, the GPU memory made, whether the timestamps steered
+the resolution, the world's bakes against their estimate) with a button to copy it. It is how numbers from real computers and phones reach a session: ask the user to run it on
 the published page (`https://bstummer.github.io/flying-at-sunset/?bench`) and paste the summary.
 
+**P** (in the page, the deployed one too; nothing on screen says so): logs and copies the moment as a
+`tools/views.js` entry, `{ name: 'new-view', params: { pose: 'x,y,z,yaw,pitch,bank,speed' } }` (and
+`seed`, `towers` if set): the bird's pose 0.2 s before the key, so a capture's still (12 frames on)
+lands on what was on screen. How a moment the author saw in flight reaches a session: ask them to
+press P there and paste it.
+
 The world in Node (`tools/world/`, no browser; `QS="seed=3"` for another world, `WSRC=dir` for another
-checkout's `src/world`): `stats.js` (the sea, towers by size, the bubble load), `map.js`, `preview.js`
+checkout's `src/world`): `stats.js` (the sea, towers by size and how flat their tops, mushrooms (a
+tower's widest section up top against its narrowest in the middle) and knobs (small bubbles perched
+on big ones), the bubble load), `map.js`, `preview.js`
 (a CPU sphere-traced view of the large shapes in seconds), `catalog.js` (side views of the biggest
-towers, for silhouettes), `pose.js` (a camera pose looking at a point, for `?pose=`). Images go to
-`screenshots/world/`.
+towers, for silhouettes), `pose.js` (a camera pose looking at a point, for `?pose=`), `levels.js` (how far
+the clipmap levels' large shapes disagree over boxes: the top surface, the heaps, the towers' peaks; each
+level baked on the CPU as the GPU bakes it). Images go to `screenshots/world/`.
 
 **Cloud sessions** run in Linux with no GPU and no display: run `npm ci`, then once per machine
 `npx playwright install-deps chromium` (needs root). Captures fall back to SwiftShader: slow (a 320×180
@@ -153,7 +157,7 @@ For every change that can affect pixels:
 4. `node tools/screenshot.js --compare before after`, then **open and look at** the images of the
    views that changed (`screenshots/compare/before_vs_after/<view>.png`: full size, crops
    zoomed; the whole sheet is too small to judge a subtle change by), and at the measurements of the
-   views the change touches (`screenshots/after/<view>/`: banding, crops, shimmer, the motion strip).
+   views the change touches (`screenshots/after/<view>/`: banding, crops, shimmer, grain, the motion strip).
 5. **Never claim a visual improvement without looking at the images.** Say what you saw, including what
    got worse. A still can't show motion, the feel of the flight or speed on real hardware: name what you
    couldn't check and leave it to the user.
@@ -162,16 +166,18 @@ For every change that can affect pixels:
   PNGs, so any difference is real, and a refactor must show "identical" on every view. An older
   commit's look comes back the same way: build it in a git worktree and capture it with the same args.
 - Compare only captures from the **same backend** (WebGPU adapter and Chromium build): a GPU and
-  SwiftShader differ everywhere. CI's are SwiftShader's (`npm run verify:ci`: 320×180, 8 frames). On
+  SwiftShader differ everywhere, and on Windows so do DXC and FXC (the tools' compiler before
+  2026-11-23: older captures there are another backend's). CI's are SwiftShader's (`npm run verify:ci`: 320×180, 8 frames). On
   Windows and macOS those come from `node tools/linux.js node tools/screenshot.js --gl swiftshader --size
-  320x180 --frames 8 --no-measurements --label ...`, byte-identical to CI's while `package-lock.json`
-  pins the same Playwright, and with it the same Chromium.
+  320x180 --frames 8 --no-measurements --label ...`, the same as CI's while `package-lock.json`
+  pins the same Playwright, and with it the same Chromium, but for a stray pixel a level off
+  (SwiftShader compiles for the CPU it runs on: compare the container's with the container's).
 - For a lighting or post tunable with a URL parameter (§7), try values before editing: `--query
   "rays=0.24"`, and isolate its pass with `view=` (`--query "view=4&rays=0.24"`).
 - A change that can touch the flight (flight, input, camera, the probe, the world near the bird):
   `node tools/flights.js --label before` before, `--label after` after, then `--compare`.
 - Something new worth watching gets a view in `tools/views.js`, with a `brief`: one line on what the
-  shot is for, and `crops` where its detail is. Keep existing views stable so captures stay comparable.
+  shot is for, in the vision's terms (§1), and `crops` where its detail is. Keep existing views stable so captures stay comparable.
 - The limits (`tools/measure.js`: banded and shimmering share of the frame) only warn; a warning is a
   question to look at the image, and a change that raises one says why when it is handed over. They are
   set for the default 960×540: at smaller sizes sunlit rims make `high2` and `anvil` warn (PLAN.md,
@@ -195,6 +201,13 @@ For every change that can affect pixels:
   it to its promises (top speed, the floor under the sea, the ceiling, climbs trading speed for height,
   stability at a coarse time step). The flights in the page are `tools/flights.js`'s and the flight
   check's.
+- The light has a reference: `tests/light.test.js` holds the Monte Carlo (`tools/light/mc.js`, of
+  the medium in `constants.js`: its extinction and profile) to closed forms, the trace's light
+  within a factor two of it and independent of the outline's width, and its shade under a sky near
+  it (a crease darker than an open top in both). The trace's light is `tools/light/model.js`, a
+  copy of the shaders' (`sunScatter`, `lightPath`, the skin, the profile's depths, the sky light:
+  `traceAmbient`): a change to those formulas changes it too, and `reference.js` says how far it
+  then is from a real cloud.
 - The checks test the piece, and the tools themselves: the streaming check compares the streamed
   volumes with a fresh start's texel by texel, and the errors check proves the tools hear a WebGPU
   validation error and a lost device.
@@ -215,7 +228,7 @@ src/
   main.js             the start, the main loop (frameStep), the steering hint, a lost device, window.__debug
   worker.js           the world's worker: src/world/ off the page's thread (column data, bubbles, the domes around
                       the bird, ?preset's place), bundled into the page as a string and started from a blob: URL
-  math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the render origin, the ceiling
+  math.js constants.js  the small math kit; the sun (5° up, toward −Z), the wind, the noise tiles and the detail volume's turn, the render origin, the ceiling, the clouds' medium, the clipmap levels' grids, the atmosphere
   core/               the page around the piece: every URL parameter (params.js, §7), its elements, the note,
                       refused requests and fullscreen (page.js), steering (input.js), the world's worker from the
                       page's side (world.js), the test mode (capture.js), the readout (readout.js, ?debug), the
@@ -224,12 +237,12 @@ src/
                       starts (presets.js: the test views, ?preset, ?pose)
   world/              the CPU world generator: the air, thermals, cells, shapes, what the GPU and the flight get. No DOM, no GPU
   render/             WebGPU: the device and pipelines (gpu.js), static resources (setup.js), streamed volumes (stream.js),
-                      size-dependent targets, the probe, timing, the sun's colours (sun.js), the bird, one frame
+                      the sun map and the lit map (sunmap.js; its grid, sungrid.js), size-dependent targets, the probe, timing, the sun's colours (sun.js), the bird, one frame
                       (frame.js), dynamic resolution
   shaders/            WGSL: a .wgsl file per shader, chunks/ they include; per family (sky, textures, cloud, volumes,
                       trace, taau, probe, mist, bird, post) a .js module with the uniforms and the shaders
   style.css
-tools/                screenshots, measurements (measure.js, image.js) and compares, behaviour checks, the build check, the world in Node, the Linux container, the site's folders
+tools/                screenshots, measurements (measure.js, image.js) and compares, behaviour checks, the build check, the world in Node, the light's reference (light/), the Linux container, the site's folders, the browser's install
 tests/                node:test suites and their fixtures
 ```
 
@@ -260,21 +273,24 @@ The tools rely on these; keep them, or change the tools with them.
   `&log`: a per-frame flight log in `window.__log` (t, x, alt, z, speed, bank, flight-path angle γ, yaw
   (angles in degrees), sea top, the probe's distance to the cloud at the bird, camera roll, fov).
   `&script=dive|climb|turn|weave|divedeep|holddive`: scripted input (`src/core/capture.js`). `&freeze`: no
-  flight. `&preset=...` (the table below), `&pose=x,y,z,yaw,pitch,bank`: where the bird is (metres, the
-  height absolute; radians, yaw 0 toward the sun (−Z), pitch the flight-path angle); the chase camera
+  flight. `&preset=...` (the table below), `&pose=x,y,z,yaw,pitch,bank[,speed]`: where the bird is (metres, the
+  height absolute; radians, yaw 0 toward the sun (−Z), pitch the flight-path angle; m/s); the chase camera
   sits a few metres behind it, and the flight goes on from there (`tools/world/pose.js` finds a pose
   looking at a point). `&closeup=right,up,forward`: a camera fixed to the bird.
-  `&keep=K&every=S`: hand over K frames, S frames apart, from the `frames`th on, in
+  `&jit=J`: the jitter sequences start J frames on (the grain measurement: the same render with
+  other noise). `&keep=K&every=S`: hand over K frames, S frames apart, from the `frames`th on, in
   `window.__frames` (the first is `__png`, the same as without them); with `&freeze&dt=0` nothing
   moves but the clouds' jitter (the shimmer measurement).
 - `?bench` (not with `?test`): the benchmark; `&benchSeconds` and `&benchWarmup` per leg (default 8
   and 2). `window.__BENCH__` = `{ done, summary, legs }` once it ends; `#bench` holds the summary.
 - Globals: `window.__done`, `__error` (also shown in `#note`), `__frame`, `__png`, `__frames`, `__gpu` (with
   `?cpuprof`: per-pass GPU times summed over the run), `__log`, `__debug` (`bird`, `cam`, `R`,
-  `seaTopAt`, `cloudTopAt`, `towersNear`, `input`, `DR`, `LEVELS`, `TSVL`, `worldStats`, `device`, `T`,
+  `seaTopAt`, `cloudTopAt`, `towersNear`, `input`, `DR`, `LEVELS`, `TSVL`, `SUNMAPS`, `worldStats`, `patchStats` (the domes around the bird: core/world.js), `device`, `T`,
   `readTexture(texture, z, nz)`, `probe()`), `__BENCH__`. Elements: `#view` (the canvas, class `on`
   once shown), `#hint` (class `on`), `#touch`, `#note`, `#stats`, `#bench`.
-- Only `render/targets.js` opens out-of-memory error scopes (the out-of-memory check counts on it).
+- Out-of-memory error scopes open in two places only (the out-of-memory check counts on it): `render/gpu.js`,
+  once, around what the modules make as they load (`main.js` closes it before the first frame), and
+  `render/targets.js`, around each allocation of the size-dependent targets.
 
 URL parameters, for working on the piece (all of them, with their defaults, in `src/core/params.js`'s
 header; outside the test mode one the page can't read is a console warning, and the piece runs on):
@@ -286,7 +302,8 @@ header; outside the test mode one the page can't read is a console warning, and 
 | `?seed=N`, `?towers=K` | another world (default 7); the density of convective cells (default 1) |
 | `?preset=start\|sun\|away\|side\|skim\|high\|bank\|fastdive\|humps\|high2\|upward\|tower\|giant\|anvil\|close\|approach\|inside\|under` | where the bird starts (in normal play too: `?preset=tower`); the last seven look at generated towers |
 | `?view=1..5` | cloud transmittance, raw cloud light, depth, sun rays, bloom |
-| `?dbg=1..7` | cloud debug: normals, sun visibility, shadow volume, march cost, lighting terms |
+| `?dbg=1..7` | cloud debug: normals, sun visibility, the shadow volume and the sun map, march cost, lighting terms |
+| `?raw` | each frame's own cloud trace, upsampled without the history: what the trace alone gives a frame (its noise and aliasing, before the temporal upsampling averages them) |
 | `?exp ?con ?haze ?bloom ?bloomw ?bclamp ?rays ?tm` | exposure, contrast, haze density, bloom, sun rays, tone curve |
 | `?cpuprof` | with `?test`: `window.__gpu` sums the per-pass GPU times over the run (timestamp queries; `--profile`) |
 
@@ -304,8 +321,8 @@ header; outside the test mode one the page can't read is a console warning, and 
   buffers `bX` (registered in `render/gpu.js`; a name in a comment doesn't count; a buffer's struct is
   declared in a chunk the shaders that use it include); a pass (`pass`, `dispatch`) hands them over by
   those names, and a missing one throws (`render/gpu.js`'s header). Entry points: `vs`, `fs`, `cs`.
-  A value JS and WGSL both use comes from `constants.js` through the pipeline's header (`CLOUD_TOP`,
-  the noise tiles), never as a second literal; a switch is an `override` set by the pipeline's
+  A value JS and WGSL both use comes from `constants.js` through the pipeline's header (its
+  `FOR_SHADERS`: the ceiling, the medium, the noise tiles, `DETAIL_ROT`, the atmosphere), never as a second literal; a switch is an `override` set by the pipeline's
   `constants` (the trace's `DBG`).
 - **Row order**: every texture keeps GL's, row 0 at the bottom of the view, as when the piece was
   written for WebGL. Fullscreen passes work in pixel coordinates (`@builtin(position)` numbers rows like
@@ -331,12 +348,22 @@ header; outside the test mode one the page can't read is a console warning, and 
 ## 9. Performance budget
 
 Smooth before sharp: dynamic resolution keeps the GPU under 12.5 ms a frame where the browser has
-timestamp queries, else it aims at the display's frame rate by frame times (`render/resolution.js`),
+timestamp queries (a frame's time: the span from its first pass to its last; a phone's Mali
+overlaps its passes, and their own times summed said 3.5 times what its frames took), held to the
+time between frames (`render/gputrust.js`), else it aims at the display's frame rate by frame times
+(their 75th percentile: frames that fall behind come in bursts) (`render/resolution.js`),
 and detail gives way first. Phones get a lower resolution cap and cloud scale. Real computers and
 phones report through the benchmark (`?bench`, §3); the numbers in hand are in PLAN.md (known issues). CI's
-SwiftShader timings are only relative. Watch the CPU too: the world generator runs in a worker, but the
-page applies what it sends within a budget of main-thread and estimated GPU time (`render/stream.js`):
-a hitch in the benchmark is a question for that budget.
+SwiftShader timings are only relative. To compare two builds on one machine, `node tools/cost.js`:
+it runs them interleaved (A B B A A B, the older one in a git worktree), a view at a time, over a
+few hundred frames each: the NVIDIA laptop's clocks drift between runs (the same bake 2× apart,
+separate captures ±25%), a page that waited idle runs its frames slower, and two pages side by side
+(as `npm run shot` renders them) share the GPU. On Windows the tools' shaders are DXC's, as in
+visitors' Chrome (FXC, the headless shell's, had a cliff of registers in the trace that DXC doesn't:
+PLAN.md, leg 10). Watch the CPU too: the world generator
+runs in a worker, but the page applies what it sends within a budget of main-thread and estimated GPU
+time (`render/stream.js`; the estimate scaled by what the bakes take on the device, where it has
+timestamp queries: `render/bakescale.js`): a hitch in the benchmark is a question for that budget.
 
 ## 10. Definition of done
 
@@ -349,7 +376,7 @@ a hitch in the benchmark is a question for that budget.
 - The before/after `--compare` sheet has been opened and reviewed, and you can say what changed.
 - Something new worth watching has a view in `tools/views.js`.
 - This file is updated if the structure, commands, conventions or contract changed.
-- PLAN.md is updated: an approach that failed goes in its decisions, with why; what is still open in
+- PLAN.md is updated: an approach that failed goes in its decisions, with why and when; what is still open in
   its known issues; what got fixed comes out. Commit and push only when the user asks; pushing to
   `main` publishes the piece.
 
@@ -364,7 +391,7 @@ What tends to help:
 
 - A `before` capture (§4) shows where the piece falls short of the request and the vision.
 - For the world, `tools/world/` (stats, map, preview, catalog) answers in seconds, before any GPU
-  capture; `--profile` shows what a change costs on the GPU.
+  capture; `node tools/cost.js` shows what a change costs on the GPU (§9).
 - Judging the result as harshly as the author will: the views against their briefs and against what
   the author keeps coming back to (§1). A subagent that hasn't seen the code is a good second pair of
   eyes.

@@ -15,18 +15,21 @@ import { fileURLToPath } from 'node:url';
 import { assertFreshBuild, launch, pageUrl, pool, ROOT, testRender, until, watchdog, watchPage } from './browser.js';
 import { flyAll, LOG } from './flights.js';
 import { decodePng } from './png.js';
+import { SM_ROOT } from '../src/constants.js';
+import { parseParams } from '../src/core/params.js';
 
 const AT_ONCE = 2;
 const LIVE = { test: '', live: '', log: '', w: '64', h: '36', scale: '0.3', dt: '0.05', frames: '100000' };
 
 export const CHECKS = [
   { name: 'streaming', what: 'flying 8 km streams in the same world volumes a fresh start at that place bakes', run: checkStreaming },
+  { name: 'top-speed', what: 'flying level at top speed, the domes around the bird come before it reaches their edge: the page never grows the world itself', run: checkTopSpeed },
   { name: 'flight', what: 'scripted flights: dives gain speed, climbs trade it for height, turns bank, the bird is kept from sinking deep into the sea', run: checkFlight },
   { name: 'steering', what: 'mouse, keys and touch bank, climb and dive the bird, and letting go levels it out', run: checkSteering },
   { name: 'reproducible', what: 'a capture renders the same, byte for byte, every time, and handing over more frames changes it not at all', run: checkReproducible },
-  { name: 'out-of-memory', what: 'GPU memory running out at start, on a resize and for good: the page retries smaller, keeps running, or says so', run: checkOutOfMemory },
-  { name: 'volumes', what: 'the baked world volumes: no NaNs, no cloud cut off at a volume\'s ceiling, sound column maps', run: checkVolumes },
-  { name: 'pointer-and-keys', what: 'the pointer leaving levels out; Cmd/Ctrl shortcuts don\'t steer; Meta clears held keys', run: checkPointerAndKeys },
+  { name: 'out-of-memory', what: 'GPU memory running out for what never changes, at start, on a resize and for good: the page says so, retries smaller, keeps running, or says so', run: checkOutOfMemory },
+  { name: 'volumes', what: 'the baked world volumes: no NaNs, no cloud cut off at a volume\'s ceiling, sound column maps, the sun map baked, within 0..1 and its second channel the root of its first', run: checkVolumes },
+  { name: 'pointer-and-keys', what: 'the pointer leaving levels out; Cmd/Ctrl shortcuts don\'t steer; Meta clears held keys; P logs the moment\'s pose as a view', run: checkPointerAndKeys },
   { name: 'errors', what: 'the tools hear what nothing on screen shows: a WebGPU validation error, a lost device', run: checkErrors },
   { name: 'player', what: 'as a visitor sees it: the canvas fades in, the steering hint comes and goes, on a desktop, a phone, with ?debug and after a 12 s frame', run: checkPlayer, alone: true },
   { name: 'benchmark', what: '?bench flies its route, measures every leg and ends with a summary to paste', run: checkBenchmark, alone: true },
@@ -280,7 +283,23 @@ async function checkPointerAndKeys(browser, { fail, note, problems }) {
     await waitSim(0.2);
     if ((await input()).keys.length) fail(`tapping Meta should clear held keys: ${JSON.stringify((await input()).keys)}`);
     await page.keyboard.up('ArrowLeft');
-    note(`banks: pointer ${right.bank}° · after it left ${left.bank}° · Cmd + left ${shortcut.bank}° · left ${arrow.bank}°`);
+    // P: the bird's pose of 12 test frames (0.2 s) before the key, so a capture's still lands on the
+    // moment, as a view whose pose the page reads
+    const logged = [];
+    page.on('console', (m) => logged.push(m.text()));
+    await page.keyboard.press('KeyP');
+    const flown = await page.evaluate(() => window.__log.map((row) => [row[0], row[1], row[2], row[3]]));
+    await waitSim(0.2);
+    const entry = logged.find((l) => l.startsWith("{ name: 'new-view', params: { pose: '"));
+    const pose = entry ? parseParams(`?test&pose=${/pose: '([^']*)'/.exec(entry)[1]}`) : null;
+    if (!pose || pose.errors.length || pose.pose.length !== 7) fail(`P should log a view whose pose the page reads, x,y,z,yaw,pitch,bank,speed: ${entry}`);
+    else {
+      const [px, py, pz] = pose.pose;
+      const at = flown.findLast(([, x, y, z]) => Math.hypot(x - px, y - py, z - pz) < 0.2);
+      const lead = at ? flown.at(-1)[0] - at[0] : null;
+      if (lead === null || lead < 0.15 || lead > 0.35) fail(`P's pose should be where the bird flew 0.2 s before the key: ${lead === null ? 'nowhere it flew' : `${lead.toFixed(2)} s before`}`);
+    }
+    note(`banks: pointer ${right.bank}° · after it left ${left.bank}° · Cmd + left ${shortcut.bank}° · left ${arrow.bank}°; P: ${entry}`);
   } finally {
     await live.done();
   }
@@ -336,9 +355,11 @@ async function checkFlight(browser, { fail, note, problems }) {
 
 // ---------------------------------------------------------------- out of memory
 
-// Makes the next `n` out-of-memory error scopes report running out, and counts them all. Only the
-// allocation of the size-dependent render targets opens them (src/render/targets.js).
-const forceOutOfMemory = (n) => {
+// Makes the next `n` out-of-memory error scopes after the first `skip` report running out, and
+// counts them all. What the page's modules make as they load opens the first (src/render/gpu.js,
+// closed by main.js before the first frame), each allocation of the size-dependent render targets
+// one after it (src/render/targets.js).
+const forceOutOfMemory = (n, skip = 0) => {
   const D = GPUDevice.prototype, push = D.pushErrorScope, pop = D.popErrorScope;
   let left = n, fake = 0;
   window.__forced = 0;
@@ -346,7 +367,8 @@ const forceOutOfMemory = (n) => {
   D.pushErrorScope = function (filter) {
     if (filter === 'out-of-memory') {
       window.__scopes++;
-      if (left > 0) {
+      if (skip > 0) skip--;
+      else if (left > 0) {
         left--;
         fake++;
         window.__forced++;
@@ -375,14 +397,32 @@ async function checkOutOfMemory(browser, { fail, note, problems }) {
     size: window.__debug ? [window.__debug.R.w, window.__debug.R.h] : null,
   }));
   {
-    // at start: the first allocation runs out, and the page retries with fewer pixels
-    const { page, done } = await openPage(browser, problems, { viewport: { width: 400, height: 240 } });
+    // what never changes, made as the page loads, runs out: the page says so, and draws nothing
+    const own = [];
+    const { page, done } = await openPage(browser, own, { viewport: { width: 200, height: 120 } });
     try {
       await page.addInitScript(`(${forceOutOfMemory})(1)`);
+      await page.goto(pageUrl({ test: '', frames: '3', w: '160', h: '90' }));
+      await until(page, () => window.__done || window.__error);
+      const s = await state(page);
+      if (s.forced !== 1 || s.scopes !== 1) fail(`what never changes: ${s.forced} out-of-memory errors forced of 1, ${s.scopes} allocations (did the allocation change?)`);
+      if (!/^Out of GPU memory: the piece needs about \d+ MB/.test(s.error ?? '') || s.note === 'none' || s.on || s.frame) fail(`what never changes: the page doesn't say it ran out of GPU memory, or drew: ${JSON.stringify(s)}`);
+      else note(`what never changes: the note says "${s.error}"`);
+    } finally {
+      await done();
+    }
+    // (its note is an error on the console, as it should be)
+    problems.push(...own.filter((p) => !(p.kind === 'console error' && /Out of GPU memory/.test(p.text))));
+  }
+  {
+    // at start: the first allocation of the targets runs out, and the page retries with fewer pixels
+    const { page, done } = await openPage(browser, problems, { viewport: { width: 400, height: 240 } });
+    try {
+      await page.addInitScript(`(${forceOutOfMemory})(1, 1)`);
       await page.goto(pageUrl({ test: '', frames: '3', w: '1280', h: '720', scale: '0.3' }));
       await until(page, () => window.__done || window.__error);
       const s = await state(page);
-      if (s.forced !== 1 || s.scopes < 2) fail(`at start: ${s.forced} out-of-memory errors forced of 1, ${s.scopes} allocations (did the allocation change?)`);
+      if (s.forced !== 1 || s.scopes < 3) fail(`at start: ${s.forced} out-of-memory errors forced of 1, ${s.scopes} allocations (did the allocation change?)`);
       if (s.error || s.note !== 'none' || !s.on || s.frame < 3) fail(`at start: the page didn't recover: ${JSON.stringify(s)}`);
       if (!(s.size?.[0] * s.size?.[1] < 1280 * 720)) fail(`at start: the page retried at ${s.size?.join('x')}, no smaller than 1280x720`);
       note(`at start: recovered at ${s.size?.join('x')}, frame ${s.frame}`);
@@ -413,7 +453,7 @@ async function checkOutOfMemory(browser, { fail, note, problems }) {
     const own = [];
     const { page, done } = await openPage(browser, own, { viewport: { width: 200, height: 120 } });
     try {
-      await page.addInitScript(`(${forceOutOfMemory})(4)`);
+      await page.addInitScript(`(${forceOutOfMemory})(4, 1)`);
       await page.goto(pageUrl({ test: '', frames: '12', w: '160', h: '90' }));
       await until(page, () => window.__done || window.__error);
       const s = await state(page);
@@ -440,32 +480,52 @@ const readLevels = async () => {
     return btoa(s);
   };
   const out = {};
-  for (const [name, L] of [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]], ['shadow', D.TSVL]]) {
-    const vol = await D.readTexture(L.vol, 0, L.nz); // slice after slice, rows packed
-    const mean = new Float64Array(N * N);
-    for (let k = 0; k < vol.length; k++) mean[k % (N * N)] += vol[k] / L.nz;
+  const levels = [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]], ['shadow', D.TSVL]];
+  // (a clipmap's billows, their scale and liveliness, are a volume of their own)
+  for (const [name, L] of [...levels]) if (L.bs) levels.push([name + ' billows', { ...L, vol: L.bs, col: null, second: ' lively' }]);
+  for (const [name, L] of levels) {
+    const vol = await D.readTexture(L.vol, 0, L.nz); // slice after slice, rows packed, the channels of a texel together
+    // (a channel each: the shadow volume's through the cloud a texel is in, and through those beyond;
+    // the billows' scale and liveliness)
+    const comps = vol.length / (N * N * L.nz), means = Array.from({ length: comps }, () => new Float64Array(N * N));
+    for (let k = 0; k < vol.length; k++) means[k % comps][Math.floor(k / comps) % (N * N)] += vol[k] / L.nz;
     let col = null;
     if (L.col) {
       const bits = new Uint32Array((await D.readTexture(L.col)).buffer);
       col = new Uint32Array(N * N).fill(2166136261);
       for (let k = 0; k < bits.length; k++) col[k >> 2] = Math.imul(col[k >> 2] ^ bits[k], 16777619);
     }
-    out[name] = { gi: L.gi, gj: L.gj, step: L.step, pending: L.pending, valid: L.valid, mean: base64(mean), col: col && base64(col) };
+    means.forEach((mean, c) => {
+      out[name + (c ? L.second ?? ' beyond' : '')] = { gi: L.gi, gj: L.gj, step: L.step, pending: L.pending, valid: L.valid, mean: base64(mean), col: col && base64(col) };
+    });
+  }
+  // (the sun map's levels: each one's window, and per texel column along the sun's way and across
+  // it, all heights, the mean of the light it lets through: its texels' first channel)
+  const sun = [];
+  for (const [W, t] of [[D.SUNMAPS[0], D.T.sunMap], [D.SUNMAPS[1], D.T.sunMapC]]) {
+    const sm = await D.readTexture(t, 0, t.d), mean = new Float64Array(t.w * t.h);
+    for (let k = 0; k < sm.length; k += 2) mean[(k / 2) % (t.w * t.h)] += sm[k] / t.d;
+    sun.push({ K0: W.K0, A0: W.A0, steps: W.steps, valid: W.valid, nw: t.w, na: t.h, mean: base64(mean) });
   }
   const b = D.bird;
-  return { pose: [...b.pos, b.yaw, b.gamma, b.bank], levels: out };
+  return { pose: [...b.pos, b.yaw, b.gamma, b.bank], levels: out, sun };
 };
 
 // Most a level's volume may differ between the flown and the fresh page, as the mean over a texel
-// column: the clipmap levels hold the same (half-float rounding aside); the shadow volume is
-// marched through them as they were when it was baked.
-const VOLUME_TOLERANCE = { L0: 0.5, L1: 0.5, L2: 0.5, shadow: 10 };
+// column: the clipmap levels hold the same (half-float rounding aside; their billow scales, up to
+// 2000 m, round to a metre, their liveliness, 0..1, to a thousandth); the shadow volume is
+// marched through them as they were when it was baked (its channels: through the cloud a texel is
+// in, up to 30, and through the clouds beyond, up to 14). The first flips where the edge of L1's
+// window crosses a texel's march (L1 and L2 disagree there whether the march is still in its cloud):
+// up to ~11 at texels by that edge, 65 km out.
+const VOLUME_TOLERANCE = { L0: 0.5, L1: 0.5, L2: 0.5, 'L0 billows': 2, 'L1 billows': 2, 'L2 billows': 2, 'L0 billows lively': 0.01, 'L1 billows lively': 0.01, 'L2 billows lively': 0.01, shadow: 15, 'shadow beyond': 10 };
 
 async function checkStreaming(browser, { fail, note, problems, outDir }) {
   // 2 minutes of flight from the start (about 8 km, every level shifting at least once), then a
   // fresh start at the exact pose the flight ended at. Where both windows overlap (but for their
-  // edges, never sampled) the column maps must be the same bit for bit and the volumes the same:
-  // what entered was generated and baked where it belongs, and nothing stale stayed behind.
+  // edges, never sampled) the column maps must be the same bit for bit and the volumes the same,
+  // the sun map too: what entered was generated and baked where it belongs, and nothing stale
+  // stayed behind.
   const size = { w: '320', h: '180', scale: '0.5' };
   const flown = await testRender(browser, { ...size, preset: 'start', frames: '480', dt: '0.25' }, { timeoutMs: 1_800_000, read: readLevels });
   problems.push(...flown.problems);
@@ -488,13 +548,50 @@ async function checkStreaming(browser, { fail, note, problems, outDir }) {
       continue;
     }
     if (r.columnsDiffer) fail(`${name}: ${r.columnsDiffer} of ${r.compared} texel columns of the column map differ from a fresh start's`);
-    if (r.volumeMax > VOLUME_TOLERANCE[name]) fail(`${name}: the volume differs from a fresh start's by up to ${r.volumeMax.toFixed(2)} (mean over a texel column) at cell ${r.worst.join(', ')}`);
+    if (!(r.volumeMax <= VOLUME_TOLERANCE[name])) fail(`${name}: the volume differs from a fresh start's by up to ${r.volumeMax.toFixed(2)} (mean over a texel column) at cell ${r.worst.join(', ')}`);
     lines.push(`${name} ${r.volumeMax.toFixed(2)}`);
   }
+  // (each level of the sun map, where both are valid: the same light, but where the march past its
+  // window starts elsewhere, through coarser cloud)
+  flown.read.sun.forEach((sa, k) => {
+    const sb = fresh.read.sun[k], name = ['sun map', 'sun map coarse'][k];
+    if (!sa.valid || !sb.valid) fail(`${name}: not baked after the flight`);
+    else if (Math.abs(sa.K0 - sb.K0) > sa.steps[0] + 2 || Math.abs(sa.A0 - sb.A0) > sa.steps[1] + 2) {
+      fail(`${name}: its window stayed at texel ${sa.K0}, ${sa.A0}; a fresh start there places it at ${sb.K0}, ${sb.A0}`);
+    } else {
+      const r = compareSunMaps(sa, sb);
+      if (!(r.max <= SUN_TOLERANCE[k])) fail(`${name}: the light differs from a fresh start's by up to ${r.max.toFixed(3)} (mean over a texel column) at texel ${r.worst.join(', ')}`);
+      lines.push(`${name} ${r.max.toFixed(3)} (${r.compared} columns)`);
+    }
+  });
   const d = difference(decodePng(flown.png), decodePng(fresh.png));
   note(`flown to ${flown.read.pose.slice(0, 3).map((v) => (v / 1000).toFixed(1)).join(', ')} km; volumes differ from a fresh start's by at most: ${lines.join(', ')}`);
-  note(`images: mean ${d.mean.toFixed(2)} levels, ${(100 * d.over16).toFixed(1)}% of pixels more than 16 levels off (the billows drift with time)`);
+  note(`images: mean ${d.mean.toFixed(2)} levels, ${(100 * d.over16).toFixed(1)}% of pixels more than 16 levels off (a flown page has 480 frames of history behind it, a fresh one 12)`);
   if (d.mean > 8 || d.over16 > 0.12) fail(`the streamed world looks different from a fresh start: mean ${d.mean.toFixed(2)}, ${(100 * d.over16).toFixed(1)}% more than 16 levels off`);
+}
+
+// Two pages' sun maps (readLevels().sun) where both are valid as the lookups read them (a texel in
+// from the window's edge away from the sun, three toward it, two across: render/sungrid.js,
+// lookupUniforms): { compared, max, worst }. Texel (K mod nw, A mod na) holds world texel K along
+// the sun's way, A across.
+// Most each level's may differ (the mean light over a texel column, 0..1): where its window ends
+// the march past it takes over from the window's stretches (points 200 m apart against steps of
+// 80 m), and from the coarse level's, 49 km toward the sun, it crosses L1's edge within ~15 km: a
+// window that ends elsewhere sees a little other light there. After 8 km of flight the fine level's
+// differ by up to ~0.012, the coarse level's by ~0.047 (p99 0.018).
+const SUN_TOLERANCE = [0.05, 0.08];
+export function compareSunMaps(a, b) {
+  const [ma, mb] = [a.mean, b.mean].map((s) => new Float64Array(Uint8Array.from(Buffer.from(s, 'base64')).buffer));
+  const mod = (x, n) => ((x % n) + n) % n;
+  let compared = 0, max = 0, worst = null;
+  for (let K = Math.max(a.valid[0], b.valid[0]) + 1; K < Math.min(a.valid[1], b.valid[1]) - 3; K++) {
+    for (let A = Math.max(a.valid[2], b.valid[2]) + 2; A < Math.min(a.valid[3], b.valid[3]) - 2; A++) {
+      const p = mod(A, a.na) * a.nw + mod(K, a.nw), d = Math.abs(ma[p] - mb[p]);
+      compared++;
+      if (d > max) [max, worst] = [d, [K, A]];
+    }
+  }
+  return { compared, max, worst };
 }
 
 // Two pages' readLevels() of one level, over where both windows overlap but for their edges:
@@ -535,21 +632,82 @@ export function difference(a, b) {
   return { mean: sum / (3 * n), over16: over16 / n };
 }
 
+// The flight asks for the sea's surface under the bird every frame, answered from a patch of domes
+// the world's worker sends (src/core/world.js), the next asked for 6 km before the bird reaches the
+// edge of the one it has, behind whatever the volumes asked for before it. Here the page runs as a
+// visitor's does (its worker answering in its own time), the bird held at its top speed (the glider
+// can't keep it there level: its speed set past it each frame, the flight clamps it) for
+// TOP_SPEED_S, about 18 km, two patches on: each must come before the bird reaches the edge of the
+// last, or the page grows the world's cells itself (a stall). Where frames come further apart than
+// the flight's longest step (0.1 s: SwiftShader, CI's), the bird flies too little in that time for
+// the check to judge the patches' lead: after its first PEEK_S it says so, and holds the page only to
+// never growing cells.
+const TOP_SPEED_S = 100, PEEK_S = 20, FLIGHT_STEP_MS = 100;
+async function checkTopSpeed(browser, { fail, note, problems }) {
+  const { page, done } = await openPage(browser, problems, { viewport: { width: 320, height: 180 } });
+  try {
+    await page.goto(pageUrl({}));
+    await until(page, () => window.__frame > 2 || window.__error);
+    await page.evaluate(() => {
+      const { bird, input } = window.__debug;
+      input.script = () => [0, 0];
+      // (frame times from a second on: the first frames still warm up)
+      const start = [...bird.pos], frames = [], from = performance.now() + 1000;
+      let last = 0;
+      const hold = (now) => { bird.speed = 1000; if (last > from) frames.push(now - last); last = now; requestAnimationFrame(hold); };
+      requestAnimationFrame(hold);
+      window.__topSpeed = { start, frames };
+    });
+    const t0 = await page.evaluate(() => performance.now());
+    const flown = () => page.evaluate(() => {
+      const { bird, patchStats } = window.__debug, { start, frames } = window.__topSpeed;
+      return { error: window.__error ?? null, patch: { ...patchStats }, km: Math.hypot(bird.pos[0] - start[0], bird.pos[2] - start[2]) / 1000,
+        frames: frames.length, slow: frames.filter((ms) => ms > 50).length, longest: Math.max(...frames), median: [...frames].sort((a, b) => a - b)[frames.length >> 1] };
+    });
+    await until(page, (s) => performance.now() > s || window.__error, t0 + PEEK_S * 1000, { pollMs: 500 });
+    let s = await flown();
+    if (s.median <= FLIGHT_STEP_MS && !s.error) {
+      await until(page, (s) => performance.now() > s || window.__error, t0 + TOP_SPEED_S * 1000, { pollMs: 1000 });
+      s = await flown();
+    }
+    if (s.error) return fail(`the page's note says: ${s.error}`);
+    const p = s.patch;
+    if (p.grown) fail(`the page grew the world's cells itself ${p.grown} times (${p.grownMs.toFixed(0)} ms): a patch came too late (the longest took ${(p.maxWait / 1000).toFixed(1)} s)`);
+    if (!(s.median <= FLIGHT_STEP_MS)) return note(`${s.frames ? `frames ${s.median.toFixed(0)} ms apart` : 'no frames'} (the flight steps at most ${FLIGHT_STEP_MS} ms): the bird flew ${s.km.toFixed(1)} km in ${PEEK_S} s, too little to judge the patches' lead`);
+    if (p.asked < 3) fail(`${p.asked} patches asked for over ${s.km.toFixed(1)} km: the bird didn't fly far enough to need two more`);
+    note(`${s.km.toFixed(1)} km in ${TOP_SPEED_S} s, ${p.asked} patches, the longest ${(p.maxWait / 1000).toFixed(1)} s to come (asked for ${(p.edge / 1000 / (s.km / TOP_SPEED_S)).toFixed(0)} s before the edge), the bird ${(p.minLead / 1000).toFixed(1)} km from an edge at the nearest; frames over 50 ms ${s.slow} of ${s.frames} (the longest ${s.longest.toFixed(0)} ms)`);
+  } finally {
+    await done();
+  }
+}
+
 async function checkVolumes(browser, { fail, note, problems }) {
   const { page, done } = await openPage(browser, problems, { viewport: { width: 200, height: 120 } });
   try {
     await page.goto(pageUrl({ test: '', frames: '2', w: '160', h: '90' }));
     await until(page, () => window.__done || window.__error);
-    const res = await page.evaluate(async () => {
+    const res = await page.evaluate(async (root) => {
       const D = window.__debug, N = 256, out = {};
       for (const [name, L] of [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]], ['shadow', D.TSVL]]) {
-        const v = await D.readTexture(L.vol, 0, L.nz); // one value per texel, slice after slice
+        const v = await D.readTexture(L.vol, 0, L.nz); // the channels of each texel, slice after slice
+        const top = (L.nz - 1) * (v.length / L.nz);
         let nan = 0, topNeg = 0;
         for (let k = 0; k < v.length; k++) {
           if (!Number.isFinite(v[k])) nan++;
-          else if (v[k] < 0 && k >= (L.nz - 1) * N * N) topNeg++;
+          else if (v[k] < 0 && k >= top) topNeg++;
         }
         out[name] = { nan, topNeg };
+      }
+      // (the sun map's levels: the light that gets through other clouds, and its root, 0..1, a byte
+      // each: the root's power within a few of the light's steps)
+      for (const [name, W, t] of [['sun map', D.SUNMAPS[0], D.T.sunMap], ['sun map coarse', D.SUNMAPS[1], D.T.sunMapC]]) {
+        const sm = await D.readTexture(t, 0, t.d);
+        let unlike = 0, shade = 0;
+        for (let k = 0; k < sm.length; k += 2) {
+          if (Math.abs(sm[k + 1] ** root - sm[k]) > 0.03) unlike++;
+          if (sm[k] < 0.5) shade++;
+        }
+        out[name] = { nan: sm.filter((x) => !Number.isFinite(x)).length, outside: sm.filter((x) => x < 0 || x > 1).length, baked: !!W.valid, unlike, shade };
       }
       for (const [name, L] of [['L0', D.LEVELS[0]], ['L1', D.LEVELS[1]], ['L2', D.LEVELS[2]]]) {
         const c = await D.readTexture(L.col);
@@ -562,11 +720,15 @@ async function checkVolumes(browser, { fail, note, problems }) {
         out[name].columns = { bad, sunk, lowest };
       }
       return out;
-    });
+    }, SM_ROOT);
     for (const [name, r] of Object.entries(res)) {
       if (r.nan) fail(`${name}: ${r.nan} texels that are not finite`);
       if (r.topNeg) fail(`${name}: cloud in ${r.topNeg} texels of the volume's top slice (cut off at its ceiling)`);
       if (r.columns?.bad) fail(`${name}: ${r.columns.bad} column values that are not finite`);
+      if (r.outside) fail(`${name}: ${r.outside} texels outside 0..1`);
+      if (r.baked === false) fail(`${name}: not baked after the first frame`);
+      if (r.unlike) fail(`${name}: in ${r.unlike} texels the second channel is not the root of the first`);
+      if (r.shade === 0) fail(`${name}: no texel in shadow`);
       if (r.columns?.sunk) fail(`${name}: in ${r.columns.sunk} columns the heaps lower the sea instead of raising it`);
     }
     note(`sea surface from ${Math.min(res.L0.columns.lowest, res.L1.columns.lowest, res.L2.columns.lowest).toFixed(0)} m; no NaNs, nothing at a ceiling`);
@@ -623,7 +785,7 @@ async function checkBenchmark(browser, { fail, note, problems, outDir }) {
       if (!leg.frames) fail(`the leg "${leg.name}" measured no frames`);
       if (!new RegExp(`^${leg.name} +\\d`, 'm').test(s.summary)) fail(`the summary has no row for the leg "${leg.name}"`);
     }
-    for (const line of ['build', 'gpu', 'browser', 'screen', 'measured', 'all legs']) {
+    for (const line of ['build', 'gpu', 'browser', 'screen', 'memory', 'measured', 'gpu timer', 'bakes', 'all legs']) {
       if (!new RegExp(`^${line} +\\S`, 'm').test(s.summary)) fail(`the summary has no "${line}" line`);
     }
     if (!s.panel || !s.copy) fail('the summary panel or its copy button is hidden');

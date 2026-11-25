@@ -43,8 +43,8 @@ jobs:
     # (The browser doesn't depend on it: every release gets the same Chromium build.)
     runs-on: ubuntu-24.04
     # SwiftShader draws every pixel on the CPU, and each view's first frame bakes the world.
-    # About twice what verify takes (14 minutes in November 2026), and room for the uploads.
-    timeout-minutes: 40
+    # Verify's limit below, and room for the uploads.
+    timeout-minutes: 70
     permissions:
       contents: read
     steps:
@@ -63,9 +63,12 @@ jobs:
       # they only warn, so they can't stop a publish, and they would take most of the run. CI
       # runners have no GPU, so it renders with SwiftShader, which draws every pixel on the CPU.
       # Every check that can fail still runs. The step's own limit, under the job's, keeps the
-      # uploads below running when it is too slow: a timed-out step is a failed one.
+      # uploads below running when it is too slow: a timed-out step is a failed one. Verify took
+      # 20 minutes on a fast runner and 27 on a slow one (November 2026; runners differ by half),
+      # and over 30 once the far clipmap level held every heap; by leg 12, 33 minutes on one
+      # runner and over 45 on a slower one (each view 70 s against 95): about twice that.
       - run: npm run verify:ci
-        timeout-minutes: 30
+        timeout-minutes: 60
 
       # Screenshots for review: a run that failed or timed out keeps them all for two weeks,
       # to see why; one that passed keeps the views, the contact sheet, info.json and what the

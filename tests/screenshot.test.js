@@ -1,6 +1,7 @@
 // The tools' logic that needs no browser: the screenshot tool's arguments, plans, labels and compares
-// (tools/screenshot.js, labels.js, views.js), why a page stopped (browser.js), the flight logs'
-// compare (flights.js) and the streaming check's (checks.js)
+// (tools/screenshot.js, labels.js, views.js), why a page stopped or Chromium gave no WebGPU
+// (browser.js), the flight logs'
+// compare (flights.js), the streaming check's (checks.js) and the cost tool's runs (cost.js)
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,8 +11,9 @@ import { join } from 'node:path';
 import { diffSummary, gpuChanges, mismatchWarnings, parseArgs, planCapture, removeCapture, viewParams } from '../tools/screenshot.js';
 import { labelFolder } from '../tools/labels.js';
 import { compareLevels, difference } from '../tools/checks.js';
-import { whyStopped } from '../tools/browser.js';
+import { CHROMIUM, explainLaunchError, whyStopped } from '../tools/browser.js';
 import { describeDifference, parseArgs as flightArgs } from '../tools/flights.js';
+import { describeRows, ownWorktrees, parseArgs as costArgs, runOrder, summarize } from '../tools/cost.js';
 import { VIEWS } from '../tools/views.js';
 
 test('arguments: options with or without "=", flags, and the compare pair', () => {
@@ -38,7 +40,7 @@ test('a capture plan names its views, size and parameters, and refuses what the 
   assert.throws(() => planCapture({ seed: 'seven', label: 'x' }), /--seed/);
   assert.throws(() => planCapture({ query: 'w=10', label: 'x' }), /--query can't set w: use --size/);
   assert.throws(() => planCapture({ query: 'test', label: 'x' }), /--query can't set test/);
-  for (const key of ['keep', 'every', 'freeze', 'dt']) assert.throws(() => planCapture({ query: `${key}=1`, label: 'x' }), /the measurements use it/, key);
+  for (const key of ['keep', 'every', 'freeze', 'dt', 'jit']) assert.throws(() => planCapture({ query: `${key}=1`, label: 'x' }), /the measurements use it/, key);
   assert.equal(planCapture({ label: 'x' }).measure, true);
   assert.equal(planCapture({ 'no-measurements': true, label: 'x' }).measure, false);
 });
@@ -118,6 +120,15 @@ test('why waiting on a page failed: a crash, the watchdog, a stall, anything els
   assert.deepEqual(whyStopped(err, {}), { kind: 'tool error', text: 'Target page, context or browser has been closed' });
 });
 
+test("why Chromium gave no WebGPU: a missing library, browser or DXC, else the first line", () => {
+  assert.match(explainLaunchError('launch: error while loading shared libraries: libnss3.so: cannot open shared object file'), /missing system library libnss3\.so/);
+  assert.ok(explainLaunchError("browserType.launch: Executable doesn't exist at C:\\pw\\chrome.exe\n...").endsWith(`Run: ${CHROMIUM.install}`));
+  // (as Chromium 159's headless shell on Windows says it, asked for DXC)
+  const noDxc = "no WebGPU device: Failed to execute 'requestDevice' on 'GPUAdapter': DynamicLib.Open: dxcompiler.dll Windows Error: 87\n    at EnsureDXCLibraries (PlatformFunctionsD3D12.cpp:224)";
+  assert.match(explainLaunchError(noDxc), /^this Chromium has no DXC .* Run: /);
+  assert.equal(explainLaunchError('no WebGPU adapter\nCall log: ...'), 'no WebGPU adapter');
+});
+
 test('flight logs: identical, or where they part and how far', () => {
   const row = (t, alt, speed, bank) => [t, 0, alt, 0, speed, bank, 0, 0, 900, 50, 0, 47];
   const a = [row(0, 1600, 60, 0), row(0.05, 1601, 60, 1)];
@@ -150,3 +161,36 @@ test('streamed levels are compared where both windows overlap, by world cell, wi
   assert.equal(edge.volumeMax, 0);
 });
 
+
+test('the cost tool: its arguments, its runs in turn, and what it makes of them', () => {
+  const a = costArgs(['--views', 'tower, start', '--rounds=2', '--frames', '50', '--against', 'HEAD~1']);
+  assert.deepEqual(a.views.map((v) => v.name), ['tower', 'start']);
+  assert.deepEqual([a.rounds, a.frames, a.against, a.width, a.height, a.scale], [2, 50, 'HEAD~1', 960, 540, 0.5]);
+  assert.equal(costArgs([]).views.length, 6);
+  // (one run a side has no spread to tell drift from a change by)
+  assert.throws(() => costArgs(['--rounds', '1']), /--rounds must be a whole number from 2/);
+  assert.throws(() => costArgs(['--size', '960']), /--size/);
+  assert.throws(() => costArgs(['--views', 'nowhere']), /unknown view/);
+  assert.throws(() => costArgs(['--bogus', '1']), /unknown option --bogus/);
+  assert.throws(() => costArgs(['--against']), /--against needs a value/);
+  assert.throws(() => costArgs(['HEAD']), /unexpected argument/);
+  // (A B B A A B: each side first as often as second)
+  assert.deepEqual(runOrder(3), ['A', 'B', 'B', 'A', 'A', 'B']);
+  assert.deepEqual(runOrder(2), ['A', 'B', 'B', 'A']);
+  const rows = summarize([
+    { side: 'A', gpu: { start: { trace: 100, post: 0.2 } } }, { side: 'B', gpu: { start: { trace: 110, post: 0.2 } } },
+    { side: 'B', gpu: { start: { trace: 130, post: 0.2 } } }, { side: 'A', gpu: { start: { trace: 100, post: 0.2 } } },
+  ]);
+  const t = rows.find((r) => r.pass === 'trace');
+  assert.deepEqual([t.meanA, t.meanB, t.spreadA], [100, 120, 0]);
+  assert.ok(Math.abs(t.change - 0.2) < 1e-12 && Math.abs(t.spreadB - 10 / 120) < 1e-12);
+  // (a pass too small to matter is left out of the table, the trace's change summed up after it)
+  const lines = describeRows(rows);
+  assert.match(lines[0], /trace 100\.0 → 120\.0 \+20% \(±0\/8%\)/);
+  assert.doesNotMatch(lines[0], /post/);
+  assert.match(lines.at(-1), /the trace: start \+20%/);
+  // (of git's worktrees, only those a run of the tool made: the ones it may remove)
+  const list = 'worktree C:/repo\nHEAD abc\nbranch refs/heads/main\n\nworktree C:/Users/x/AppData/Local/Temp/fas-cost-a1B2c3/tree\nHEAD def\ndetached\n\n'
+    + 'worktree /tmp/fas-cost-zz9/tree\nHEAD 123\ndetached\n\nworktree C:/elsewhere/fas-cost-x/tree2\nHEAD 456\n';
+  assert.deepEqual(ownWorktrees(list), ['C:/Users/x/AppData/Local/Temp/fas-cost-a1B2c3/tree', '/tmp/fas-cost-zz9/tree']);
+});

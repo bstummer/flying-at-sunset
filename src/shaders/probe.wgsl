@@ -3,16 +3,17 @@
 #include "chunks/cloud.wgsl"
 #include "chunks/ambient.wgsl"
 #include "chunks/probe.wgsl"
+#include "chunks/sealit.wgsl"
 
 // The probe: the light and cloud at the bird and around the camera (shaders/probe.js)
 
 // (extinction, signed distance) at a point
 fn sigmaAt(wp: vec3f, h: f32) -> vec2f {
   let C = colAt(wp.xz, 0);
-  let dm = macroAt(vec3f(wp.x, h, wp.z), 0);
-  let b = dm - shellOf(C.y) - lvMargin(0);
+  let sh = shapeAt(vec3f(wp.x, h, wp.z), 0);
+  let b = sh.x - shellOf(C.y) - lvMargin(0);
   if (b > 0.0) { return vec2f(0.0, b); }
-  let sdf = cloudSDF(wp, h, dm, C, 0.0);
+  let sdf = cloudSDF(wp, h, sh, C, 0.0);
   return vec2f(densityFromSDF(sdf, wp, 0.6, 40.0, 0.0) * SIGMA, sdf);
 }
 fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0); }
@@ -24,9 +25,9 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
   let ambSky = bAmb.up.rgb;
   switch wg.x {
     case 0u: {
-      var tau = 0.0;
-      for (var k = 0; k < 4; k++) { tau += lightTau(bwp, bh, 0, C, (f32(k) + 0.5) / 4.0, 0.0); }
-      tau = tau * 0.25 * 0.6 + tsvTau(bwp, bh);
+      let far = tsvTau(bwp, bh);
+      let lp = lightPath(bwp, bh, sigmaAt(bwp, bh).y, 0, C, billowAt(vec3f(bwp.x, bh, bwp.z), 0), 0.0);
+      let tau = (lp.own + lp.other) * 0.6 + far.x + beyond(lp, far);
       let tr = exp(-tau);
       bProbe.sun = vec4f(sunColorAt(bh) * tr, tr);
     }
@@ -36,8 +37,9 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
       bProbe.ambUp = vec4f(ambSky * 3.14159 * occ, 1.0);
     }
     case 2u: {
-      // light from the sunlit cloud sea below
-      bProbe.ambDn = vec4f(u.ambSea * 3.14159, 1.0);
+      // light from the sea of clouds below, sunlit or in shadow: the irradiance of a lower half sky
+      // of its radiance
+      bProbe.ambDn = vec4f(seaBounce(seaLitBelow(bwp.xz, bh - C.x), u.ambSea, ambSky) * 3.14159, 1.0);
     }
     case 3u: {
       let sc = sigmaAt(u.camPos, u.camPos.y);
@@ -48,11 +50,10 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
       // in-cloud mist radiance around the camera (same light model as the cloud volume)
       let scam = sigmaAt(u.camPos, u.camPos.y);
       let depth = max(-scam.y, 0.0);
-      let tau = lightTau(u.camPos, u.camPos.y, 0, colAt(u.camPos.xz, 0), 0.5, 0.0);
-      let farT = exp(-tsvTau(u.camPos, u.camPos.y));
-      let diffu = 0.032 / (1.0 + 0.025 * tau) * (1.0 - exp(-depth / 80.0));
-      let sunL = sunColorAt(u.camPos.y) * ((msScatterP(tau, phaseOctaves(0.3)) + diffu) * farT + 0.007 * (1.0 - farT));
-      bProbe.mistL = vec4f(sunL + ambSky * 1.95 * 0.75 * mix(0.5, 1.0, exp(-depth / 55.0)), 1.0);
+      let lp = lightPath(u.camPos, u.camPos.y, scam.y, 0, colAt(u.camPos.xz, 0), billowAt(u.camPos, 0), 0.0);
+      let far = tsvTau(u.camPos, u.camPos.y);
+      let sunL = sunColorAt(u.camPos.y) * sunScatter(lp, far, phaseOctaves(0.3), 1.0, depth);
+      bProbe.mistL = vec4f(sunL + ambSky * AMB_K * 0.75 * mix(0.5, 1.0, exp(-profileDepth(depth) / 55.0)), 1.0);
     }
     default: {
       // distance to the sea of clouds the bird skims (heaps piled high above it and towers may be
@@ -63,7 +64,7 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
       let gz = floorH(bwp.xz + vec2f(0.0, 64.0)) - floorH(bwp.xz - vec2f(0.0, 64.0));
       let cs = inverseSqrt(1.0 + (gx * gx + gz * gz) / (128.0 * 128.0));
       var b = (bh - (Cf.x + shellOf(C.y))) * cs;
-      if (b <= 0.0) { b = cloudSDF(bwp, bh, (bh - Cf.x) * cs, Cf, 0.0); }
+      if (b <= 0.0) { b = cloudSDF(bwp, bh, vec3f((bh - Cf.x) * cs, SEA_BS, 1.0), Cf, 0.0); }
       bProbe.floorD = vec4f(b, 0.0, 0.0, 1.0);
     }
   }

@@ -14,16 +14,46 @@ fn sphereField(p: vec3f, cells: f32, seed: u32) -> f32 {
         let ci = vec3u(c);
         let h = hash33(ci + vec3u(seed * 101u, seed * 211u, seed * 307u));
         let h2 = hash33(ci * 3u + vec3u(seed * 13u + 7u, seed * 5u + 1u, 11u));
-        // (the large billows pack close; the small ones over them a little looser)
-        let big = seed <= 2u;
-        if (h2.y < select(0.16, 0.1, big)) { continue; }
+        // (the lobes pack close; the turrets on them (seed 2) are looser, and of more different
+        // sizes: few large, many small, never a wall of one size)
+        let turrets = seed == 2u;
+        if (h2.y < select(0.1, 0.3, turrets)) { continue; }
         let center = o3 + 0.1 + 0.8 * h;
-        let rad = select(mix(0.36, 0.72, h2.x), mix(0.4, 0.78, h2.x), big);
+        let rad = select(mix(0.4, 0.78, h2.x), mix(0.28, 0.88, pow(h2.x, 1.6)), turrets);
         d = min(d, length(center - f) - rad);
       }
     }
   }
   return d;
+}
+// a field of domes on a tileable lattice: around each random point a paraboloid of random width,
+// the wider ones higher; the highest wins. 1 on the tops of the biggest, 0 on the plain between
+// them, V-shaped creases where two meet; small ones half buried in the flanks of big ones.
+fn domeField(p: vec3f, cells: f32, seed: u32) -> f32 {
+  let pc = p * cells;
+  let id = floor(pc);
+  let f = pc - id;
+  var b = 0.0;
+  for (var z = -1; z <= 1; z++) {
+    for (var y = -1; y <= 1; y++) {
+      for (var x = -1; x <= 1; x++) {
+        let o3 = vec3f(f32(x), f32(y), f32(z));
+        let ci = vec3u(mod3(id + o3, vec3f(cells)));
+        let h = hash33(ci + vec3u(seed * 101u, seed * 211u, seed * 307u));
+        let h2 = hash33(ci * 3u + vec3u(seed * 13u + 7u, seed * 5u + 1u, 11u));
+        // (radius at most 1.05 cells: no dome reaches past the neighbouring cells)
+        let rad = mix(0.45, 1.05, h2.x * h2.x);
+        let q = (o3 + 0.1 + 0.8 * h - f) / rad;
+        b = max(b, rad * mix(0.55, 1.0, h2.y) * sqrt(max(1.0 - dot(q, q), 0.0)));
+      }
+    }
+  }
+  return b * (1.0 / 1.05);
+}
+// a smooth tileable vector field (period: lattice cells per tile) to bend a lattice out of round
+fn warp3(p: vec3f, period: f32, seed: u32) -> vec3f {
+  let q = p * period;
+  return vec3f(perlin(q, period, seed), perlin(q, period, seed + 1u), perlin(q, period, seed + 2u));
 }
 fn worley(p: vec3f, cells: f32, seed: u32) -> f32 {
   let pc = p * cells;

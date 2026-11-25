@@ -1,21 +1,21 @@
 // Every pipeline (P), the static textures and buffers (T: the atmosphere's tables, the noise
-// volumes, the cirrus, the high layers, the ambient light, the probe), and generateStatic(): the
+// volumes, the cirrus, the high layers, the ambient light, the probe, the exposure), and generateStatic(): the
 // passes that fill the static textures once the pipelines are compiled (main.js). Other modules add
 // their own to T (render/stream.js, render/targets.js, render/bird.js).
 
 import { params } from '../core/params.js';
-import { DETAIL_N, SHAPE_N } from '../constants.js';
+import { DETAIL_N, LAYER_H0, LAYER_H1, SHAPE_N } from '../constants.js';
 import { buffer, CANVAS_FORMAT, compute, dispatch, flush, mipLevel, pass, pipeline, texture, RENDER } from './gpu.js';
 import { sunColorAt } from './sun.js';
 import { CS_AMBIENT, FS_MULTISCAT, FS_SKYVIEW, FS_TRANSMITTANCE, U_AMBIENT, U_SKYVIEW } from '../shaders/sky.js';
 import { CS_DETAIL, CS_SHAPE, FS_CIRRUS, FS_LAYERS, FS_MIP, U_NOISE3D, U_SIZE } from '../shaders/textures.js';
-import { CS_TSV, FS_BAKE, NOUT, U_BAKE, U_TSV } from '../shaders/volumes.js';
+import { CS_SUNMAP, CS_SUNSCAN, CS_SUNTAIL, CS_TSV, FS_BAKE, FS_LITMAP, NOUT, U_BAKE, U_LITMAP, U_SUNMAP, U_SUNSCAN, U_TSV } from '../shaders/volumes.js';
 import { FS_TRACE, U_TRACE } from '../shaders/trace.js';
 import { FS_TAAU, U_TAAU } from '../shaders/taau.js';
-import { CS_PROBE, U_PROBE } from '../shaders/probe.js';
+import { CS_PROBE, PROBE_FIELDS, U_PROBE } from '../shaders/probe.js';
 import { FS_MIST, U_MIST, VS_MIST } from '../shaders/mist.js';
 import { FS_BIRD, FS_BIRDOVER, U_BIRD, U_BIRDOVER, VS_BIRD } from '../shaders/bird.js';
-import { FS_DOWN, FS_FINAL, FS_RAYBLUR, FS_RAYMASK, FS_UP, U_DOWN, U_FINAL, U_RAYBLUR, U_RAYMASK, U_UP } from '../shaders/post.js';
+import { CS_EXPOSURE, FS_DOWN, FS_FINAL, FS_RAYBLUR, FS_RAYMASK, FS_UP, U_DOWN, U_EXPOSURE, U_FINAL, U_RAYBLUR, U_RAYMASK, U_UP } from '../shaders/post.js';
 
 const F16 = 'rgba16float';
 const ADD = { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor: 'one', dstFactor: 'one' } };
@@ -36,9 +36,14 @@ export const P = {
   layers: pipeline('layers', { fs: FS_LAYERS, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
   mip: pipeline('mip', { fs: FS_MIP, uniforms: U_SIZE, targets: ['rgba8unorm'] }),
   tsv: compute('tsv', { cs: CS_TSV, uniforms: U_TSV, writes: ['bTsv'] }),
-  bake: pipeline('bake', { fs: FS_BAKE, uniforms: U_BAKE, targets: Array(NOUT).fill('r16float') }),
-  trace: pipeline('trace', { fs: FS_TRACE, constants: { DBG: params.dbg ? 1 : 0 }, uniforms: U_TRACE, targets: [F16, 'r16float'] }),
-  taau: pipeline('taau', { fs: FS_TAAU, uniforms: U_TAAU, targets: [F16, F16] }),
+  sunTail: compute('sun map tail', { cs: CS_SUNTAIL, uniforms: U_SUNMAP, writes: ['bSmTail'] }),
+  sunSeg: compute('sun map stretches', { cs: CS_SUNMAP, uniforms: U_SUNMAP, writes: ['bSmSeg'] }),
+  sunScan: compute('sun map scan', { cs: CS_SUNSCAN, uniforms: U_SUNSCAN, writes: ['bSunMap'] }),
+  litMap: pipeline('lit map', { fs: FS_LITMAP, uniforms: U_LITMAP, targets: ['r16float'] }),
+  litMip: pipeline('lit map mip', { fs: FS_MIP, uniforms: U_SIZE, targets: ['r16float'] }),
+  bake: pipeline('bake', { fs: FS_BAKE, uniforms: U_BAKE, targets: [...Array(NOUT).fill('r16float'), ...Array(NOUT).fill('rg16float')] }),
+  trace: pipeline('trace', { fs: FS_TRACE, constants: { DBG: params.dbg ? 1 : 0 }, uniforms: U_TRACE, targets: [F16, 'rg16float'] }),
+  taau: pipeline('taau', { fs: FS_TAAU, uniforms: U_TAAU, targets: [F16, F16, 'r8unorm'] }),
   probe: compute('probe', { cs: CS_PROBE, uniforms: U_PROBE, writes: ['bProbe'] }),
   bird: pipeline('bird', {
     vs: VS_BIRD, fs: FS_BIRD, uniforms: U_BIRD, targets: [F16], buffers: BIRD_BUFFERS, samples: 4,
@@ -51,6 +56,7 @@ export const P = {
   birdOver: pipeline('bird over', { fs: FS_BIRDOVER, uniforms: U_BIRDOVER, targets: [F16], blend: BIRD_OVER }),
   down: pipeline('down', { fs: FS_DOWN, uniforms: U_DOWN, targets: [F16] }),
   up: pipeline('up', { fs: FS_UP, uniforms: U_UP, targets: [F16], blend: ADD }),
+  expo: compute('exposure', { cs: CS_EXPOSURE, uniforms: U_EXPOSURE, writes: ['bExpo'] }),
   raymask: pipeline('raymask', { fs: FS_RAYMASK, uniforms: U_RAYMASK, targets: [F16] }),
   rayblur: pipeline('rayblur', { fs: FS_RAYBLUR, uniforms: U_RAYBLUR, targets: [F16] }),
   final: pipeline('final', { fs: FS_FINAL, uniforms: U_FINAL, targets: [CANVAS_FORMAT] }),
@@ -62,15 +68,16 @@ export const T = {};
 const VOLUME = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING;
 T.trans = texture(256, 64, F16);
 T.ms = texture(32, 32, F16);
-T.sky = texture(192, 108, F16);
+T.sky = texture(192, 108, F16, { usage: RENDER | GPUTextureUsage.COPY_SRC });   // (the light's reference reads it: tools/light/sky.js)
 T.shape = texture(SHAPE_N, SHAPE_N, F16, { depth: SHAPE_N, dim: '3d', usage: VOLUME });
 T.detail = texture(DETAIL_N, DETAIL_N, 'rgba8unorm', { depth: DETAIL_N, dim: '3d', usage: VOLUME });
 T.cirrus = texture(512, 512, 'rgba8unorm');
 T.layers = texture(1024, 1024, 'rgba8unorm', { mips: 11 });   // seen at grazing angles far away: mipmaps
 T.amb = buffer(3 * 16, GPUBufferUsage.UNIFORM);   // struct Ambient (chunks/ambient.wgsl)
-T.probe = buffer(6 * 16);    // struct Probe (chunks/probe.wgsl)
+T.probe = buffer(PROBE_FIELDS * 16);    // struct Probe (chunks/probe.wgsl)
+T.expo = buffer(16, GPUBufferUsage.UNIFORM);   // struct Exposure (chunks/exposure.wgsl)
 
-export const layerColUniform = new Float32Array([...sunColorAt(6300), ...sunColorAt(7700)]);
+export const layerColUniform = new Float32Array([...sunColorAt(LAYER_H0), ...sunColorAt(LAYER_H1)]);
 
 // one-off generation of all static GPU data (once the pipelines are compiled)
 export function generateStatic() {

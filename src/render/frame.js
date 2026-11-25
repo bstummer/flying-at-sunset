@@ -1,24 +1,28 @@
-// One frame, render(time): its passes in order, each group timed (render/timing.js)
+// One frame, render(time, dt): its passes in order, each group timed (render/timing.js)
 //
-// - world: apply what the world's worker sent for the clipmaps (render/stream.js);
+// - world: apply what the world's worker sent for the clipmaps (render/stream.js); sunmap: bake a slab
+//   of the sun map (render/sunmap.js), with the billows as they are now; litmap: once a window's bake
+//   is done, the lit map from it;
 // - sky: the sky view (192×108) and the ambient light, again whenever the camera has moved 10 m up
 //   or down; probe: light and cloud at the bird and the camera, read back later (render/probe.js);
 // - trace: the clouds at R.scale of the canvas, jittered each frame (shaders/trace.js);
 // - taau: upsampled to full resolution over the sky, the sun's disk, the cirrus and the two high
 //   layers (shaders/taau.js); drifting mist puffs while the camera is in cloud (shaders/mist.js);
 // - bird: its shadow map and mesh, laid over the scene (render/bird.js);
-// - post: bloom (a 7-level chain), sun rays (while the sun is near the view) and the final pass
-//   onto the canvas (shaders/post.js);
+// - post: bloom (a 7-level chain), the exposure from its coarsest level (in the camera's own cloud
+//   it adapts to the frame), sun rays (while the sun is near the view) and the final pass onto the canvas
+//   (shaders/post.js);
 // then the commands are submitted (flush) and the probe and the timestamps read back. The look's
 // tunables, each with its URL parameter, are at the end.
 
 import { params, TEST } from '../core/params.js';
-import { dot, fmod, halton, mat4Mul, perspective, PI, scl, smoothstep, sub, viewFromBasis } from '../math.js';
-import { DETAIL_TILE, SHAPE_TILE, SUN_DIR, WIND } from '../constants.js';
+import { dot, fmod, halton, mat3Apply, mat4Mul, perspective, PI, scl, smoothstep, sub, viewFromBasis } from '../math.js';
+import { CIRRUS_H, CIRRUS_TILE, DETAIL_ROT, DETAIL_TILE, LAYER_TILE, SUN_DIR, WIND } from '../constants.js';
 import { clearPass, context, dispatch, flush, pass } from './gpu.js';
 import { sunColorAt, sunColTable } from './sun.js';
 import { layerColUniform, P, T } from './setup.js';
-import { originOf, streamWorld, worldUniforms } from './stream.js';
+import { BAKES, originOf, streamWorld, worldUniforms } from './stream.js';
+import { refreshLitMap, refreshSunMap, sunMapUniforms } from './sunmap.js';
 import { bloomLevels, R } from './targets.js';
 import { inCloud, mapProbe, readProbeAsync } from './probe.js';
 import { bird_ } from '../flight/flight.js';
@@ -31,13 +35,14 @@ export let frame = 0;
 let prevVP = null;
 let skyH = null;     // the camera height the sky view and the ambient light were made for
 const SKY_STEP = 10; // m: made again once the camera has moved this far up or down
+const SEA_ALBEDO = 0.89;   // the sea of clouds below: a thick deck, with the sun low
 
 function viewProjRot(camR, camU, camF, fovy, aspect) {
   const V = viewFromBasis(camR, camU, camF, [0, 0, 0]);
   return mat4Mul(perspective(fovy, aspect, 0.05, 1e8), V);
 }
 
-export function render(time) {
+export function render(time, dtFrame) {
   const w = R.w, h = R.h, aspect = w / h;
   // --- dynamic cloud resolution
   R.lowW = Math.max(16, Math.round(w * R.scale)); R.lowH = Math.max(16, Math.round(h * R.scale));
@@ -46,19 +51,33 @@ export function render(time) {
   const O = originOf(cam.pos);
   const camR = [cam.pos[0] - O[0], cam.pos[1], cam.pos[2] - O[2]];
   tBegin('world');
-  streamWorld(O, TEST || frame === 0);
-  tEnd();
+  const baked = streamWorld(O, TEST || frame === 0);
+  tEnd(baked ? ms => BAKES.add(baked, ms) : undefined);   // (what the bakes took here scales their estimate)
   const camDelta = sub(cam.pos, cam.prevPos);
   const tanY = Math.tan(cam.fov / 2), tanX = tanY * aspect;
-  const jitter = [halton((frame % 16) + 1, 2) - 0.5, halton((frame % 16) + 1, 3) - 0.5];
-  // noise offsets wrap at multiples of their lookup periods (the vertical one is squashed 1.7x)
-  const shapeOff = [fmod(WIND[0] * time, SHAPE_TILE), fmod(-time * 0.9, 10 * SHAPE_TILE), fmod(WIND[2] * time, SHAPE_TILE)];
-  const detailOff = [fmod(WIND[0] * time * 1.6, DETAIL_TILE), fmod(-time * 2.2, DETAIL_TILE), fmod(WIND[2] * time * 1.6, DETAIL_TILE)];
-  const ambSea = scl(sunColorAt(1500), 0.065);
-  const common = Object.assign(worldUniforms(O), {
+  const jf = frame + JIT;
+  const jitter = [halton((jf % 16) + 1, 2) - 0.5, halton((jf % 16) + 1, 3) - 0.5];
+  // the detail volume is looked up turned (DETAIL_ROT): the render origin is turned too and wraps in
+  // the turned frame (unturned, an origin snap would make it jump). (Nothing in the clouds drifts:
+  // the sun map holds their billows, baked once where it lies, render/sunmap.js.)
+  const detailOff = mat3Apply(DETAIL_ROT, O).map(c => fmod(c, DETAIL_TILE));
+  // the sunlit sea of clouds below as a Lambertian deck lit at 5°: its radiance per unit of sunlight
+  // (albedo · sin 5° / π), the light from below on the clouds' bellies and the bird's alike where
+  // the sea is in the sun (the lit map's share, chunks/sealit.wgsl)
+  const ambSea = scl(sunColorAt(1500), SEA_ALBEDO * SUN_DIR[1] / PI);
+  const common = Object.assign(worldUniforms(O), sunMapUniforms(O), {
     tShape: T.shape, tDetail: T.detail, tTsv: T.tsv,
-    shapeOff, detailOff, sunDir: SUN_DIR, sunCol: sunColTable,
+    detailOff, sunDir: SUN_DIR, sunCol: sunColTable,
   });
+  // (the lookups take its window as it is after)
+  tBegin('sunmap');
+  refreshSunMap(cam.pos, O, common);
+  Object.assign(common, sunMapUniforms(O));
+  tEnd();
+  tBegin('litmap');
+  refreshLitMap(O, common);
+  Object.assign(common, sunMapUniforms(O));
+  tEnd();
 
   // --- sky view LUT for the current altitude + ambient (they change slowly with it)
   tBegin('sky');
@@ -80,8 +99,8 @@ export function render(time) {
   tBegin('trace');
   pass(P.trace, [T.cloudCol, T.cloudDepth], Object.assign({}, common, {
     tSky: T.sky, bAmb: T.amb, res: [R.lowW, R.lowH], jitter, camPos: camR,
-    camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], frame,
-    ambSea, hazeK: HAZE_K, dbgMode: DBG_MODE, inCloud,
+    camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY], frame: jf,
+    ambSea, hazeK: HAZE_K, dbgMode: DBG_MODE,
   }), { viewport: [0, 0, R.lowW, R.lowH], load: false });   // (nothing reads past it)
 
   tEnd();
@@ -90,13 +109,13 @@ export function render(time) {
   const curVP = viewProjRot(cam.right, cam.up, cam.fwd, cam.fov, aspect);
   const readA = frame % 2 === 0;
   const sunDisk = scl(sunColorAt(cam.pos[1]), 1 / (PI * 0.0052 * 0.0052) * 0.9);
-  pass(P.taau, [readA ? T.histB : T.histA, T.scene], {
-    tCur: T.cloudCol, tCurDepth: T.cloudDepth, tHist: readA ? T.histA : T.histB, tSky: T.sky, tCirrus: T.cirrus,
+  pass(P.taau, [readA ? T.histB : T.histA, T.scene, readA ? T.fogB : T.fogA], {
+    tCur: T.cloudCol, tCurDepth: T.cloudDepth, tHist: readA ? T.histA : T.histB, tHistFog: readA ? T.fogA : T.fogB, tSky: T.sky, tCirrus: T.cirrus,
     lowRes: [R.lowW, R.lowH], lowTex: [R.lowMaxW, R.lowMaxH], res: [w, h], jitter,
     camRight: cam.right, camUp: cam.up, camFwd: cam.fwd, tanHalf: [tanX, tanY],
-    prevVP: prevVP || curVP, camDelta, histValid: R.histValid, sunDir: SUN_DIR, camPos: camR,
-    sunDisk, cirrusCol: scl(sunColorAt(9800), 1.0), cirrusOff: [fmod(O[0] + time * 6, 32000), fmod(O[2] + time * 2, 32000)],
-    tLayers: T.layers, layerOff: [fmod(O[0] + time * WIND[0] * 1.5, 64000), fmod(O[2] + time * WIND[2] * 1.5, 64000)], layerCol: layerColUniform,
+    prevVP: prevVP || curVP, camDelta, histFrames: RAW ? 0 : R.histFrames, sunDir: SUN_DIR, camPos: camR, hazeK: HAZE_K,
+    sunDisk, cirrusCol: scl(sunColorAt(CIRRUS_H), 1.0), cirrusOff: [fmod(O[0] + time * 6, CIRRUS_TILE), fmod(O[2] + time * 2, CIRRUS_TILE)],
+    tLayers: T.layers, layerOff: [fmod(O[0] + time * WIND[0] * 1.5, LAYER_TILE), fmod(O[2] + time * WIND[2] * 1.5, LAYER_TILE)], layerCol: layerColUniform,
   });
   // drifting mist puffs: only while the camera is inside cloud (they float in the fog around us)
   if (inCloud > 0.02) {
@@ -108,7 +127,7 @@ export function render(time) {
   tEnd();
   const histTex = readA ? T.histB : T.histA;
   prevVP = curVP;
-  R.histValid = 1;
+  R.histFrames = Math.min(R.histFrames + 1, 1000);   // (how many frames the history holds)
 
   // --- bird
   tBegin('bird');
@@ -123,6 +142,9 @@ export function render(time) {
     pass(P.down, [L], { tSrc: src, srcTexel: [1 / src.w, 1 / src.h], clampHi: BLOOM_CLAMP });
     src = L;
   }
+  // (the exposure from the coarsest level, before the finer ones are added onto it; time stopped,
+  // it holds)
+  dispatch(P.expo, { tSrc: src, tCurDepth: T.cloudDepth, lowRes: [R.lowW, R.lowH], bExpo: T.expo, base: EXPOSURE, dt: dtFrame, snap: frame === 0 ? 1 : 0 }, [1]);
   // (added onto each finer level)
   for (let i = bloomLevels.length - 1; i > 0; i--) {
     const S = bloomLevels[i], D = bloomLevels[i - 1];
@@ -151,7 +173,7 @@ export function render(time) {
   const out = { view: context.getCurrentTexture().createView(), w, h };
   pass(P.final, [out], {
     tScene: T.scene, tBloom: bloomLevels[0], tRays: T.rayA,
-    exposure: EXPOSURE * (1.0 + 0.45 * inCloud), bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
+    bExpo: T.expo, bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
   });
   tEnd();
   if (gpuTimer) gpuTimer.resolve();
@@ -170,7 +192,9 @@ export function captureNext(fn) { capture = fn; }
 const EXPOSURE = params.exp ?? 14.0;
 const TONEMAP = params.tm ?? 1, CONTRAST = params.con ?? 1.0;
 const VIEW = params.view ?? 0, DBG_MODE = params.dbg ?? 0;   // what goes into the final image (1..5), the cloud debug views (1..7)
-const HAZE_K = params.haze ?? 2.8e-5;
+const JIT = params.jit ?? 0;   // (the test mode: the frame the jitter sequences start at)
+const RAW = params.raw;        // each frame's own trace, upsampled without the history: what the trace alone gives a frame
+const HAZE_K = params.haze ?? 2.6e-5;
 const RAYS_K = params.rays ?? 0.18;
 const BLOOM_UP_W = params.bloomw ?? 0.6;                              // weight of each coarser bloom level
 const BLOOM_NORM = (1 - Math.pow(BLOOM_UP_W, 7)) / (1 - BLOOM_UP_W); // total weight of the 7-level chain

@@ -1,14 +1,7 @@
 
-// The atmosphere (Rayleigh, Mie, ozone; lengths in km), phase functions, and lookups into the
-// transmittance and sky-view tables (shaders/sky.js)
-const RG = 6360.0;
-const RT = 6460.0;
-const RAY_S = vec3f(5.802e-3, 13.558e-3, 33.1e-3);
-const RAY_H = 8.0;
-const MIE_S = 3.996e-3 * 2.2;
-const MIE_A = 4.4e-3 * 2.2;
-const MIE_H = 1.2;
-const OZO_A = vec3f(0.650e-3, 1.881e-3, 0.085e-3);
+// The atmosphere (Rayleigh, Mie, ozone; lengths in km: RG … OZO_A from constants.js, as the sun's
+// colour has them), phase functions, and lookups into the transmittance and sky-view tables
+// (shaders/sky.js)
 const TRANS_SIZE = vec2f(256.0, 64.0);
 const SKY_SIZE = vec2f(192.0, 108.0);
 
@@ -85,4 +78,25 @@ fn skyLookup(skyLut: texture_2d<f32>, dir: vec3f, sunDir: vec3f, camHkm: f32) ->
   let lvc = select(1.0, dot(dh, sh) / (l1 * l2), l1 > 1e-5 && l2 > 1e-5);
   let ground = distToGround(r, dir.y) > 0.0;
   return textureSampleLevel(skyLut, sLin, skyParamsToUv(r, dir.y, lvc, ground), 0.0).rgb;
+}
+
+// The air between the camera and what it sees, in metres: haze (scale height 6 km, its density
+// ?haze: it reaches the towers' tops, so the farthest clouds are the haziest, as through the 100–200
+// km of visibility real air has up there) and the atmosphere's molecules and aerosols (above), their
+// optical depth along a ray in closed form, the planet's curvature in the height's slope. Blue fades
+// several times faster than red: distant clouds turn warm. What is seen through it sinks into a veil
+// of the horizon sky's colour that way (golden toward the sun, blue away from it), as much of it as
+// the air takes of its light: the clouds (trace.wgsl) and the high layers (taau.wgsl) alike.
+const INV2R = 0.5 / (RG * 1000.0);   // a height's rise with distance (m) on the curved planet
+const HAZE_H = 6000.0;
+fn layerOD(t: f32, h0: f32, dy: f32, H: f32) -> f32 {
+  let e0 = exp(-h0 / H);
+  let k = (dy + t * INV2R) / H;
+  if (abs(k) < 1e-7) { return e0 * t; }
+  return e0 * (1.0 - exp(-k * t)) / k;
+}
+// the light that gets through t metres of air along a ray from height h0 rising dy a metre
+fn airT(t: f32, h0: f32, dy: f32, hazeK: f32) -> vec3f {
+  return exp(-(hazeK * layerOD(t, h0, dy, HAZE_H) + RAY_S * 1e-3 * layerOD(t, h0, dy, RAY_H * 1000.0)
+               + (MIE_S + MIE_A) * 1e-3 * layerOD(t, h0, dy, MIE_H * 1000.0)));
 }

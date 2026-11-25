@@ -7,7 +7,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveWgsl, wgslFiles } from '../tools/wgsl.js';
-import { CLOUD_TOP, DETAIL_TILE, SHAPE_TILE } from '../src/constants.js';
+import { FOR_SHADERS } from '../src/constants.js';
 
 const SHADERS = join(import.meta.dirname, '..', 'src', 'shaders');
 // (the shader modules import .wgsl files, which only Vite resolves: read, not imported)
@@ -37,9 +37,9 @@ test('every shader the modules export is a .wgsl file whose includes resolve', (
 
 test('the constants JS and WGSL share are declared once, by the pipeline (render/gpu.js), from constants.js', () => {
   for (const [name, file] of Object.entries(ENTRIES)) {
-    for (const k of ['CLOUD_TOP', 'SHAPE_TILE', 'DETAIL_TILE']) assert.doesNotMatch(resolveWgsl(join(SHADERS, file)), new RegExp(`const ${k}\\b`), `${name} declares ${k}`);
+    for (const k of Object.keys(FOR_SHADERS)) assert.doesNotMatch(resolveWgsl(join(SHADERS, file)), new RegExp(`const ${k}\\b`), `${name} declares ${k}`);
   }
-  assert.deepEqual([CLOUD_TOP, SHAPE_TILE, DETAIL_TILE].map(Number.isFinite), [true, true, true]);
+  for (const [k, v] of Object.entries(FOR_SHADERS)) assert.ok([v].flat().every(Number.isFinite) && [1, 3, 9].includes([v].flat().length), `${k}: a number, a 3-vector or a 3x3`);
 });
 
 test('the volume bake writes NOUT slices a pass, as render/stream.js hands them over', () => {
@@ -47,6 +47,8 @@ test('the volume bake writes NOUT slices a pass, as render/stream.js hands them 
     const code = resolveWgsl(join(SHADERS, ENTRIES[name]));
     assert.match(code, new RegExp(`const NOUT = ${NOUT};`), `${name}: its NOUT`);
     const outputs = [...code.matchAll(/@location\((\d+)\) o\d+: f32/g)].map((m) => Number(m[1]));
-    assert.deepEqual(outputs, Array.from({ length: NOUT }, (_, k) => k), `${name}: its outputs`);
+    assert.deepEqual(outputs, Array.from({ length: NOUT }, (_, k) => k), `${name}: its distance outputs`);
+    const scales = [...code.matchAll(/@location\((\d+)\) b\d+: vec2f/g)].map((m) => Number(m[1]));
+    assert.deepEqual(scales, Array.from({ length: NOUT }, (_, k) => NOUT + k), `${name}: its billow-scale outputs`);
   }
 });

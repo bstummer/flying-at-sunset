@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bandedShare, bandingView, createImage, crop, diffImage, flicker, heatImage, shrink, tile, zoom } from '../tools/image.js';
+import { bandedShare, bandingView, createImage, crop, diffImage, flicker, heatImage, pairDiff, shrink, tile, zoom } from '../tools/image.js';
 import { mulberry32 } from '../src/math.js';
 
 // A seeded stream of numbers in [0, 1), by name.
@@ -195,6 +195,16 @@ test('flicker counts the pixels its map marks: those whose range reaches the thr
   const map = heatImage(still, heat, 4);
   assert.deepEqual([at(map, 3, 0), at(map, 6, 0)], [MAGENTA, MAGENTA]);
   assert.notDeepEqual(at(map, 1, 0), MAGENTA);
+});
+test('pairs of frames: the share that differs by the threshold, a mean over the pairs, and within each region', () => {
+  const a = greyImage(10, 10, () => 100);
+  const left = greyImage(10, 10, (x) => (x < 5 ? 104 : 100)); // the left half off by 4
+  const one = greyImage(10, 10, (x, y) => (x === 9 && y === 9 ? 103 : 100)); // a pixel off by 3
+  const d = pairDiff([[a, left], [a, one]], { threshold: 4, regions: { left: [0, 0, 0.5, 1], right: [0.5, 0, 0.5, 1] } });
+  assert.equal(d.percent, 25, 'half the frame in one pair of two');
+  assert.deepEqual(d.regions, { left: 50, right: 0 });
+  assert.equal(d.heat[99], 3, 'the map holds the largest difference over the pairs');
+  assert.equal(pairDiff([[a, a]]).percent, 0);
 });
 test('flicker counts a change in any one channel', () => {
   const still = createImage(4, 1, [10, 20, 30]);
