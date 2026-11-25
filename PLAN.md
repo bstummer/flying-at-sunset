@@ -64,8 +64,8 @@ the next one. Their descriptions are a plan, not rules: a session changes a step
 drops it, where it no longer makes sense, and says here what it did instead and why. If the order
 itself should change, the legs are moved in this file, so it always reads in the order of the work.
 
-Why this order: before anything, the edge's trial is measured, because two other legs lean on
-it. Then the three that change every capture, so the cloud legs after them compare
+Why this order: the edge's trial was measured first (Done), because two other legs lean on it.
+Then the three that change every capture, so the cloud legs after them compare
 against captures that hold: the light and the exposure (13), the world around the start (14), the
 camera (15). Then the clouds, the heart: their edge (16: the top finding, and an experiment speaks
 for it), their shapes (17), the light on both (18). Then in cloud (19), the air and the sky (20),
@@ -85,17 +85,6 @@ ice (21), loose ends and the review again (22).
   how near the first tower, and how the bird gets up one (14); the bird's size in the frame (15);
   whether shreds are missed in flight (16); minutes in fog (19); layers at other heights (20); a
   title while loading (22).
-
-### Before leg 13: the edge's trial, measured
-
-Leg 16 answers the top finding, and its trial was only looked at: its cost and its motion are
-unknown. Fine sampling near surfaces has cost the trace +16 to +58% there before (decisions), and
-legs 14 (a lower start) and 19 (the fog near a surface) lean on it. So first, on a scratch branch
-and not kept: the trial again (leg 16 has it in words), then `node tools/cost.js --against HEAD`
-on `past`, `gap`, `skim`, `close` and `start`, its grain, shimmer and motion strips, and its look
-at the clouds' floor (`--scale 0.22`) and at 1920×1080. What comes out is written into leg 16: its
-budget; or a cheaper way to the same edge (coarser steps, a nearer limit); or that near cloud
-stays as it is, and what that changes in legs 14 and 19.
 
 ### Leg 13: the photographer (the sun's height, the exposure, the film)
 
@@ -142,7 +131,8 @@ past from the first second; no board of chess pieces.
 3. **The start by the screen**: on a phone held upright the frame is 41° across, and the start
    looks 26° off the sun. A view at another aspect needs a size of its own (tools/views.js,
    screenshot.js, tests/views.test.js). The lower start, for speed that shows from the first
-   second, is leg 16's last step: it needs near clouds worth the look.
+   second, is leg 16's last step: it needs near clouds worth the look. (Leg 16's trial gives them
+   that; at today's `start` it costs the trace +8–11%, lower down nearer `skim`'s +16–21%.)
 4. **The way up**: rising air along a living tower's flank (from the towers' summaries, sent with
    the patch of domes: the probe can't tell a tower from the sea), or a faster climb (`vClimb`).
    The feel is the author's.
@@ -175,16 +165,50 @@ Why density and not shape (`?dbg=1`): within a few hundred metres the shapes hav
 which shade shouldn't show (small shading in shade is rock); under ~150 m the domes end (8 m
 cells), and finer ones would not show in a medium whose mean free path is 14–28 m.
 
-Tried in twenty lines, not kept: the camera's own `fray` (trace.wgsl) on every cloud within
-1.2–2.5 km (the main loop's density, a stretch's and a sample's, times it; steps of 2 m + 0.004 t
-at most through the edge's first 40 m; the light march's first two steps' extinction times it).
-`past` and `gap`, flat cards before, show soft masses of light and dark and a ragged outline;
-`close` loses its plaster and cracks; `sun` gets no veil over the sea; `skim`'s shade barely
-changes (its sky light doesn't read the fray). Nothing is crisp. Cost and motion: not measured.
+Tried in twenty lines and measured (2026-11-25), not kept: the camera's own `fray` (trace.wgsl)
+on every cloud within 1.2–2.5 km (the main loop's density, a sample's and a stretch's, the mean
+of its ends', times it; steps of 2 m + 0.004 t at most through the edge's first 40 m; the light
+march's first two steps' extinction times it). `past` and `gap`, flat cards before, show soft
+masses of light and dark and a ragged outline (`gap`'s near veil thins, and the shaded relief of
+the cloud behind it shows); `past`'s straight vertical edge 1 s on goes soft; `close` loses its
+plaster and cracks; `backlit`'s lobe in shade loses its round outline, soft, near out of focus;
+`sun` gets no veil over the sea; `skim`'s shade barely changes (its sky light doesn't read the
+fray); `entry`'s and `exit`'s fog not at all. Nothing is crisp. The same at the clouds' floor
+(`--scale 0.22`) and at 1920×1080, where the old edge's hairy fringe goes. Shimmer as before; the
+grain past near clouds lower (`past` 0.52 → 0.17%, `gap` 1.16 → 0.61%; at the floor 0.71 → 0.34,
+1.55 → 1.04).
+
+Its cost (the trace by `node tools/cost.js` against the build without it) and the grain over the
+motion strip, part by part:
+
+| | `past` | `gap` | `skim` | `close` | `start` | grain `past`, `gap` |
+|---|---|---|---|---|---|---|
+| without it | | | | | | 0.52, 1.16% |
+| the trial | +54% | +77% | +59% | +59% | +30% | 0.17, 0.61% |
+| no fine steps | +10% | +14% | +12% | | +7% | 0.53, 1.41% |
+| steps 4 m + 0.008 t | +22% | +33% | +21% | +17% | +11% | 0.29, 0.82% |
+| those, within 0.8–1.6 km | +20% | +32% | +19% | +11% | +8% | 0.29, 0.81% |
+| those, the light march not reading it | +19% | +29% | +16% | +11% | +8% | 0.26, 0.71% |
+
+(The trial's steps within 0.6–1.2 km: +41, +75, +43, +17, +12%: `past`'s and `gap`'s clouds lie
+within any limit.) The fray in the density is the look, for ~+10%. The fine steps are three
+quarters of the trial's cost, and what they buy is the grain: without them the edge is a little
+rougher and the grain as before or worse. At 4 m + 0.008 t (about two trace pixels and 4 m) the
+look is the trial's (4% of `gap`'s pixels more than 2 levels apart) for under half its cost, the
+grain still well under today's. The light reading the fray lights thin edges a little more, for
+3–6%. The limit matters only where clouds stand 1–2.5 km off (`close`).
+
+**The budget**: the trace +10–20% in most views, +20–35% where near clouds fill the frame (`past`,
+`gap`): the fray as tried, its steps 4 m + 0.008 t, the light reading it. Untried and cheaper: the
+fray's two lookups folded into the erosion's, which reads the detail volume there already (one
+medium); fine steps only where a ray runs along the surface (where the outline's grain is); the
+reach by the step's footprint (step 4) in place of a limit by distance. Whether the phone keeps
+its frame rate at +30% is its `?bench`'s to say.
 
 1. **One medium**: that fray as every cloud's, inside and out, from one function (the trace's two
-   loops, the probe, the mist puffs). The seams between the loops may go with it (`entry`, `exit`;
-   `past`'s edge and `gap`'s outline: find their causes first). Cost, grain and shimmer first.
+   loops, the probe, the mist puffs). The trial left the seam between the loops as it was (`entry`,
+   `exit`: only the clouds past the fog changed), so the medium alone won't take it; `past`'s edge
+   went soft with it.
 2. **Uneven along a cloud**: its reach by the billow volume's liveliness and a slow field, from
    metres on a living head to about 100 m on old flanks; outside the surface too, so an old edge
    trails off.
@@ -255,7 +279,8 @@ Fog worth flying through, with a way out to see, and an overhang that reads as o
   camera's fog veils the frame), the history's fog. Which of them the eye catches is not known yet:
   first a flight across an edge and one through a small cloud, frame by frame, with each turned off
   in turn. Then each follows the fog that is there (the light that gets through it), not whether
-  the camera is in it. Leg 16's one medium may take the seam between the two loops with it.
+  the camera is in it. The seam between the two loops stays after leg 16's fray (its trial changed
+  `entry`'s and `exit`'s fog not at all): it is this leg's.
 - Near a surface it is leg 16's edge from inside.
 - Deep in, fog shows its density only where its light varies (leg 9), and at 30 m of sight
   nothing has parallax. So the fog thins and thickens, and its light with it: brighter toward
@@ -475,6 +500,11 @@ shadow) and the bird in shade stay, physically right. The trace ~+5% (+2 to +11%
   `-236.2,1494.8,-4685.5,0.3133,0.2089,-0.049,67.9`). Two moments past near clouds, never views:
   `1553.3,1748.7,-2599.8,-5.4842,0.0578,0.8101,51` (banking), `744.6,1725.5,-810.5,0.9041,-0.0941,0.0389,81.5`.
 
+**Before leg 13** (2026-11-25): the edge's trial measured on a scratch branch, not kept. Its look
+holds at the clouds' floor and at 1920×1080, and the grain past near clouds falls; the trace
++30–77%, three quarters of it the fine steps through the edge, +11–33% at steps twice as coarse.
+Leg 16 has the numbers and its budget.
+
 ## Decisions: what failed, and why
 
 What was tried and didn't work, why, and when. **A decision is evidence, not a rule**: when its
@@ -562,6 +592,10 @@ until the author says otherwise.
   side-lit heaps turned soft pillows and `close`'s domes washed out; 65% over 30 m kept the domes and
   hardly lit the rims. The edge's thinness and the domes' crispness are one lever, the author's
   (CLOUD_EDGE0, CLOUD_EDGE_W).
+- **The edge's fray with steps of 2 m + 0.004 t through it** (2026-11-25, leg 16's trial): the
+  trace +30–77% (`gap` most: a ray grazing a near cloud runs long in its edge). Without fine steps
+  the grain at near edges as before or worse (`gap` 1.16 → 1.41%); a nearer limit (0.6–1.2 km)
+  saves nothing where near clouds fill the frame. Leg 16 has the numbers.
 
 ### The light
 
@@ -863,7 +897,8 @@ until the author says otherwise.
 - **The grain** in flight (tools/measure.js): 0.06–0.72% of a frame over the motion strip, 0.54 and
   1.18% past near clouds (`past`, `gap`). The march has no jitter; what differs is the trace's pixel
   where clouds move past: a very near cloud's thin outline stepping at it (samples of the distance
-  alone would cure it, for half the trace again there: decisions), the strip a turn or a pitch brings
+  alone would cure it, for half the trace again there: decisions; leg 16's fray with its steps
+  through the edge lowers it, `past` 0.52 → 0.29%, `gap` 1.16 → 0.82%), the strip a turn or a pitch brings
   in at the frame's edge, near outlines against farther clouds in a dive. No limit yet: a change in
   it is a question for `grain.png`. Motion itself (smear, lag in turns) is for the author's eyes.
 - **Sunlit rims**: at rest 0.006–0.035% of a frame flickers, along tower silhouettes and backlit rims,
