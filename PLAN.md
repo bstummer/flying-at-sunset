@@ -30,7 +30,9 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
    `start`), the sea from above discs (`high2`), hazy faces ring outlines; no edge is ragged, so
    surfaces read solid: popcorn lit, rock in shade (`belly`, `turn`). → 16, 17, 18
 4. **Inside and under cloud**: `inside` an even tan card, `entry` a cobalt wash, `under` murk. A
-   tower is 20 s to two minutes of card at cruise. → 19
+   tower is 20 s to two minutes of card at cruise. And the way in (the author, in flight): the
+   screen changes drastically as the camera goes into cloud, even at an edge or in a small one.
+   → 19
 5. **The towers are never reached, and at the start nothing moves**: those in `start`'s frame
    stand 28–50 km off (seven minutes and more), the nearest (9.8 km) out of frame; a 10 km head is
    6.4 minutes of held climb; the clouds drift 15 px a second. → 14
@@ -243,6 +245,17 @@ were milky; facing over 15 m pumice, over 60 m dough; a floor on the diffusion b
 
 Fog worth flying through, with a way out to see, and an overhang that reads as one.
 
+- **The way in** (the author, 2026-11-25): the screen changes drastically as the camera goes into
+  cloud, even at an edge or in a small cloud, where a step in should change little. Much of what
+  changes is switched by the point at the camera, not by how much fog lies in front of it: the
+  trace's own loop for the camera's cloud (every pixel's, once that point is inside; lit grey
+  deeper than 30 m), the mist puffs and the shake (render/probe.js: at full strength from an
+  extinction of 0.012/m there, a sixth of the medium's, so in the edge's first metres; eased in over
+  a third of a second), the exposure's gain in fog (shaders/exposure.wgsl: up to 4×, by how much the
+  camera's fog veils the frame), the history's fog. Which of them the eye catches is not known yet:
+  first a flight across an edge and one through a small cloud, frame by frame, with each turned off
+  in turn. Then each follows the fog that is there (the light that gets through it), not whether
+  the camera is in it. Leg 16's one medium may take the seam between the two loops with it.
 - Near a surface it is leg 16's edge from inside.
 - Deep in, fog shows its density only where its light varies (leg 9), and at 30 m of sight
   nothing has parallax. So the fog thins and thickens, and its light with it: brighter toward
@@ -251,7 +264,8 @@ Fog worth flying through, with a way out to see, and an overhang that reads as o
   beyond its shadow.
 - If minutes in fog still drag: a question for the author.
 
-Judged by `inside`, `entry`, `exit`, `under`, `belly` and their strips; in motion by the author.
+Judged by `inside`, `entry`, `exit`, `under`, `belly` and their strips, and new views whose strips
+cross an edge and pass through a small cloud; in motion by the author.
 
 ### Leg 20: the air and the sky
 
