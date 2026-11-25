@@ -2,7 +2,8 @@
 #include "chunks/nan.wgsl"
 #include "chunks/exposure.wgsl"
 
-// The final image: bloom and sun rays added, the exposure (bExpo, shaders/exposure.wgsl) and contrast, the tone curve (tm 1: filmic,
+// The final image: bloom and sun rays added, the lens's veiling glare (the frame's mean light,
+// bExpo.mean), the exposure (bExpo, shaders/exposure.wgsl) and contrast, the tone curve (tm 1: filmic,
 // hue-preserving through the mid-tones, only the brightest faces rolling off toward cream as on
 // film, with a golden-hour split tone; 0: ACES), vignette, sRGB and grain, its rows turned
 // top-down for the canvas; view 1..5 shows what goes into it
@@ -33,6 +34,7 @@ fn toSRGB(c: vec3f) -> vec3f { return mix(c * 12.92, 1.055 * pow(c, vec3f(1.0 / 
   let bloom = textureSampleLevel(tBloom, sLin, uv, 0.0).rgb;
   c = c * (1.0 - u.bloomMix) + bloom * u.bloomScale;   // energy-conserving mix with the normalised bloom
   c += textureSampleLevel(tRays, sLin, uv, 0.0).rgb * u.rayCol;
+  c += bExpo.mean.rgb * u.veil;   // the lens's veiling glare
   c *= exposure;
   // gentle contrast around middle grey (pre-curve)
   let lc = max(luma(c), 1e-6);

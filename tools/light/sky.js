@@ -38,7 +38,8 @@ async function capture() {
   assertFreshBuild();
   const { browser, gl } = await launch('auto');
   try {
-    const r = await testRender(browser, { frames: '3', w: '160', h: '90' }, { read });
+    // (the sun at the height constants.js has here)
+    const r = await testRender(browser, { frames: '3', w: '160', h: '90', sun: String(Math.asin(SUN_DIR[1]) * 180 / Math.PI) }, { read });
     if (r.problems.length) throw new Error(`the page failed: ${r.problems.map(p => p.text).join('; ')}`);
     const out = { gl, key: KEY, ...r.read };
     mkdirSync(dirname(OUT), { recursive: true });

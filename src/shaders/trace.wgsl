@@ -11,7 +11,7 @@ override DBG = false;   // the debug views of ?dbg (render/setup.js)
 // horizon sky's colour as much as it takes of their light.
 const CLOUD_SAT = 1.35;
 // The light is taken as at a cloud's edge this thick (m), whatever the outline's ramp (a pixel wide):
-// at a 5° sun the light fades within metres of a top, and lit as deep as that ramp is, the tops
+// at a low sun the light fades within metres of a top, and lit as deep as that ramp is, the tops
 // toward the sun lost half their glare (and their light changed with the trace's resolution)
 const LIGHT_SKIN = 1.0;
 // Which samples in a cloud are lit (a light march each), and at which of those the sky's taps are
@@ -146,8 +146,8 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
   var zSum = 0.0;
   var zW = 0.0;
   var t = 2.4;          // (the first sample, a few metres out)
-  // the camera's own cloud: how much light gets through it (to the exposure, shaders/exposure.wgsl,
-  // and the high layers' order, shaders/taau.wgsl), its depth (km) where nothing shows through
+  // the camera's own cloud: how much light gets through it (to the high layers' order and the
+  // history's fog, shaders/taau.wgsl), its depth (km) where nothing shows through
   var tOwn = 1.0;
   var zOwn = 0.0;
   var dOut = -1.0;    // the distance where it comes out of it, the main loop's last point outside

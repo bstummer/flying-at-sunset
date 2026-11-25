@@ -1,9 +1,10 @@
 // The sun's colour by altitude: the atmosphere's transmittance toward the sun (the model of
-// chunks/atmo.wgsl, marched on the CPU) at SUN_COL_N heights SUN_COL_DH m apart (constants.js;
-// sunColTable: the shaders' sunCol), and sunColorAt(h) between them
+// chunks/atmo.wgsl, marched on the CPU, along the path of an evening's light: SUN_LIGHT_MU,
+// constants.js) at SUN_COL_N heights SUN_COL_DH m apart (sunColTable: the shaders' sunCol), and
+// sunColorAt(h) between them
 
 import { clamp, mix3, scl } from '../math.js';
-import { MIE_A, MIE_H, MIE_S, OZO_A, RAY_H, RAY_S, RG, RT, SUN_COL_DH, SUN_COL_N, SUN_DIR } from '../constants.js';
+import { MIE_A, MIE_H, MIE_S, OZO_A, RAY_H, RAY_S, RG, RT, SUN_COL_DH, SUN_COL_N, SUN_LIGHT_MU } from '../constants.js';
 
 const ATM = { RG, RT, rayS: RAY_S, rayH: RAY_H, mieS: MIE_S, mieA: MIE_A, mieH: MIE_H, ozo: OZO_A };
 function atmTransmittance(hKm, mu) {
@@ -22,7 +23,7 @@ function atmTransmittance(hKm, mu) {
 const SUN_E = 1.0; // relative sun illuminance at the top of the atmosphere (exposure takes care of absolute scale)
 export const sunColTable = new Float32Array(SUN_COL_N * 3);
 for (let i = 0; i < SUN_COL_N; i++) {
-  const t = atmTransmittance(i * SUN_COL_DH / 1000, SUN_DIR[1]);
+  const t = atmTransmittance(i * SUN_COL_DH / 1000, SUN_LIGHT_MU);
   sunColTable.set(scl(t, SUN_E), i * 3);
 }
 export function sunColorAt(hm) {

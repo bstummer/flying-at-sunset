@@ -1,6 +1,6 @@
 // The sun map: the shadows the clouds cast toward the sun around the camera, the light march's
-// reach past its first ~90 m (chunks/cloud.wgsl, lightPath). At a 5° sun a billow 50 m tall casts a
-// shadow 575 m long, and the march's few long steps (and the shadow volume's 768 × 360 m texels)
+// reach past its first ~90 m (chunks/cloud.wgsl, lightPath). At a 7° sun a billow 50 m tall casts a
+// shadow 410 m long, and the march's few long steps (and the shadow volume's 768 × 360 m texels)
 // can't hold it: a heap hundreds of metres off shaded a copy of itself where a step's point hit it.
 //
 // Its texels lie along the sun's rays, over a window of SM_NA × SM_NW of them around the camera, all

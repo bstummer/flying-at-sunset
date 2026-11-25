@@ -1,5 +1,5 @@
 // Pure image helpers for the tools: crops, zooms, tiles, the compares' diff (tools/screenshot.js)
-// and the measurements' banding and flicker (tools/measure.js). Images are { width, height, data },
+// and the measurements' banding, flicker, tone and contrast by octave (tools/measure.js). Images are { width, height, data },
 // data RGBA bytes, rows from the top, as tools/png.js decodes them. Tested in tests/image.test.js.
 
 export function createImage(width, height, [r, g, b] = [0, 0, 0]) {
@@ -211,6 +211,88 @@ export function pairDiff(pairs, { threshold = 4, regions = {} } = {}) {
     regions: Object.fromEntries(boxes.map((r) => [r.name, share(r.hits, (r.x1 - r.x0) * (r.y1 - r.y0))])),
     heat,
   };
+}
+
+// (Rec. 709's weights on the sRGB levels, as the shaders' luma)
+const lumaAt = (data, i) => 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+
+// The tone of an image, as a photographer reads one: the share of its pixels (percent) whose luma
+// lies under `dark` and over `bright` (of 255), and the mean colour of its darkest third and of its
+// brightest tenth, [r, g, b] in levels (a navy shade, a tan light). Pixels are counted by their
+// luma rounded to a level, a third or a tenth cut at a pixel.
+export function tone({ width, height, data }, { dark = 96, bright = 200 } = {}) {
+  const n = width * height;
+  const count = new Float64Array(256);
+  const sums = new Float64Array(256 * 3);
+  for (let i = 0; i < 4 * n; i += 4) {
+    const l = Math.round(lumaAt(data, i));
+    count[l]++;
+    for (let c = 0; c < 3; c++) sums[3 * l + c] += data[i + c];
+  }
+  // the mean colour of the `share` of pixels from level `from` on, `step` a level
+  const meanOf = (share, from, step) => {
+    let want = share * n, got = 0;
+    const rgb = [0, 0, 0];
+    for (let l = from; l >= 0 && l < 256 && want > 0; l += step) {
+      const k = Math.min(count[l], want);
+      if (k > 0) for (let c = 0; c < 3; c++) rgb[c] += (sums[3 * l + c] / count[l]) * k;
+      got += k;
+      want -= k;
+    }
+    return rgb.map((v) => (got > 0 ? Math.round(v / got) : 0));
+  };
+  let under = 0, over = 0;
+  for (let l = 0; l < 256; l++) {
+    if (l < dark) under += count[l];
+    if (l > bright) over += count[l];
+  }
+  return { darkPercent: (100 * under) / n, brightPercent: (100 * over) / n, shade: meanOf(1 / 3, 0, 1), light: meanOf(0.1, 255, -1) };
+}
+
+// The contrast of an image octave by octave: a Laplacian pyramid of its luma, each band's root
+// mean square in levels, the finest first (band k holds what is 2^k to 2^(k+1) pixels across), as
+// many bands as halvings leave at least 4 pixels a side, up to `bands`. Natural texture spreads
+// its contrast about evenly over the octaves; beads of one size are a bump at theirs, a blank
+// gradient a steep slope down to the finest.
+export function octaves({ width, height, data }, { bands = 6 } = {}) {
+  let level = { w: width, h: height, v: new Float32Array(width * height) };
+  for (let i = 0; i < width * height; i++) level.v[i] = lumaAt(data, 4 * i);
+  const out = [];
+  while (out.length < bands && level.w >= 8 && level.h >= 8) {
+    const coarse = halve(level);
+    let sq = 0;
+    for (let y = 0; y < level.h; y++) {
+      for (let x = 0; x < level.w; x++) {
+        const d = level.v[y * level.w + x] - upsampled(coarse, x, y);
+        sq += d * d;
+      }
+    }
+    out.push(Math.sqrt(sq / (level.w * level.h)));
+    level = coarse;
+  }
+  return out;
+}
+
+// (a pyramid's next level: 2 × 2 means, an odd last row or column dropped)
+function halve({ w, h, v }) {
+  const W = w >> 1, H = h >> 1, out = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = 2 * y * w + 2 * x;
+      out[y * W + x] = 0.25 * (v[i] + v[i + 1] + v[i + w] + v[i + w + 1]);
+    }
+  }
+  return { w: W, h: H, v: out };
+}
+
+// (the coarser level at the finer level's pixel (x, y), interpolated between its texels' centres)
+function upsampled({ w, h, v }, x, y) {
+  const fx = Math.min(Math.max((x + 0.5) / 2 - 0.5, 0), w - 1), fy = Math.min(Math.max((y + 0.5) / 2 - 0.5, 0), h - 1);
+  const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(x0 + 1, w - 1), y1 = Math.min(y0 + 1, h - 1);
+  const tx = fx - x0, ty = fy - y0;
+  const top = v[y0 * w + x0] * (1 - tx) + v[y0 * w + x1] * tx;
+  const bottom = v[y1 * w + x0] * (1 - tx) + v[y1 * w + x1] * tx;
+  return top * (1 - ty) + bottom * ty;
 }
 
 // A dimmed grey copy of `base` with every pixel whose heat reaches `threshold` in magenta, grown

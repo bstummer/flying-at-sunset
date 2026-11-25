@@ -1,6 +1,6 @@
 // The light of a cloud by Monte Carlo (tools/light/): a slab of the clouds' medium (constants.js:
 // σ 0.07/m, no absorption, thinner over its first metres below the surface) facing any way, as thick
-// as asked, a ball, or a fold (a crease between two slopes), lit by the sun alone (SUN_DIR: 5° up,
+// as asked, a ball, or a fold (a crease between two slopes), lit by the sun alone (SUN_DIR: 7° up,
 // toward −Z, irradiance 1), and the radiance it sends toward a viewer; or in colour under a sky and
 // beside other clouds (radianceUnder: what a path meets when it leaves, the sun's colour or its
 // shadow). Backward path tracing from the viewer, the sun sampled at every
@@ -35,7 +35,7 @@ export function profileMean(x, r) {
   return b - a < 0.5 ? profile(b) : (profileDepth(b) - profileDepth(a)) / (b - a);
 }
 // the medium as the cache knows it (reference.js: numbers of another medium are made again)
-export const MEDIUM = `σ ${SIGMA}, edge ${E0} over ${EW} m`;
+export const MEDIUM = `σ ${SIGMA}, edge ${E0} over ${EW} m, the sun ${(Math.asin(SUN_DIR[1]) * 180 / Math.PI).toFixed(2)}° up`;
 
 const hg = (c, g) => (1 - g * g) / (4 * Math.PI * Math.pow(Math.max(1 + g * g - 2 * g * c, 1e-12), 1.5));
 // phase functions as lobes of Henyey-Greenstein: [weight, g]

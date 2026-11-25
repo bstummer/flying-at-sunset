@@ -1,9 +1,9 @@
 // The image analysis of tools/image.js: crops, zooms, tiles, the banding view and the banded share,
-// flicker and its heat map, diffs
+// flicker and its heat map, diffs, the tone, the contrast by octave
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bandedShare, bandingView, createImage, crop, diffImage, flicker, heatImage, pairDiff, shrink, tile, zoom } from '../tools/image.js';
+import { bandedShare, bandingView, createImage, crop, diffImage, flicker, heatImage, octaves, pairDiff, shrink, tile, tone, zoom } from '../tools/image.js';
 import { mulberry32 } from '../src/math.js';
 
 // A seeded stream of numbers in [0, 1), by name.
@@ -230,3 +230,54 @@ test('the diff of two images counts changed pixels, those off by more than 2 lev
   assert.throws(() => diffImage(a, createImage(2, 2)), /different sizes/);
 });
 
+
+// ---------------------------------------------------------------- tone and texture
+
+test('tone: the shares under the dark level and over the bright one, the colours of the darkest third and the brightest tenth', () => {
+  // ten columns: six navy (luma 50), three mid grey, one bright cream
+  const image = createImage(10, 4);
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 10; x++) image.data.set(x < 6 ? [30, 50, 110] : x < 9 ? [128, 128, 128] : [250, 230, 200], 4 * (y * 10 + x));
+  }
+  const t = tone(image, { dark: 96, bright: 200 });
+  assert.equal(t.darkPercent, 60);
+  assert.equal(t.brightPercent, 10);
+  assert.deepEqual(t.shade, [30, 50, 110], 'the darkest third lies in the navy');
+  assert.deepEqual(t.light, [250, 230, 200], 'the brightest tenth is the cream column');
+  const grey = tone(greyImage(10, 3, (x) => (x < 5 ? 0 : 90)));
+  assert.deepEqual(grey.light, [90, 90, 90]);
+  assert.deepEqual(grey.shade, [0, 0, 0]);
+  assert.deepEqual(tone(greyImage(3, 1, (x) => [0, 90, 255][x])).light, [255, 255, 255], 'a tenth of three pixels is part of the brightest');
+});
+
+test('tone: a third that cuts through a level takes the colours of that level in proportion', () => {
+  // three pixels of luma ~0 and three of ~100 in two colours: the darkest third is the black ones,
+  // the darkest half would be too; the brightest tenth of a frame of one level is that level
+  const image = greyImage(6, 1, (x) => (x < 3 ? 0 : 100));
+  assert.deepEqual(tone(image).shade, [0, 0, 0]);
+  const half = createImage(4, 1);
+  half.data.set([100, 100, 100, 255, 100, 100, 100, 255, 100, 100, 100, 255, 100, 100, 100, 255]);
+  assert.deepEqual(tone(half).light, [100, 100, 100]);
+});
+
+test('octaves: a flat image has no contrast, a checkerboard all of it in the finest band, a wide one in its own', () => {
+  const flat = octaves(greyImage(64, 64, () => 120));
+  assert.equal(flat.length, 4, 'halvings that leave at least 4 pixels a side: 64 → 32 → 16 → 8 → 4');
+  assert.ok(flat.every((v) => v < 1e-9));
+  const fine = octaves(greyImage(64, 64, (x, y) => ((x + y) % 2 ? 160 : 80)));
+  assert.ok(fine[0] > 35 && fine.slice(1).every((v) => v < 1e-6), fine.join(' '));
+  // squares 8 pixels across: their contrast rises to the bands of 4 to 16 pixels (their sharp
+  // edges keep some in the finer ones)
+  const wide = octaves(greyImage(64, 64, (x, y) => ((Math.floor(x / 8) + Math.floor(y / 8)) % 2 ? 160 : 80)));
+  const top = wide.indexOf(Math.max(...wide));
+  assert.ok(top === 2 || top === 3, wide.join(' '));
+  assert.ok(wide[0] < wide[top] / 2, wide.join(' '));
+});
+
+test('octaves: a blank gradient falls steeply toward the finest band; noise spreads over all of them', () => {
+  const ramp = octaves(greyImage(128, 64, (x) => 60 + x));
+  assert.ok(ramp[0] < 0.5 && ramp[0] < ramp[ramp.length - 1], ramp.join(' '));
+  const s = stream('octaves');
+  const noise = octaves(greyImage(128, 64, () => 128 + 60 * (s.next() - 0.5)));
+  assert.ok(noise[0] > 10, noise.join(' '));
+});

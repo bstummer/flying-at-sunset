@@ -39,6 +39,13 @@ test('the measurements as the tools print them, and how they changed', () => {
   assert.deepEqual(measurementChanges({ bandedPercent: 0, shimmerPercent: 0.1 }, grain(2, 0)), [], 'nothing to compare a new measurement with');
 });
 
+test('the tone, the texture and the motion print and compare too', () => {
+  const m = { bandedPercent: 0, shimmerPercent: 0.1, darkPercent: 80, brightPercent: 0, shade: [30, 40, 90], light: [200, 160, 120], motionPercent: 2, texture: { tower: [1.5, 3, 4] } };
+  assert.equal(describeMeasurements(m), 'banded 0% · shimmer 0.1% · dark 80% · bright 0% · motion 2% · shade (30,40,90) · light (200,160,120) · texture tower 1.5 3 4');
+  assert.deepEqual(measurementChanges(m, { ...m, darkPercent: 40, shade: [60, 60, 100], texture: { tower: [2, 3, 4] } }),
+    ['dark 80% → 40%', 'shade (30,40,90) → (60,60,100)', 'texture tower 1.5 3 4 → 2 3 4']);
+});
+
 test('the page hands over the frames the measurements need: the strip from the still on, and frames held still', () => {
   assert.deepEqual(motionParams(), { keep: String(MEASURE.motion.frames), every: String(MEASURE.motion.every) });
   assert.deepEqual(shimmerParams(), { freeze: '', dt: '0', keep: String(MEASURE.shimmer.frames) });
@@ -54,6 +61,8 @@ test('the grain: where the strip and the strip rendered with other jitter differ
   const { measurements, files } = measureView({ motion: [still, still], still: [still, still], grain: [other, still], crops: { corner: [0, 0, 0.25, 0.5], rest: [0.5, 0.5, 0.5, 0.5] }, dir });
   assert.equal(measurements.grainPercent, 6.25, 'an eighth of the frame in one pair of two');
   assert.deepEqual(measurements.grain, { corner: 50, rest: 0 });
+  assert.equal(measurements.motionPercent, 0, 'nothing moved along the strip');
+  assert.deepEqual(measurements.shade, [100, 100, 100]);
   assert.ok(files.includes('grain.png'));
   const none = measureView({ motion: [still], still: [still, still], dir });
   assert.equal(none.measurements.grainPercent, undefined, 'not measured without the other render');
@@ -72,6 +81,9 @@ test('a view is measured from its frames into its folder: a banded still, flicke
   assert.equal(measurements.shimmerPercent, 25);
   assert.deepEqual(warnings.map((x) => x.metric), ['bandedPercent', 'shimmerPercent']);
   assert.deepEqual(files.sort(), ['banding.png', 'crop-corner.png', 'motion.png', 'shimmer.png']);
+  assert.equal(measurements.motionPercent, 100, 'every pixel changed from the still to the next frame');
+  assert.equal(measurements.darkPercent, 0);
+  assert.deepEqual(Object.keys(measurements.texture), ['corner']);
   for (const f of files) assert.ok(existsSync(join(dir, f)), f);
   const crop = decodePng(readFileSync(join(dir, 'crop-corner.png')));
   assert.deepEqual([crop.width, crop.height], [(w / 2) * MEASURE.crop.zoom, (h / 4) * MEASURE.crop.zoom]);

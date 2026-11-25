@@ -6,10 +6,10 @@ that fails goes in the decisions with why and when (evidence for later, not a ru
 comes out; finished work gets a line or two under Done. How things work belongs in the module
 headers, how to work in CLAUDE.md.
 
-The next work is planned below: legs 13 to 22, from the review of 2026-11-25. A leg that is done
+The next work is planned below: legs 14 to 22, from the review of 2026-11-25. A leg that is done
 moves to Done in a line or two, and what it tried and dropped goes in the decisions.
 
-## Next: legs 13 to 22
+## Next: legs 14 to 22
 
 From a review of 2026-11-25 (every view at 960×540 with its flight strip and held-still frames,
 ranked before this file was read, and a second reviewer who saw only the images) and the author's
@@ -25,7 +25,8 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
    nature; what it lacks is unevenness, not detail. → 16
 2. **Away from the sun the picture is underexposed and the shade navy**: under luma 96 (of 255)
    `side` 80% of the frame, `down` 73%, `belly` 86%, `under` 100%; nothing over 200 in `away`,
-   `side`, `down`. → 13
+   `side`, `down`. → 13 (done: 13, 0.5, 0, 0.1%; the shade lavender-grey where lit faces hold the
+   exposure, `close` 55% and `entry` 54% under 96 still)
 3. **What the clouds are built from shows**: lit towers are bumps of one size (`giant`, `tower`,
    `start`), the sea from above discs (`high2`), hazy faces ring outlines; no edge is ragged, so
    surfaces read solid: popcorn lit, rock in shade (`belly`, `turn`). → 16, 17, 18
@@ -66,7 +67,7 @@ itself should change, the legs are moved in this file, so it always reads in the
 
 Why this order: the edge's trial was measured first (Done), because two other legs lean on it.
 Then the three that change every capture, so the cloud legs after them compare
-against captures that hold: the light and the exposure (13), the world around the start (14), the
+against captures that hold: the light and the exposure (13, Done), the world around the start (14), the
 camera (15). Then the clouds, the heart: their edge (16: the top finding, and an experiment speaks
 for it), their shapes (17), the light on both (18). Then in cloud (19), the air and the sky (20),
 ice (21), loose ends and the review again (22).
@@ -81,37 +82,11 @@ ice (21), loose ends and the review again (22).
 - After 15 and after 18, the review's method again: every view, and a reviewer who sees only the
   images.
 - Taste stays the author's (CLAUDE.md §11), shown with a recommendation when its leg comes; where
-  the answer can wait, the leg goes on with the recommendation. The sun's height and warmth (13);
+  the answer can wait, the leg goes on with the recommendation. The sun's height and warmth (13:
+  7° with a 5° sun's light, put to the author with the rows);
   how near the first tower, and how the bird gets up one (14); the bird's size in the frame (15);
   whether shreds are missed in flight (16); minutes in fog (19); layers at other heights (20); a
   title while loading (22).
-
-### Leg 13: the photographer (the sun's height, the exposure, the film)
-
-Every heading exposed as a photographer would. Cheap, and every later leg is judged under it.
-
-1. **Instruments** (tools/measure.js): a view's *tone* (the share of the frame under luma 96 and
-   over 200, the colour of its darkest third and its brightest tenth), a crop's *texture* (its
-   contrast octave by octave: beads of one size are a bump in it, a blank gradient a steep slope),
-   a strip's *motion* (the share of pixels that change over it). They guard and don't steer: their
-   limits come from rows the author has approved.
-2. **The sun's height**, behind `?sun=`. Everything follows `SUN_DIR` (tried with one line of
-   constants.js): at 8° the sea is sunlit and `side` and `down` lose their navy, but the gold thins
-   and the view into the sun whitens; at 10° it is afternoon. Rows between 5° and 8° for the
-   author, as they come and with the warmth put back. After the choice the light's reference and
-   its tests are made again (the Monte Carlo is one sun's), and `sunScatter` is fitted to it at
-   the new height (`node tools/light/reference.js` says how far off it is): legs 16 and 17 are
-   judged under this light. Leg 18 fits it again, once the edge and the shapes have changed.
-3. **Metering**, in cloud and out: shaders/exposure.wgsl has the frame's log-mean, and follows it
-   only in the camera's fog. Tried: at `?exp=22` (14 ships) `away`, `side`, `down` and `giant` turn
-   luminous, but `tower`'s and `close`'s lit faces wash out and `under` is murk still. So by the
-   frame, not by the heading, with the highlights held. The test mode stays deterministic.
-4. **Dodging** (a region of shade lifted, as in a darkroom), if metering leaves one dull.
-5. **The film**: the curve's toe, the split tone, the shade's tints (lavender needs red).
-
-Judged by the sheets and by the author in flight (nothing pumps in a turn through the sun); `sun`,
-`gap` and `backlit` stay as they are. Heed: exposure 17 and ACES alone were milky toward the sun,
-saturation in the final pass an orange dust band, a curve per channel tan.
 
 ### Leg 14: within reach (the start, the way up)
 
@@ -254,7 +229,8 @@ With the edge and the shapes in place. The reference (tools/light/) keeps the en
 its Monte Carlo is of smooth, even shapes, and real cloud is porous: its light spreads farther and
 shades less at small scales.
 
-- `sunScatter`'s fit once more (leg 13 fitted it to the sun's new height, on the old shapes).
+- `sunScatter`'s fit to the reference at the sun's new height (leg 13 found it as near as at 5°,
+  but the glare off tops toward the sun 0.77–0.85× the cloud's, from 0.83–0.95×).
 - Lit faces nearly even: a bump shown by its neighbour's shadow and its rim, not by a highlight
   of its own.
 - Deep folds luminous, never navy pits (`tower`, `close`); the shade smooth, warm where lit cloud
@@ -275,8 +251,8 @@ Fog worth flying through, with a way out to see, and an overhang that reads as o
   trace's own loop for the camera's cloud (every pixel's, once that point is inside; lit grey
   deeper than 30 m), the mist puffs and the shake (render/probe.js: at full strength from an
   extinction of 0.012/m there, a sixth of the medium's, so in the edge's first metres; eased in over
-  a third of a second), the exposure's gain in fog (shaders/exposure.wgsl: up to 4×, by how much the
-  camera's fog veils the frame), the history's fog. Which of them the eye catches is not known yet:
+  a third of a second), the history's fog. (The exposure follows the frame since leg 13, in cloud
+  and out alike: no switch there.) Which of them the eye catches is not known yet:
   first a flight across an edge and one through a small cloud, frame by frame, with each turned off
   in turn. Then each follows the fog that is there (the light that gets through it), not whether
   the camera is in it. The seam between the two loops stays after leg 16's fray (its trial changed
@@ -505,6 +481,32 @@ holds at the clouds' floor and at 1920×1080, and the grain past near clouds fal
 +30–77%, three quarters of it the fine steps through the edge, +11–33% at steps twice as coarse.
 Leg 16 has the numbers and its budget.
 
+**Leg 13** (2026-11-25): the photographer.
+1. Instruments (tools/measure.js): each still's tone (the share under luma 96 and over 200, the
+   colour of its darkest third and its brightest tenth), each crop's texture (contrast octave by
+   octave), each strip's motion (the share of pixels that change frame to frame). No limits yet:
+   they come from rows the author approves.
+2. The sun 7° up (`?sun`), its light's colour as through the air toward a sun 5° up
+   (SUN_LIGHT_MU: an evening's haze the atmosphere's one layer of aerosols lacks; the sky keeps
+   the true height). Rows at 5–8° (exposure 14): each degree puts more of the sea in the sun
+   (`side`, `down`: navy to sunlit gold), at 8° the view into the sun whitens. The light's
+   reference holds at 7° (faces, slopes, walls, balls within 2% of 5°'s ratios), not refitted.
+   `backlit`'s lobe stays in shadow; the tower preset finds the same tower.
+3. The meter (shaders/exposure.wgsl), in cloud and out: the brightest tenth of a level of the
+   bloom chain ~60 texels across lifted 0.7 of the way to a reference, never darkened, at most 4×,
+   adapted at 1.5/s up and 3/s down. Fit to rows at exposures 14, 20, 28, 40: a frame with lit faces
+   or toward the sun keeps 14 (`tower`, `close`, `sun`, `gap`, `backlit`, `start`), `away` ×1.2,
+   `side` ×1.4, `down` ×1.75, `belly` ×2.2, `under` and `inside` ×3.5–3.7. The fog's own gain
+   (by how much of the frame the camera's fog was) is gone.
+4. Dodging: not needed after the meter and the veil.
+5. The film: the lens's veiling glare (`?veil`, 0.05 of the frame's mean light over all of it,
+   each block's light taken to 1: the sun's disk as bright sky): the shade under lit faces from
+   navy to lavender-grey (`close`'s darkest third (42,47,64) → (57,57,71)), the views toward the
+   sun barely changed.
+Under luma 96: `side` 80 → 13%, `down` 73 → 0.5%, `belly` 86 → 0%, `under` 100 → 0.1%, `start`
+34 → 13%, `close` 67 → 55%. The trace −0 to +1% (the sun's height), post +4–6% (~0.008 ms a frame:
+the meter's histogram).
+
 ## Decisions: what failed, and why
 
 What was tried and didn't work, why, and when. **A decision is evidence, not a rule**: when its
@@ -709,6 +711,15 @@ until the author says otherwise.
 - **Exposure and the tone curve** (before the legs): exposure 17 (16.5 too), or ACES alone, washed
   the glow toward the sun into a milky veil; a curve per channel from the mid-tones up made sunlit
   orange tan, sandstone.
+- **Metering by the frame's log-mean** (leg 13, the fog's rule until then, everywhere): to lift
+  `side` enough it lifted the views toward the sun ×1.4, and with a cap from the highlights the
+  mean did nothing the cap didn't. The brightest tenth alone fits what each view wants.
+- **The warmth at 7° by a white balance** (leg 13, the final pass ×(1.08, 1, 0.92) or so): hard to
+  tell from the sunlight's own colour put back, and it warms the deep blue overhead too.
+- **The film's toe lifted** (leg 13, lt + S·lt·(1 − lt/0.2)², S 0.6–1): the shade under lit faces
+  lifted, but blue as before, and `tower`'s shade flat at 1. **The split tone's shadow end toward
+  lavender** ((1, 0.94, 1.07), (1.03, 0.94, 1.03)): invisible; the shade's hue is its sky light's.
+  The veil (the frame's own warm light) does both.
 
 ### The trace and its cost
 
@@ -852,14 +863,14 @@ until the author says otherwise.
   little soft for about a second (leg 9, step 8). A metre under a top (`entry`): faint blocks where
   the camera's fog meets the surface seen from outside, one dark, a few pixels wide, for a fifth of
   a second of the skim flight (the stored shapes' texels at a grazing angle, leg 9, step 7).
-- **The shade is blue**, navy at the exposure it has (leg 13), not the reviews' lavender grey: the
-  sky's own colour, tinted bluer (trace.wgsl: `ambUp`, `skyAnti`) and saturated (CLOUD_SAT).
-  Lavender needs red in the shade's light, and the warm bounce from sunlit cloud is there only
-  where cloud around is lit. Without the tints, or with the saturation on the sun's light alone,
-  the author saw barely a difference (leg 8). `under` is navy
-  (the sea beneath lies in the anvil's shadow for tens of km) and the bird in shade nearly vanishes
-  into it: kept as physically right on 2026-11-22, and no longer (the author, 2026-11-25: beautiful
-  wins where the two part; legs 13, 15, 19).
+- **The shade is blue** where a frame is all shade: lifted by the meter since leg 13 (`under`,
+  `belly`: a luminous cold periwinkle at ×3.6 and ×2.2, maybe too bright for a shadowed underside:
+  the author's eyes), lavender-grey only where the veil carries sunlit faces' light into it. The
+  sky's own colour, tinted bluer (trace.wgsl: `ambUp`, `skyAnti`) and saturated (CLOUD_SAT): the
+  light's reference in shade (`--shade`) has a top in shadow at (10.3, 13.5, 20.4) from the
+  cloud, (5.8, 10.1, 23.1) from the trace: half the red against the blue. Without the tints, or with
+  the saturation on the sun's light alone, the author saw barely a difference (leg 8), and kept
+  them; leg 18's. The bird in shade nearly vanishes into it (leg 15).
 - **Near the camera** (leg 16) every cloud within about a kilometre is a smooth gradient with a soft
   edge, not the sea into the sun alone (`start` lower left, `seed3`; a soft bluish patch beside the
   bird in `start`), and the shaded sea seen from above is blotchy (`giant`'s foreground): the light
@@ -872,12 +883,16 @@ until the author says otherwise.
   toward the sun at the horizon) and 0.66–0.77 over one in shadow, a tower's shade 0.65×, a top
   beside a sunlit wall a kilometre off 0.36–0.81× (the lit map sees the sea's lit share, not a wall
   rising beyond it).
-- **Colour and range** (leg 13): lit faces (190,145,108) where a sunset photo shows orange to
-  salmon, the shade at 45% of them (as of leg 2); toward the sun the haze is a milky band over the
-  low sea (`high2`, `seed3`). Lit faces darker since leg 2 (`tower`'s 174 → 152 luminance), the
-  exposure kept at 14 (raised, the glare toward the sun goes milky). The reviews disagree: deeper
-  darks, or the creases lit. Levers: sunScatter's DIFFUSE and μ power (change model.js with them),
-  CLOUD_SAT, the exposure.
+- **Colour and range**: the brightest tenth of a lit view (254,208,164) (`tower`), cream where a
+  sunset photo shows orange to salmon; toward the sun the haze is a milky band over the low sea
+  (`high2`, `seed3`). The reviews disagree: deeper darks, or the creases lit. Levers: sunScatter's
+  DIFFUSE and μ power (change model.js with them), CLOUD_SAT, the meter's reference (HREF), the
+  veil. **The sun's height** (leg 13): 7° recommended, the author's to choose (`?sun=5`..`8`);
+  another height moves `backlit`'s shadow and lights more or less of every view. **Dodging** (a
+  region of shade lifted) was not needed; `close` and `entry` keep 55% of their frame under luma 96,
+  lavender-grey, under lit faces that hold the exposure. **The meter in flight**: whether a turn
+  through the sun pumps, or a cloud's edge flashes, is for the author's eyes (a scripted turn's
+  frames 0.67 s apart show none).
 - **Distant flat tops can look like floating lenses** (their bodies sink into haze and behind the
   curvature); real sunsets seen from an airliner show the same, but watch it.
 - **The cirrus and the two high layers tile** every 32 and 64 km (seen in no capture), and their
@@ -909,7 +924,8 @@ until the author says otherwise.
   (flight.js) is the lever (52: 27 m/s up at 30°; 44: 17 at 20°). The air is the same everywhere: lift
   tied to the world's thermals (stronger under a growing tower) is leg 14's.
 - **The measurements' limits** are set for 960×540: at smaller sizes sunlit rims make `high2` and
-  `anvil` warn (CLAUDE.md §4).
+  `anvil` warn (CLAUDE.md §4). The tone, the texture and the motion have none: they wait for rows
+  the author approves (what the author calls right, and what wrong).
 - The trace binds 16 sampled textures, core WebGPU's limit a stage: another needs two of them in one
   texture.
 - A WebGPU validation error shows no note (a harmless one on a browser never tried would stop the

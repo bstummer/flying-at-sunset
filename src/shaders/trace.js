@@ -18,7 +18,7 @@
 // holes), on through the air near it (a ray skimming a top dips in and out: one cloud, lit toward
 // the main loop's skin by how far clear the gap took it), greyed deep in and lit as the main loop
 // lights a surface near it, with variations deep in; how much light gets through it goes out with
-// the depth (the exposure adapts by it, shaders/exposure.wgsl; the high layers lie behind it), and
+// the depth (the high layers lie behind it; the history keeps it, shaders/taau.wgsl), and
 // the depth the history is reprojected by is that of what shows through it.
 // Light (sunScatter, shaders/cloud.js, fitted to a Monte Carlo of the medium, tools/light/): all of
 // it, the sky's too, taken as at a cloud's edge LIGHT_SKIN thick, whatever the outline's ramp (the

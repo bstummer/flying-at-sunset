@@ -113,7 +113,7 @@ window.__debug = {
     const b = Array.from(await readBuffer(T.probe)), a = Array.from(await readBuffer(T.amb));
     const e = Array.from(await readBuffer(T.expo));
     return { ...Object.fromEntries(Object.entries(PROBE_AT).map(([k, o]) => [k, b.slice(o, o + 4)])),
-      amb: { up: a.slice(0, 3), sunSide: a.slice(4, 7), antiSun: a.slice(8, 11) }, expo: { mean: e[0], adapted: e[1], fog: e[2], exposure: e[3] } };
+      amb: { up: a.slice(0, 3), sunSide: a.slice(4, 7), antiSun: a.slice(8, 11) }, expo: { high: e[0], asked: e[1], gain: e[2], exposure: e[3], mean: e.slice(4, 7) } };
   },
 };
 // P: the bird's pose as a view for tools/views.js, logged and copied (how a moment seen in flight

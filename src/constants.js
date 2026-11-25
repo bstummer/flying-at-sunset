@@ -1,16 +1,24 @@
-// Constants several modules share: the sun (low, toward −Z), the wind, the noise volumes' sizes and
-// tiles and the detail volume's turn, the render origin's step, the clouds' ceiling and medium, the
-// sun colour table's heights, the high cloud's heights and tiles, the clipmap levels' grids, the
-// sun map's grids, the atmosphere.
+// Constants several modules share: the sun (low, toward −Z) and its light's colour, the wind, the
+// noise volumes' sizes and tiles and the detail volume's turn, the render origin's step, the clouds'
+// ceiling and medium, the sun colour table's heights, the high cloud's heights and tiles, the
+// clipmap levels' grids, the sun map's grids, the atmosphere.
 // The shaders get CLOUD_TOP, the medium, the tiles, the turn, the atmosphere, the sun colour
 // table's and the high cloud's heights and the sun map's sizes from here too (FOR_SHADERS,
 // render/gpu.js).
 
 import { DEG, norm, rotation } from './math.js';
+import { params } from './core/params.js';
 
-const SUN_ELEV = 5.0 * DEG;
-const SUN_AZIM = 0.0;          // the sun sits toward -Z
+// The sun: 7° up, toward -Z (?sun: another height, in degrees). At 5° most of the sea lay in other
+// clouds' shadow, away from the sun nearly all of a view; at 7° most of what is in view lies in its
+// light, and its light is as golden as at 5° (SUN_LIGHT_MU).
+const SUN_ELEV = (params.sun ?? 7.0) * DEG;
+const SUN_AZIM = 0.0;
 export const SUN_DIR = norm([Math.sin(SUN_AZIM) * Math.cos(SUN_ELEV), Math.sin(SUN_ELEV), -Math.cos(SUN_AZIM) * Math.cos(SUN_ELEV)]);
+// The sunlight's colour (render/sun.js): as through the air toward a sun at most 5° up, the haze of an
+// evening that the atmosphere's one layer of aerosols lacks (the sky keeps the sun's true height).
+// Through the clear air of a 7° sun lit faces paled toward cream and the view into the sun whitened.
+export const SUN_LIGHT_MU = Math.sin(Math.min(SUN_ELEV, 5.0 * DEG));
 export const WIND = [3.2, 0, 1.4];    // m/s: the high layers drift with it (render/frame.js); the clouds hold still
 export const WIND_ANG = Math.atan2(WIND[2], WIND[0]);
 export const SHAPE_N = 128, DETAIL_N = 64;

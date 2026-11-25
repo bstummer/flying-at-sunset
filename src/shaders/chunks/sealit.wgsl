@@ -16,5 +16,5 @@ fn seaLitAt(xz: vec2f, r: f32) -> f32 {
 fn seaLitBelow(xz: vec2f, h: f32) -> f32 { return seaLitAt(xz, max(1.5 * h, 400.0)); }
 // The light the sea of clouds below sends up, lit share of it in the sun: the sky's as the deck
 // reflects it (0.8 of it: tools/light/reference.js), and the sun's where it is in the sun (sunlit:
-// render/frame.js, albedo · sin 5° / π)
+// render/frame.js, albedo · sin of the sun's height / π)
 fn seaBounce(lit: f32, sunlit: vec3f, sky: vec3f) -> vec3f { return sky * 0.8 + sunlit * lit; }

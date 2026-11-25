@@ -9,9 +9,8 @@
 // - taau: upsampled to full resolution over the sky, the sun's disk, the cirrus and the two high
 //   layers (shaders/taau.js); drifting mist puffs while the camera is in cloud (shaders/mist.js);
 // - bird: its shadow map and mesh, laid over the scene (render/bird.js);
-// - post: bloom (a 7-level chain), the exposure from its coarsest level (in the camera's own cloud
-//   it adapts to the frame), sun rays (while the sun is near the view) and the final pass onto the canvas
-//   (shaders/post.js);
+// - post: bloom (a 7-level chain), the exposure metered from one of its levels (shaders/exposure.wgsl),
+//   sun rays (while the sun is near the view) and the final pass onto the canvas (shaders/post.js);
 // then the commands are submitted (flush) and the probe and the timestamps read back. The look's
 // tunables, each with its URL parameter, are at the end.
 
@@ -61,8 +60,8 @@ export function render(time, dtFrame) {
   // the turned frame (unturned, an origin snap would make it jump). (Nothing in the clouds drifts:
   // the sun map holds their billows, baked once where it lies, render/sunmap.js.)
   const detailOff = mat3Apply(DETAIL_ROT, O).map(c => fmod(c, DETAIL_TILE));
-  // the sunlit sea of clouds below as a Lambertian deck lit at 5°: its radiance per unit of sunlight
-  // (albedo · sin 5° / π), the light from below on the clouds' bellies and the bird's alike where
+  // the sunlit sea of clouds below as a Lambertian deck lit by the low sun: its radiance per unit of
+  // sunlight (albedo · sin of the sun's height / π), the light from below on the clouds' bellies and the bird's alike where
   // the sea is in the sun (the lit map's share, chunks/sealit.wgsl)
   const ambSea = scl(sunColorAt(1500), SEA_ALBEDO * SUN_DIR[1] / PI);
   const common = Object.assign(worldUniforms(O), sunMapUniforms(O), {
@@ -142,9 +141,9 @@ export function render(time, dtFrame) {
     pass(P.down, [L], { tSrc: src, srcTexel: [1 / src.w, 1 / src.h], clampHi: BLOOM_CLAMP });
     src = L;
   }
-  // (the exposure from the coarsest level, before the finer ones are added onto it; time stopped,
-  // it holds)
-  dispatch(P.expo, { tSrc: src, tCurDepth: T.cloudDepth, lowRes: [R.lowW, R.lowH], bExpo: T.expo, base: EXPOSURE, dt: dtFrame, snap: frame === 0 ? 1 : 0 }, [1]);
+  // (the exposure metered from a level about 60 texels across, before the coarser ones are added
+  // onto it)
+  dispatch(P.expo, { tSrc: meterLevel(), bExpo: T.expo, base: EXPOSURE, dt: dtFrame, snap: frame === 0 ? 1 : 0 }, [1]);
   // (added onto each finer level)
   for (let i = bloomLevels.length - 1; i > 0; i--) {
     const S = bloomLevels[i], D = bloomLevels[i - 1];
@@ -173,7 +172,7 @@ export function render(time, dtFrame) {
   const out = { view: context.getCurrentTexture().createView(), w, h };
   pass(P.final, [out], {
     tScene: T.scene, tBloom: bloomLevels[0], tRays: T.rayA,
-    bExpo: T.expo, bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
+    veil: VEIL, bExpo: T.expo, bloomMix: BLOOM_MIX, bloomScale: BLOOM_MIX / BLOOM_NORM, rayCol: scl(sunC, RAYS_K * rayStrength), time: time % 1000, res: [w, h], view: VIEW, tm: TONEMAP, contrast: CONTRAST, tDbg: histTex, tDbg2: T.cloudDepth, dbgScale: [R.lowW / R.lowMaxW, R.lowH / R.lowMaxH],
   });
   tEnd();
   if (gpuTimer) gpuTimer.resolve();
@@ -183,6 +182,12 @@ export function render(time, dtFrame) {
   mapProbe();
   if (gpuTimer) gpuTimer.map();
   frame++;
+}
+// the bloom chain's level the exposure is metered from: about 60 texels across whatever the canvas
+function meterLevel() {
+  let i = 0;
+  while (i < bloomLevels.length - 1 && bloomLevels[i].w > 90) i++;
+  return bloomLevels[i];
 }
 // tests: a hook that copies the image out of the canvas texture before it is presented
 let capture = null;
@@ -196,6 +201,7 @@ const JIT = params.jit ?? 0;   // (the test mode: the frame the jitter sequences
 const RAW = params.raw;        // each frame's own trace, upsampled without the history: what the trace alone gives a frame
 const HAZE_K = params.haze ?? 2.6e-5;
 const RAYS_K = params.rays ?? 0.18;
+const VEIL = params.veil ?? 0.05;   // the lens's veiling glare: the share of the frame's mean light spread over all of it
 const BLOOM_UP_W = params.bloomw ?? 0.6;                              // weight of each coarser bloom level
 const BLOOM_NORM = (1 - Math.pow(BLOOM_UP_W, 7)) / (1 - BLOOM_UP_W); // total weight of the 7-level chain
 const BLOOM_MIX = params.bloom ?? 0.09;

@@ -97,7 +97,7 @@ const SEA_DEPS = [2, 10, 30, 60, 90], SEA_AZS = [0, 45, 90, 135, 180];
 
 export async function shadeReference({ paths = PATHS / 5, fresh = false, only = null } = {}) {
   const sky = await loadSky();
-  const sun = sunColorAt(sky.camH), SKY = `${MEDIUM}, sky at ${sky.camH.toFixed(0)} m ${sky.amb.up.map(x => x.toFixed(5))}`;
+  const sun = sunColorAt(sky.camH), SKY = `${MEDIUM}, sky at ${sky.camH.toFixed(0)} m ${sky.amb.up.map(x => x.toFixed(5))}, sunlight ${sun.map(x => x.toFixed(4))}`;
   const cache = !fresh && existsSync(OUT_SHADE) ? JSON.parse(readFileSync(OUT_SHADE, 'utf8')) : {};
   const run = (key, s, v, opts, n = paths) => {
     let mc = cache[key];

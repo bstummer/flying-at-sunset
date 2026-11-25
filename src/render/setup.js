@@ -75,7 +75,7 @@ T.cirrus = texture(512, 512, 'rgba8unorm');
 T.layers = texture(1024, 1024, 'rgba8unorm', { mips: 11 });   // seen at grazing angles far away: mipmaps
 T.amb = buffer(3 * 16, GPUBufferUsage.UNIFORM);   // struct Ambient (chunks/ambient.wgsl)
 T.probe = buffer(PROBE_FIELDS * 16);    // struct Probe (chunks/probe.wgsl)
-T.expo = buffer(16, GPUBufferUsage.UNIFORM);   // struct Exposure (chunks/exposure.wgsl)
+T.expo = buffer(32, GPUBufferUsage.UNIFORM);   // struct Exposure (chunks/exposure.wgsl)
 
 export const layerColUniform = new Float32Array([...sunColorAt(LAYER_H0), ...sunColorAt(LAYER_H1)]);
 

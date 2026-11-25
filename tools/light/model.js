@@ -81,7 +81,7 @@ export function sunScatter(lp, far, ph, pw, depthIn) {
 
 // The sky's light on a sample, as trace.wgsl adds it (its `amb`): the sky's irradiance / π on a
 // face up, toward the sun and away from it (the ambient buffer, sky: { up, sunSide, antiSun }), the
-// tints, the sea's bounce (sea: a deck lit at 5°), by which way the surface faces (a tap S up, and
+// tints, the sea's bounce (sea: a deck lit by the low sun), by which way the surface faces (a tap S up, and
 // the light march's nS), how open it is (the large shapes', here the shape's own, at two larger
 // scales: openLarge; and a tap out along their normal and back toward the camera), how deep the
 // sample is, the view's angle to their normal, and the sunlit cloud around.

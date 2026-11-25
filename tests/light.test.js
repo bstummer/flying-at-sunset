@@ -10,7 +10,7 @@ import { traceRadiance, traceUnder } from '../tools/light/model.js';
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 // Single scattering off a deep slab: p(θ) μ0 / (μ0 + μ), μ0 and μ the cosines of the sun and the view
-// to the surface's normal, for a top lit at 5°, a slope and a face, from several sides
+// to the surface's normal, for a top lit by the low sun, a slope and a face, from several sides
 test('single scattering matches the closed form', () => {
   for (const [n, az, dep] of [[[0, 1, 0], 180, 30], [[0, 1, 0], 0, 20], [[0, 0.7, -0.7], 90, 25], [SUN, 160, 10]]) {
     const s = slab(n, 1e6), v = viewDir(az, dep);

@@ -10,14 +10,16 @@
 // Every parameter, its default, and the module that reads it:
 //   modes      test (core/capture.js); bench (core/benchmark.js) and debug (core/readout.js), both
 //              off in the test mode
-//   the world  seed (7: world/noise.js), towers (1: the density of convective cells, world/cells.js)
+//   the world  seed (7: world/noise.js), towers (1: the density of convective cells, world/cells.js),
+//              sun (7: the sun's height in degrees, constants.js)
 //   the bird   preset (a test view), pose (x,y,z[,yaw,pitch,bank,speed]): where it starts,
 //              flight/presets.js
 //   the look   view (0; 1..5: what goes into the final image), dbg (0; 1..7: the cloud debug views,
 //              also render/setup.js), raw (each frame's own trace, upsampled without the history:
 //              what a frame alone gives), tm (1: hue-preserving filmic, 0: ACES), con (1: contrast),
-//              haze (2.6e-5), exp (14: exposure), rays (0.18), bloom (0.09), bloomw (0.6: each
-//              coarser level's weight), bclamp (3000): render/frame.js
+//              haze (2.6e-5), exp (14: the base exposure), rays (0.18), veil (0.05: the lens's
+//              veiling glare), bloom (0.09), bloomw (0.6: each coarser level's weight), bclamp (3000):
+//              render/frame.js
 //   benchmark  benchSeconds (8), benchWarmup (2): core/benchmark.js
 //   test mode  dt (0.0166), freeze: main.js; frames (24), keep (1), every (1), log, live, script:
 //              core/capture.js; w (960), h (540), scale (0.5): render/targets.js; closeup
@@ -45,10 +47,10 @@ const numbers = (least, most) => ({
 const INT32 = 2 ** 31;
 export const PARAMS = {
   test: flag, bench: flag, debug: flag,
-  seed: number(-INT32, INT32 - 1, { whole: true }), towers: number(0, 100),
+  seed: number(-INT32, INT32 - 1, { whole: true }), towers: number(0, 100), sun: number(1, 60),
   preset: text, pose: numbers(3, 7),
   view: number(0, 5, { whole: true }), dbg: number(0, 7, { whole: true }), raw: flag, tm: number(0, 1, { whole: true }),
-  con: number(0, 10), haze: number(0, 1), exp: number(0, 1e6), rays: number(0, 100),
+  con: number(0, 10), haze: number(0, 1), exp: number(0, 1e6), rays: number(0, 100), veil: number(0, 1),
   bloom: number(0, 1), bloomw: number(0, 0.99), bclamp: number(0, 1e9),
   benchSeconds: number(0.05, 600), benchWarmup: number(0, 600),
   dt: number(0, 1), frames: number(1, 1e6, { whole: true }), keep: number(1, 1000, { whole: true }),
