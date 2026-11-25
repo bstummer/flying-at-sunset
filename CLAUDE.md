@@ -12,11 +12,12 @@ experience, as realistic as possible.
 
 **Above all, the piece should be as beautiful as possible.** Beauty ranks above features, cleverness
 and coverage: when two approaches compete, take the one that looks better, then make it fit the frame
-budget (§9). **Every frame should look like a photograph taken from an airplane window just before
-sunset.** Where what is physically right and what is beautiful part ways, beautiful wins, as a
-photographer wins it: by the exposure, the hour and where the camera stands, never by anything a
-viewer would call fake. It should feel peaceful, vast and quietly magical, and it must stay smooth,
-because stuttering breaks the spell.
+budget (§9). **From an airplane's distance every frame should look like a photograph taken from its
+window just before sunset; closer than any such photograph, beside the bird and inside cloud,
+nothing should break that spell.** Where what is physically right and what is beautiful part ways,
+beautiful wins, as a photographer wins it: by the exposure, the hour and where the camera stands,
+never by anything a viewer would call fake. It should feel peaceful, vast and quietly magical, and
+it must stay smooth, because stuttering breaks the spell.
 
 - **The clouds are the heart of the piece.** An endless sea of soft, billowing cloud stretching to the
   horizon, broken by enormous towers rising far above the bird: full and three-dimensional, with

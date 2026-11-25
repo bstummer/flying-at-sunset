@@ -18,9 +18,6 @@ paintings (`sun`, `gap`, `backlit`, `climb`); away from the sun, up close or ins
 reads as popcorn, rock, navy fog or a blank card. What holds: the image is steady, and the world's
 map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steering, frame rates.
 
-The aim is no frame that breaks the spell, not a photograph in every frame: beside the bird and
-inside cloud there is no photograph to match.
-
 ### What hurts, most first
 
 1. **Up close a cloud is blank**: within about a kilometre a smooth gradient with a clean, soft
@@ -65,7 +62,8 @@ the next one. Their descriptions are a plan, not rules: a session changes a step
 drops it, where it no longer makes sense, and says here what it did instead and why. If the order
 itself should change, the legs are moved in this file, so it always reads in the order of the work.
 
-Why this order: first the three that change every capture, so the cloud legs after them compare
+Why this order: before anything, the edge's trial is measured, because two other legs lean on
+it. Then the three that change every capture, so the cloud legs after them compare
 against captures that hold: the light and the exposure (13), the world around the start (14), the
 camera (15). Then the clouds, the heart: their edge (16: the top finding, and an experiment speaks
 for it), their shapes (17), the light on both (18). Then in cloud (19), the air and the sky (20),
@@ -74,6 +72,10 @@ ice (21), loose ends and the review again (22).
 - A leg's first step is its cheapest experiment.
 - What a cloud leg costs the trace is measured (`node tools/cost.js`) and said; where it is too
   much, the finest detail gives way first (CLAUDE.md §9).
+- **Devices with each cloud leg (16 to 20), not at the end.** The phone runs the clouds at their
+  floor, blurry already, and a soft edge there may only be more blur. The views a leg touches are
+  judged at the floor too (`--scale 0.22`) and at 1920×1080, and when the leg is handed over the
+  author is asked for `?bench` on the phone from its preview.
 - After 15 and after 18, the review's method again: every view, and a reviewer who sees only the
   images.
 - Taste stays the author's (CLAUDE.md §11), shown with a recommendation when its leg comes; where
@@ -81,6 +83,17 @@ ice (21), loose ends and the review again (22).
   how near the first tower, and how the bird gets up one (14); the bird's size in the frame (15);
   whether shreds are missed in flight (16); minutes in fog (19); layers at other heights (20); a
   title while loading (22).
+
+### Before leg 13: the edge's trial, measured
+
+Leg 16 answers the top finding, and its trial was only looked at: its cost and its motion are
+unknown. Fine sampling near surfaces has cost the trace +16 to +58% there before (decisions), and
+legs 14 (a lower start) and 19 (the fog near a surface) lean on it. So first, on a scratch branch
+and not kept: the trial again (leg 16 has it in words), then `node tools/cost.js --against HEAD`
+on `past`, `gap`, `skim`, `close` and `start`, its grain, shimmer and motion strips, and its look
+at the clouds' floor (`--scale 0.22`) and at 1920×1080. What comes out is written into leg 16: its
+budget; or a cheaper way to the same edge (coarser steps, a nearer limit); or that near cloud
+stays as it is, and what that changes in legs 14 and 19.
 
 ### Leg 13: the photographer (the sun's height, the exposure, the film)
 
@@ -95,7 +108,9 @@ Every heading exposed as a photographer would. Cheap, and every later leg is jud
    constants.js): at 8° the sea is sunlit and `side` and `down` lose their navy, but the gold thins
    and the view into the sun whitens; at 10° it is afternoon. Rows between 5° and 8° for the
    author, as they come and with the warmth put back. After the choice the light's reference and
-   its tests are made again (the Monte Carlo is one sun's); `sunScatter`'s fit waits for leg 18.
+   its tests are made again (the Monte Carlo is one sun's), and `sunScatter` is fitted to it at
+   the new height (`node tools/light/reference.js` says how far off it is): legs 16 and 17 are
+   judged under this light. Leg 18 fits it again, once the edge and the shapes have changed.
 3. **Metering**, in cloud and out: shaders/exposure.wgsl has the frame's log-mean, and follows it
    only in the camera's fog. Tried: at `?exp=22` (14 ships) `away`, `side`, `down` and `giant` turn
    luminous, but `tower`'s and `close`'s lit faces wash out and `under` is murk still. So by the
@@ -124,8 +139,8 @@ past from the first second; no board of chess pieces.
    history holds it; the canvas could fade in later.
 3. **The start by the screen**: on a phone held upright the frame is 41° across, and the start
    looks 26° off the sun. A view at another aspect needs a size of its own (tools/views.js,
-   screenshot.js, tests/views.test.js). A lower start, for speed that shows, once leg 16 has made
-   near clouds worth it.
+   screenshot.js, tests/views.test.js). The lower start, for speed that shows from the first
+   second, is leg 16's last step: it needs near clouds worth the look.
 4. **The way up**: rising air along a living tower's flank (from the towers' summaries, sent with
    the patch of domes: the probe can't tell a tower from the sea), or a faster climb (`vClimb`).
    The feel is the author's.
@@ -176,6 +191,9 @@ changes (its sky light doesn't read the fray). Nothing is crisp. Cost and motion
    ones. Toward the sun a thin edge is the silver lining (dropped as a shell of its own, leg 10).
 5. **Shreds** only if the author misses them in flight: finer octaves, and steps a pixel long
    where they show, are the dear part.
+6. **The start lower over the billows** (leg 14 left it for now): from 400 m the nearest cloud
+   drifts 15 px a second, and the vision has speed tangible from the first second. With it the
+   motion number at `start`, and new flight logs.
 
 Judged by `past`, `gap`, `skim`, `exit`, `close`, `belly`, grain and shimmer no worse, and by the
 author in flight (an edge that moves ten pixels a frame is the history's to draw). Heed: 30 m
@@ -210,7 +228,7 @@ With the edge and the shapes in place. The reference (tools/light/) keeps the en
 its Monte Carlo is of smooth, even shapes, and real cloud is porous: its light spreads farther and
 shades less at small scales.
 
-- `sunScatter`'s fit at the sun's new height (leg 13 left it).
+- `sunScatter`'s fit once more (leg 13 fitted it to the sun's new height, on the old shapes).
 - Lit faces nearly even: a bump shown by its neighbour's shadow and its rim, not by a highlight
   of its own.
 - Deep folds luminous, never navy pits (`tower`, `close`); the shade smooth, warm where lit cloud
@@ -247,7 +265,7 @@ Air that shows how far away things are, and a sky a photographer would know.
   off has less contrast than the foreground (`giant`); one 60–100 km off is a pale shape, not a
   lit piece with an outline (`away`).
 - **The sky**: a deeper blue overhead, rose opposite the sun, high cloud whose streaks turn.
-- **Layers at other heights**, if the author wants them (a sheet is not a puff).
+- **Layers at other heights**, if the author wants them.
 
 Judged by `sun`, `anvil`, `high2`, `seed3`, `away`, `climb`.
 
@@ -263,7 +281,7 @@ an anvil to its rim. Judged by `anvil`.
 - What is left of the artefacts: orphan puffs and knobs, sunlit turret tops afloat in shade.
 - Loading: a wordless gradient for 3.5 s, far longer on a slow device. A title until the canvas
   comes? The clean screen is the author's.
-- Devices: what the cloud legs cost on the phone and on integrated graphics (`?bench`).
+- Devices: what the cloud legs' benchmarks left open, on the phone and on integrated graphics.
 - The review again, as it was made: the list above, with what is left of each.
 
 ## Done

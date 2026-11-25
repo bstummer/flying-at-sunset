@@ -21,7 +21,7 @@ export const VIEWS = [
   { name: 'turn', params: { preset: 'side', script: 'weave' }, brief: 'Banking through a turn over the sea: the edges of the clouds and their lit rims steady in motion, not grainy.' },
   // (the preset's way, 400 m over the sea's top: just over its billows, which rise 300-380 m over it
   // there; the preset itself lies 170 m over it, in the billows, where the skim flight dives through)
-  { name: 'skim', params: { pose: '0,1493,0,0.35,-0.03,0' }, brief: 'Just over the cloud tops: billows at every size, bulges on bulges down to metres, crisp where the sun catches them, soft edges, never sharp ridgelines or smooth pillows.' },
+  { name: 'skim', params: { pose: '0,1493,0,0.35,-0.03,0' }, brief: 'Just over the cloud tops: a billowy sea with large relief, and near the bird mist, not a surface: soft and smooth as in nature, but never perfectly even, its edge ragged; no sharp ridgelines.' },
   // (the pose a held climb settles in, flight.js: 26° up at 51 m/s; the camera sinks behind the bird, camera.js)
   { name: 'climb', params: { pose: '0,3200,0,0.45,0.45,0,51.4' }, brief: 'In a held climb, 2 km over the sea: the bird whole in the frame, not sunk to its bottom edge, the towers rising ahead far above it, the sea falling away below.',
     crops: { bird: [0.42, 0.66, 0.16, 0.16] } },
@@ -31,7 +31,7 @@ export const VIEWS = [
   { name: 'giant', params: { preset: 'giant' }, brief: 'The tallest tower within 70 km, from twice its height away: it must dominate the view, rising far above the bird, a few great turrets carrying smaller ones, not one texture of beads.',
     crops: { turrets: [0.35, 0.02, 0.3, 0.3] } },
   { name: 'anvil', params: { preset: 'anvil' }, brief: 'A storm that hit the ceiling and spread: a wide flat anvil far away against the sun, as from an airliner, on a massive broad column, never a mushroom on a thin stem.' },
-  { name: 'close', params: { preset: 'close' }, brief: 'Up against a tower\'s flank, under it, looking up: crisp domes on domes down to metres, never soft pillows, nor solid like rock or dough: the folds luminous with the light inside.',
+  { name: 'close', params: { preset: 'close' }, brief: 'Up against a tower\'s flank, under it, looking up: cloud, not pillow and not rock, soft up close but never perfectly even, its edge ragged, its shade luminous, never navy or brown.',
     crops: { domes: [0.15, 0.1, 0.25, 0.25] } },
   { name: 'under', params: { preset: 'under' }, brief: 'Beneath an overhang, looking up at it: something to fly under, part of the tower it leans out from, nothing broken off.' },
   { name: 'inside', params: { preset: 'inside' }, brief: 'Inside a tower: surrounded by drifting mist and the light inside the cloud, not a white wall.' },
