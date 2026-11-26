@@ -41,8 +41,8 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
    stand 28–50 km off (seven minutes and more), the nearest (9.8 km) out of frame; a 10 km head is
    6.4 minutes of held climb; the clouds drift 15 px a second. → 14 (done: the first tower 10.5 km
    ahead, its rising air felt after 2.75 minutes at cruise, over its head ~4 minutes later; near
-   heaps under the start, the motion strip 4.7 → 11.1%; the start lower: leg 16 tried it, and the
-   floor stopped a dive from it: decisions)
+   heaps under the start, the motion strip 4.7 → 11.1%; the start lower: leg 16 tried it, the
+   floor stopped a dive from it, and the author wants none: decisions)
 6. **Scale and distance don't read**: `giant`, 20 km off, looks like a mound 50 m away; toward the
    sun haze empties the middle of the frame and cuts towers off their bases (`high2`, `seed3`).
    → 17, 18, 20
@@ -112,7 +112,7 @@ ice (21), loose ends and the review again (22).
   7° with a 5° sun's light, put to the author with the rows);
   how near the first tower, and how the bird gets up one (14: ~10 km and rising air, put to the
   author with four starts); the bird's size in the frame (15);
-  whether shreds are missed in flight (16); minutes in fog (19); layers at other heights (20); a
+  whether shreds are missed in flight (16: no, 2026-11-26); minutes in fog (19); layers at other heights (20); a
   title while loading (22).
 
 ### Leg 17: sizes as in nature (the shapes)
@@ -493,7 +493,8 @@ levels); shade near the camera still smooth (`skim`). Shimmer as before. At the 
 1920×1080 `past`'s hairy fringe a soft torn outline. The trace +9% (`past`, `start`), +20% (`gap`),
 +14–16% (`skim`, `close`), +8% (`tower`). The flight logs identical but `reach`'s, from 172 s, by
 up to 6.7 m (the probe reads the fray near the tower's cloud). Tried and dropped (decisions): holes
-alone, the sky's light reading the fray, the start lower (the floor stopped a dive from it).
+alone, the sky's light reading the fray, the start lower (the floor stopped a dive from it). The
+phone's `?bench` (known issues): 57–60 fps settled, as at leg 12, the level leg from the start 45.
 
 ## Decisions: what failed, and why
 
@@ -622,7 +623,7 @@ until the author says otherwise.
   −0.7°; at 650 m −13°, the check wants −15°). And `reach`'s pilot met the rising air's weak edge
   900 m sooner and circled there: 7.8 km up at 6 minutes, 9.9 km before. 750 m kept: a start
   lower needs the floor to let a dive through first (`flight.js`: the floor lifts from 180 m over
-  that bound).
+  that bound), and the author wants none (2026-11-26).
 
 ### The light
 
@@ -839,8 +840,12 @@ until the author says otherwise.
 
 - **Measured on few devices**: the NVIDIA laptop (60 fps, the clouds at their 0.75 ceiling at
   640×360), a desktop in Firefox (60 fps at 2173×1058, clouds 0.36), a mid-range Mali phone in Chrome
-  (57–59 fps at 0.56–0.8 Mpx, the clouds at their floor, blurry; 4 hitches in the first seconds, one
-  of them the canvas shrinking from 1.15 Mpx). Never Safari (whose WGSL compiler hasn't seen the
+  (leg 12: 57–59 fps at 0.56–0.8 Mpx, the clouds at their floor, blurry; 4 hitches in the first
+  seconds, one of them the canvas shrinking from 1.15 Mpx. Leg 16, upright at 535×1053: the turn,
+  the dive and the weave 57–60 fps, the level leg from the start 45 fps with 9 hitches (the longest
+  frame 316 ms: the canvas shrinking and the start's bakes, 5.55× the estimate; how much is leg
+  16's is unknown), the GPU's span 12.6–14.9 ms a frame at the clouds' floor: no headroom left
+  there, so what the next cloud legs add, the phone must get back elsewhere). Never Safari (whose WGSL compiler hasn't seen the
   shaders), and of an integrated GPU only that the tools run on one (Intel gen-9, 2026-11-25: a
   960×540 still with its bake takes 25–45 s, the views with their measurements over half an hour;
   its frame rates are unknown): `?bench` reports them. On the phone the world's bakes read 5.8× the
@@ -931,10 +936,9 @@ until the author says otherwise.
   seen from above is blotchy (`giant`'s foreground): the light there is diffusion and sky light,
   smooth over tens of metres (the sky's light reading the fray failed: decisions), and under ~150 m
   the domes end: leg 18's. Untried from leg 16: an old edge trailing out past the surface (wisps
-  outside it: the trace would have to enter a cloud farther out), a far edge soft on old parts by
-  the outline's width (the fray keeps the medium's mean, so from afar an edge is as before), and
-  shreds (finer octaves and steps a pixel long where they show: if the author misses them in
-  flight).
+  outside it: the trace would have to enter a cloud farther out) and a far edge soft on old parts by
+  the outline's width (the fray keeps the medium's mean, so from afar an edge is as before). Shreds
+  (finer octaves, steps a pixel long where they show): the author doesn't miss them (2026-11-26).
 - **The light against its reference** (`node tools/light/reference.js`): an isolated small ball's lit
   side 5.7× (the trace can't see how little cloud lies behind a billow), its edge 1.75×; a tower's
   shade 3.4–3.7× a ball's, 0.6× a wall's (real towers lie between); tops with the sun behind
