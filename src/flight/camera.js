@@ -4,6 +4,7 @@
 // and up a climb by two thirds of its angle, the bird whole in the frame; a 74° horizontal field of view,
 // the vertical one kept within 47–78° (47° on 16:9 and wider screens, 59° at 4:3, up to 78° on
 // portrait ones), widening by up to 24% toward top speed; a subtle shake at speed and in cloud.
+// startYaw: the start's heading by the screen's shape, the sun in frame.
 // updateCamera(dt, snap, time, aspect, inCloud) follows bird_ (aspect: the canvas's width over
 // height; inCloud: 0..1, how deep the camera is in cloud, render/probe.js). ?closeup: a test camera
 // fixed to the bird instead.
@@ -19,6 +20,9 @@ export const cam = {
 export const CLOSEUP = params.closeup;   // (?closeup: a test camera)
 // the vertical field of view at rest (it only widens with speed): 74° across, within 47–78°
 export const baseFovY = aspect => clamp(2 * Math.atan(Math.tan(37 * DEG) / aspect), 47 * DEG, 78 * DEG);
+// the start's heading (0: toward the sun): the sun three quarters of the way to the frame's left
+// edge, 26° off it on wide screens; on a phone held upright (41° across) 15°, or it is out of frame
+export const startYaw = aspect => Math.min(0.45, 0.75 * Math.atan(Math.tan(baseFovY(aspect) / 2) * aspect));
 // how near the chase camera can come to the bird: 4.1 m behind it, less up to 0.48 m in a hard
 // climb (dist below), with room for its spring (render/bird.js sizes the bird's targets by it)
 export const CAM_NEAREST = 3.0;

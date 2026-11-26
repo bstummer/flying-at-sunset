@@ -11,7 +11,9 @@
 //   modes      test (core/capture.js); bench (core/benchmark.js) and debug (core/readout.js), both
 //              off in the test mode
 //   the world  seed (7: world/noise.js), towers (1: the density of convective cells, world/cells.js),
-//              sun (7: the sun's height in degrees, constants.js)
+//              weather (rx,rz,sx,sz: how far the restless air and the cells' grids are moved against
+//              the sea, in place of the spawn draw's choice, world/cells.js), sun (7: the sun's
+//              height in degrees, constants.js)
 //   the bird   preset (a test view), pose (x,y,z[,yaw,pitch,bank,speed]): where it starts,
 //              flight/presets.js
 //   the look   view (0; 1..5: what goes into the final image), dbg (0; 1..7: the cloud debug views,
@@ -47,7 +49,7 @@ const numbers = (least, most) => ({
 const INT32 = 2 ** 31;
 export const PARAMS = {
   test: flag, bench: flag, debug: flag,
-  seed: number(-INT32, INT32 - 1, { whole: true }), towers: number(0, 100), sun: number(1, 60),
+  seed: number(-INT32, INT32 - 1, { whole: true }), towers: number(0, 100), sun: number(1, 60), weather: numbers(4, 4),
   preset: text, pose: numbers(3, 7),
   view: number(0, 5, { whole: true }), dbg: number(0, 7, { whole: true }), raw: flag, tm: number(0, 1, { whole: true }),
   con: number(0, 10), haze: number(0, 1), exp: number(0, 1e6), rays: number(0, 100), veil: number(0, 1),

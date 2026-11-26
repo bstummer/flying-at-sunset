@@ -8,8 +8,8 @@
 //   QS="seed=3&towers=1.5" node tool.js  // the URL parameters the world reads (?seed, ?towers)
 //   WSRC=path/to/src/world node tool.js  // the world of another checkout, to compare with
 //
-// A process holds one world: modules load once, and the world reads its parameters as it loads
-// (the spawn draw in world/cells.js runs then). tests/world.test.js runs a world per seed in worker
+// A process holds one world: modules load once, and the world reads its parameters as it loads;
+// then the spawn draw (world/cells.js) runs. tests/world.test.js runs a world per seed in worker
 // threads (loadWorld({ query, dir }) in place of QS and WSRC). outPath, savePng: the world tools'
 // images, in screenshots/world/.
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
@@ -41,6 +41,8 @@ export async function loadWorld({ query = process.env.QS ?? '', dir = process.en
   const world = new Proxy({ source: relative(process.cwd(), dir) || dir }, {
     get: (own, name) => (name in own ? own[name] : spaces.find((s) => name in s)?.[name]),
   });
+  // (the spawn draw: in the page, the world's worker runs it as it loads)
+  world.spawnDraw?.();
   loaded = { key, world };
   return world;
 }

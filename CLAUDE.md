@@ -96,7 +96,7 @@ What the author keeps coming back to (what the result should be; how to get ther
 | `node tools/screenshot.js --compare A B [--views a,b]` | Before/after sheet `screenshots/compare/A_vs_B.png` with a diff column, per view how many pixels differ and how the measurements changed, and for each view that changed `compare/A_vs_B/<view>.png`: A, B and the diff at full size, then the view's crops zoomed. |
 | `node tools/checks.js [names]` | The behaviour checks alone (`streaming top-speed flight steering reproducible out-of-memory volumes pointer-and-keys errors player benchmark`), writing into `screenshots/checks/`. |
 | `node tools/cost.js [--against HEAD] [--views a,b] [--frames 200] [--rounds 3]` | What a change costs the GPU: the working tree's build against another commit's (built in a temporary git worktree), interleaved A B B A A B, a view at a time, with `?cpuprof`; per view and pass the totals, the change and each side's spread (a change within it is noise), every run in `screenshots/cost/<label>.json`. After committing a change, `--against HEAD~1`. About 6 minutes for the six default views on a desktop GPU. The same build against itself reads the trace within 0–2%: a change past ~3% is real (`world` and `sunmap` swing far more: the first frame's bakes). |
-| `node tools/flights.js [--label L]`, `--compare A B` | The scripted flights' logs (15 s each, from the start and diving into the cloud tops) into `screenshots/flights/<label>.json`; compare says per flight "identical" or where they part and by how much. |
+| `node tools/flights.js [--label L]`, `--compare A B` | The scripted flights' logs (15 s each, from the start and diving into the cloud tops; and `reach`, 6 minutes from the start up the first tower in its rising air: when the air is felt, how high it carries the bird) into `screenshots/flights/<label>.json`; compare says per flight "identical" or where they part and by how much. About 1.5 min. |
 | `npm run map` | `tools/world/map.js`: a top-down map of the world (restlessness, towers by height), without rendering. |
 | `node tools/world/fingerprint.js [--write]` | Whether the CPU world is the one recorded in `tests/fixtures/world-fingerprint.json`; `--write` records it after a deliberate change. |
 | `node tools/light/reference.js [--cases top,face] [--shade] [--fresh]` | The trace's light against a Monte Carlo of the medium (`tools/light/`): per shape (tops, slopes, faces, walls lit from behind, balls) and view, the radiance a real cloud sends and the trace's (its model, `tools/light/model.js`); then the shade (`--shade` alone): in colour under the page's sky, in another cloud's shadow, beside a sunlit wall, folds, an overhang over a sea lit or in shadow. The Monte Carlo's numbers are kept in `screenshots/light/` (minutes to make again; made again when the medium in `constants.js` or the sky changes). The sky is read out of the built page once (`tools/light/sky.js`; again when the atmosphere changes). |
@@ -121,7 +121,7 @@ the published page (`https://bstummer.github.io/flying-at-sunset/?bench`) and pa
 
 **P** (in the page, the deployed one too; nothing on screen says so): logs and copies the moment as a
 `tools/views.js` entry, `{ name: 'new-view', params: { pose: 'x,y,z,yaw,pitch,bank,speed' } }` (and
-`seed`, `towers` if set): the bird's pose 0.2 s before the key, so a capture's still (12 frames on)
+`seed`, `towers`, `weather` if set): the bird's pose 0.2 s before the key, so a capture's still (12 frames on)
 lands on what was on screen. How a moment the author saw in flight reaches a session: ask them to
 press P there and paste it.
 
@@ -172,7 +172,9 @@ For every change that can affect pixels:
 - A change that can touch the flight (flight, input, camera, the probe, the world near the bird):
   `node tools/flights.js --label before` before, `--label after` after, then `--compare`.
 - Something new worth watching gets a view in `tools/views.js`, with a `brief`: one line on what the
-  shot is for, in the vision's terms (§1), and `crops` where its detail is. Keep existing views stable so captures stay comparable.
+  shot is for, in the vision's terms (§1), `crops` where its detail is, and an `aspect` for a screen
+  of another shape (`start-phone`). Keep existing views stable so captures stay comparable: a view by
+  pose keeps its world with `weather` when the spawn draw moves.
 - The limits (`tools/measure.js`: banded and shimmering share of the frame) only warn; a warning is a
   question to look at the image, and a change that raises one says why when it is handed over. They are
   set for the default 960×540: at smaller sizes sunlit rims make `high2` and `anvil` warn (PLAN.md,
@@ -189,13 +191,13 @@ For every change that can affect pixels:
   and what it imports), and `tests/world.test.js` holds it to: the recorded fingerprint (a change to
   the world must be deliberate), independence from the order places are asked for (what streaming
   relies on), and invariants of properties over seeds 1–20 (sound column data for the GPU, towers
-  under the trace's ceiling); checks tied to the start run on the piece's seed (7).
+  under the trace's ceiling, a first tower ahead of the start: the spawn draw).
 - Invariants are properties, not specific numbers, and each seed's world runs in a worker thread of its
   own (a module graph holds one world).
 - The flight model runs in Node too (`src/flight/flight.js` needs only the world): `tests/flight.test.js` holds
   it to its promises (top speed, the floor under the sea, the ceiling, climbs trading speed for height,
-  stability at a coarse time step). The flights in the page are `tools/flights.js`'s and the flight
-  check's.
+  stability at a coarse time step, the first tower's rising air within three minutes, still air away
+  from towers). The flights in the page are `tools/flights.js`'s and the flight check's.
 - The light has a reference: `tests/light.test.js` holds the Monte Carlo (`tools/light/mc.js`, of
   the medium in `constants.js`: its extinction and profile) to closed forms, the trace's light
   within a factor two of it and independent of the outline's width, and its shade under a sky near
@@ -221,16 +223,18 @@ vite.config.js        single-file build to dist/ (the shaders' includes: tools/w
 PLAN.md               what was tried and failed, and why; what is still open
 src/
   main.js             the start, the main loop (frameStep), the steering hint, a lost device, window.__debug
-  worker.js           the world's worker: src/world/ off the page's thread (column data, bubbles, the domes around
-                      the bird, ?preset's place), bundled into the page as a string and started from a blob: URL
+  worker.js           the world's worker: src/world/ off the page's thread (the spawn draw, column data, bubbles, the
+                      domes and rising air around the bird, ?preset's place), bundled into the page as a string
+                      and started from a blob: URL
   math.js constants.js  the small math kit; the sun (7° up, toward −Z) and its light's colour, the wind, the noise tiles and the detail volume's turn, the render origin, the ceiling, the clouds' medium, the clipmap levels' grids, the atmosphere
   core/               the page around the piece: every URL parameter (params.js, §7), its elements, the note,
                       refused requests and fullscreen (page.js), steering (input.js), the world's worker from the
                       page's side (world.js), the test mode (capture.js), the readout (readout.js, ?debug), the
                       benchmark (benchmark.js, ?bench)
-  flight/             the glider (flight.js, needs only the world), the chase camera (camera.js), where the bird
-                      starts (presets.js: the test views, ?preset, ?pose)
-  world/              the CPU world generator: the air, thermals, cells, shapes, what the GPU and the flight get. No DOM, no GPU
+  flight/             the glider (flight.js, needs only the world), the chase camera (camera.js; the start's heading
+                      by the screen's shape), where the bird starts (presets.js: the test views, ?preset, ?pose)
+  world/              the CPU world generator: the air, thermals, cells (and the spawn draw: where the weather lies
+                      against the start), shapes, what the GPU and the flight get. No DOM, no GPU
   render/             WebGPU: the device and pipelines (gpu.js), static resources (setup.js), streamed volumes (stream.js),
                       the sun map and the lit map (sunmap.js; its grid, sungrid.js), size-dependent targets, the probe, timing, the sun's colours (sun.js), the bird, one frame
                       (frame.js), dynamic resolution
@@ -243,9 +247,9 @@ tests/                node:test suites and their fixtures
 
 Each module's header says what it does and how; `src/world/air.js` gives the overview of the world.
 `main.js` imports the modules in the order they are set up: the world's worker (`core/world.js`
-starts it; it grows the world around the start while the rest sets up), the GPU device and the canvas
-(`render/gpu.js` awaits the device at its top level), the world's queries (the spawn draw runs again
-as `world/cells.js` loads: the page may grow cells itself, `core/world.js`), the shaders and static resources (`render/setup.js` creates every pipeline; they compile in
+starts it; it runs the spawn draw and grows the world around the start while the rest sets up), the
+GPU device and the canvas (`render/gpu.js` awaits the device at its top level), the world's queries
+(the page may grow cells itself, `core/world.js`, in the weather the worker's start hands over), the shaders and static resources (`render/setup.js` creates every pipeline; they compile in
 parallel and `main.js` waits for them before the first frame), the streamed volumes, the render
 targets, the flight, the test views, the frame, then what reads them all: the benchmark, the test
 mode, the readout. Before the first frame `main.js` waits for the pipelines, the worker's start (where
@@ -266,8 +270,9 @@ The tools rely on these; keep them, or change the tools with them.
   an unknown preset or route, a tower view the world has no place for; so does a lost device (the page
   never reloads). `&live`: input is read as normally (the steering checks).
   `&log`: a per-frame flight log in `window.__log` (t, x, alt, z, speed, bank, flight-path angle γ, yaw
-  (angles in degrees), sea top, the probe's distance to the cloud at the bird, camera roll, fov).
-  `&script=dive|climb|turn|weave|divedeep|holddive`: scripted input (`src/core/capture.js`). `&freeze`: no
+  (angles in degrees), sea top, the probe's distance to the cloud at the bird, camera roll, fov, the
+  rising air). `&script=dive|climb|turn|weave|divedeep|holddive|reach`: scripted input
+  (`src/core/capture.js`). The start's heading follows the canvas's shape (`flight/camera.js`). `&freeze`: no
   flight. `&preset=...` (the table below), `&pose=x,y,z,yaw,pitch,bank[,speed]`: where the bird is (metres, the
   height absolute; radians, yaw 0 toward the sun (−Z), pitch the flight-path angle; m/s); the chase camera
   sits a few metres behind it, and the flight goes on from there (`tools/world/pose.js` finds a pose
@@ -295,6 +300,7 @@ header; outside the test mode one the page can't read is a console warning, and 
 | `?debug` | frame rate, resolutions, GPU times, altitude, speed, world jobs |
 | `?bench` | the benchmark (§3) |
 | `?seed=N`, `?towers=K` | another world (default 7); the density of convective cells (default 1) |
+| `?weather=rx,rz,sx,sz` | where the weather (the restless air, the cells' grids) lies against the sea and the start, in place of the spawn draw's choice (`world/cells.js`; `node tools/world/stats.js` prints the draw's): the views made before leg 14 keep their world by it |
 | `?preset=start\|sun\|away\|side\|skim\|high\|bank\|fastdive\|humps\|high2\|upward\|tower\|giant\|anvil\|close\|approach\|inside\|under` | where the bird starts (in normal play too: `?preset=tower`); the last seven look at generated towers |
 | `?view=1..5` | cloud transmittance, raw cloud light, depth, sun rays, bloom |
 | `?dbg=1..7` | cloud debug: normals, sun visibility, the shadow volume and the sun map, march cost, lighting terms |

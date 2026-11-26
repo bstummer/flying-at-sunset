@@ -26,7 +26,9 @@ const KEEP = params.keep ?? 1, EVERY = params.every ?? 1;
 const LAST = FRAMES - 1 + (KEEP - 1) * EVERY;   // the index of the last frame rendered
 
 // The scripted flights (tools/flights.js, the flight check): steer(t) gives [right, up] in -1..1
-// at t seconds.
+// at t seconds. reach: on from the start until the first tower's rising air is felt, then a held
+// climb in it, circling (its time to the flank and to the head: tools/flights.js).
+let felt = null;
 const ROUTES = {
   dive: (t) => [0, t > 1 && t < 9 ? -1 : 0],
   climb: (t) => [0, t > 1 && t < 12 ? 1 : 0],
@@ -34,6 +36,10 @@ const ROUTES = {
   weave: (t) => [Math.sin(t * 0.7), 0.4 * Math.sin(t * 0.45)],
   divedeep: (t) => [0, t > 0.5 ? -1 : 0],
   holddive: () => [0, -1],
+  reach: (t) => {
+    if (felt === null && bird_.lift > 3) felt = t;
+    return felt === null ? [0, 0] : [0.35, 1];
+  },
 };
 const still = () => [0, 0];
 if (TEST && !params.live) {
@@ -49,13 +55,13 @@ export function beforeFrame() {
 }
 
 // Once a frame, after it rendered: the flight log's row (t, x, alt, z, speed, bank, γ, yaw, sea
-// top, the probe's distance to the cloud at the bird, camera roll, fov; angles in degrees). True
-// once the last frame is rendered.
+// top, the probe's distance to the cloud at the bird, camera roll, fov, the rising air; angles in
+// degrees). True once the last frame is rendered.
 export function afterFrame(clock) {
   if (params.log) {
     (window.__log = window.__log || []).push([+clock.toFixed(3), +bird_.pos[0].toFixed(1), +bird_.pos[1].toFixed(1), +bird_.pos[2].toFixed(1),
       +bird_.speed.toFixed(2), +(bird_.bank / DEG).toFixed(1), +(bird_.gamma / DEG).toFixed(2), +(bird_.yaw / DEG).toFixed(1),
-      +seaTopAt(bird_.pos[0], bird_.pos[2]).toFixed(0), probeData ? +probeData[2].toFixed(0) : null, +(cam.roll / DEG).toFixed(1), +(cam.fov / DEG).toFixed(1)]);
+      +seaTopAt(bird_.pos[0], bird_.pos[2]).toFixed(0), probeData ? +probeData[2].toFixed(0) : null, +(cam.roll / DEG).toFixed(1), +(cam.fov / DEG).toFixed(1), +bird_.lift.toFixed(2)]);
   }
   return frame > LAST;
 }

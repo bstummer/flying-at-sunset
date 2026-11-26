@@ -1,5 +1,5 @@
-// Numbers about the generated world around a point: the sea, the towers (how high, how wide, how
-// flat their tops, mushrooms and knobs), the bubble load.
+// Numbers about the generated world around a point: the start (the spawn draw's first tower), the
+// sea, the towers (how high, how wide, how flat their tops, mushrooms and knobs), the bubble load.
 //
 //   node tools/world/stats.js [cx cz] [R]      (metres; default the start, R = 150 km)
 //   QS="seed=3" node tools/world/stats.js      another world
@@ -15,6 +15,12 @@ const t0 = Date.now();
 const q = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(p * (s.length - 1))] : NaN; };
 const f0 = v => (+v).toFixed(0), f2 = v => (+v).toFixed(2);
 
+// the start: what the spawn draw found (world/cells.js)
+{
+  const S = W.SPAWN;
+  if (S.weather) console.log(`the start (the spawn draw, ${S.tries} tries${S.ok ? '' : ', none held: the best'}): the first tower ${(S.near / 1000).toFixed(1)} km ahead at the bird's height, its outline at bearings ${S.a0.toFixed(2)}..${S.a1.toFixed(2)}, top ${(S.top / 1000).toFixed(1)} km, P ${f0(S.P)}; strong cells in ${S.quarters} of the 6 quarters and ranges but the sun's | ?weather=${S.weather.join(',')}`);
+  else console.log(`the start: ${W.weatherOf().join(',')} (?weather)`);
+}
 // the sea near the point
 {
   const o = {}, amp = [], rest = [], fine = [];

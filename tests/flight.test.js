@@ -88,6 +88,20 @@ test('at a coarse time step the springs stay stable and every value finite', () 
   assert.ok(widest < FLIGHT.maxBank * 1.3, `bank up to ${(widest / DEG).toFixed(0)}°`);
 });
 
+test("flying on from the start, the first tower's rising air carries the bird up within three minutes", () => {
+  let strongest = 0, at = null;
+  const b = fly(200, () => [0, 0], { each: (b, t) => { strongest = Math.max(strongest, b.lift); at ??= b.lift > 10 ? t : null; } });
+  assert.ok(strongest > 20, `the strongest rising air met: ${strongest.toFixed(1)} m/s`);
+  assert.ok(at < 180, `over 10 m/s ${at === null ? 'never' : `after ${at.toFixed(0)} s`}`);
+  assert.ok(b.pos[1] - newBird().pos[1] > 500, `carried up ${(b.pos[1] - newBird().pos[1]).toFixed(0)} m without a climb`);
+});
+
+test('away from living towers the air is still', () => {
+  let most = 0;
+  fly(30, () => [0, 0], { start: { yaw: Math.PI + 0.45 }, each: (b) => { most = Math.max(most, b.lift); } });
+  assert.equal(most, 0);
+});
+
 test('the same steering flies the same flight', () => {
   const steer = (t) => [Math.sin(t * 0.7), 0.4 * Math.sin(t * 0.45)];
   assert.deepEqual(fly(20, steer), fly(20, steer));

@@ -179,8 +179,10 @@ export function settle(c, e, out, tall = false) {
   }
   return hp;
 }
-// keep the start clear: nothing stands where the bird sets out
-export const START_Y = seaLevelAt(0, 0) + 750;
+// keep the start clear: nothing stands where the bird sets out (its height set again by the spawn
+// draw, cells.js, as it moves the restless air, which raises the sea)
+export let START_Y = seaLevelAt(0, 0) + 750;
+export function setStartY() { START_Y = seaLevelAt(0, 0) + 750; }
 export const nearStart = (x, z, r) => Math.hypot(x, z) < r + 600;
 // a piece lying low on the sea becomes a dome of its surface, standing on what it grew from
 // (sea: the sea level near it as a plane [level, slope x, slope z, x, z])

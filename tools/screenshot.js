@@ -122,11 +122,20 @@ async function capture(args) {
   }
 }
 
+// A view's size: the capture's, or at the view's own aspect (width over height) as many pixels,
+// in even numbers.
+export function viewSize(plan, view) {
+  if (!view.aspect) return [plan.width, plan.height];
+  const px = plan.width * plan.height, even = (v) => Math.max(2, 2 * Math.round(v / 2));
+  return [even(Math.sqrt(px * view.aspect)), even(Math.sqrt(px / view.aspect))];
+}
+
 // The URL parameters of a view's render.
 export function viewParams(plan, view) {
+  const [w, h] = viewSize(plan, view);
   return {
-    w: String(plan.width),
-    h: String(plan.height),
+    w: String(w),
+    h: String(h),
     frames: plan.frames,
     scale: plan.scale,
     ...view.params,
@@ -306,7 +315,7 @@ function contactSheetHtml(info) {
     const status = r.problems.length ? ` · <span class="diff">${r.problems.length} problem(s)</span>` : '';
     const numbers = r.measurements ? ` · ${esc(describeMeasurements(r.measurements))}` : '';
     const warnings = r.warnings.map((w) => `<span class="brief diff">⚠ ${esc(describeWarning(w))}</span>`).join('');
-    const picture = r.file ? `<img src="/${esc(r.file)}" class="${r.problems.length ? 'bad' : ''}">` : '<div class="missing bad">no still</div>';
+    const picture = r.file ? `<img src="/${esc(r.file)}" class="${r.problems.length ? 'bad' : ''}"${fitStyle(r.params, w, h, cell)}>` : '<div class="missing bad">no still</div>';
     return `<figure>${picture}
       <figcaption><b>${esc(r.view)}</b><span>${(r.ms / 1000).toFixed(1)} s${numbers}${status}</span><span class="brief">${esc(r.brief ?? '')}</span>${warnings}</figcaption></figure>`;
   });
@@ -325,14 +334,15 @@ function compareSheetHtml(sides, rows) {
   const cell = Math.min(size[0], 640);
   const describe = (s) => (s.info ? `${s.info.backend}: ${s.info.gl} · Chromium ${s.info.browser} · ${s.info.size.join('×')} · ${s.info.commit}` : 'no info.json');
   const warnings = mismatchWarnings(sides).map((w) => `<div class="warn">⚠ ${esc(w)}</div>`).join('');
-  const img = (src) => (src ? `<img src="${esc(src)}">` : '<div class="missing">missing</div>');
+  const fit = (name) => fitStyle((a.info ?? b.info)?.results?.find((r) => r.view === name)?.params, size[0], size[1], cell);
+  const img = (src, name) => (src ? `<img src="${esc(src)}"${fit(name)}>` : '<div class="missing">missing</div>');
   const body = rows.map((r) => `
     <div class="row-label"><b style="font-size:16px">${esc(r.name)}</b><span class="stat" data-view="${esc(r.name)}"></span>
       ${r.changes.length ? `<span class="diff">${esc(r.changes.join(' · '))}</span>` : ''}</div>
     <div class="grid" style="grid-template-columns: repeat(3, ${cell}px); margin-bottom: 22px">
-      <figure>${img(r.a)}<figcaption>A · ${esc(a.label)}</figcaption></figure>
-      <figure>${img(r.b)}<figcaption>B · ${esc(b.label)}</figcaption></figure>
-      <figure>${r.a && r.b ? `<canvas data-a="${esc(r.a)}" data-b="${esc(r.b)}" data-view="${esc(r.name)}"></canvas>` : '<div class="missing">no diff</div>'}
+      <figure>${img(r.a, r.name)}<figcaption>A · ${esc(a.label)}</figcaption></figure>
+      <figure>${img(r.b, r.name)}<figcaption>B · ${esc(b.label)}</figcaption></figure>
+      <figure>${r.a && r.b ? `<canvas data-a="${esc(r.a)}" data-b="${esc(r.b)}" data-view="${esc(r.name)}"${fit(r.name)}></canvas>` : '<div class="missing">no diff</div>'}
         <figcaption>diff over B: magenta, brighter = larger change; faint = 1-2 levels</figcaption></figure>
     </div>`);
   return htmlDocument(`
@@ -394,6 +404,14 @@ export function diffSummary({ changed, large, max, total }) {
     return `${n === 0 || percent >= 0.01 ? percent.toFixed(2) : percent.toPrecision(2)}% (${n} px)`;
   };
   return `${share(changed)} of pixels differ, ${share(large)} by more than 2 levels (max channel delta ${max})`;
+}
+
+// A still of a view at an aspect of its own (its params' w and h) shown as tall as the sheet's
+// cells of w × h, `cell` wide: a style attribute, or none.
+function fitStyle(params, w, h, cell) {
+  if (!params || (Number(params.w) === w && Number(params.h) === h)) return '';
+  const tall = (cell * h) / w;
+  return ` style="height:${tall.toFixed(0)}px;width:${((tall * params.w) / params.h).toFixed(0)}px"`;
 }
 
 function htmlDocument(body) {

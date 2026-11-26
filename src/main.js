@@ -18,12 +18,12 @@ import { cloudTopAt, seaTopAt, towersNear } from './world/queries.js';
 import { generateStatic, T } from './render/setup.js';
 import { LEVELS, shiftWorld, TSVL, worldStats } from './render/stream.js';
 import { SUNMAPS } from './render/sunmap.js';
-import { R, resize } from './render/targets.js';
+import { R, resize, screenAspect } from './render/targets.js';
 import { inCloud, probeBusy, probeData, updateInCloud } from './render/probe.js';
 import { PROBE_AT } from './shaders/probe.js';
 import { bird_, newBird, updateFlight } from './flight/flight.js';
 import { input, updateInput } from './core/input.js';
-import { cam, updateCamera } from './flight/camera.js';
+import { cam, startYaw, updateCamera } from './flight/camera.js';
 import { placeBird } from './flight/presets.js';
 import { frame, render } from './render/frame.js';
 import { adaptResolution, DR } from './render/resolution.js';
@@ -79,7 +79,9 @@ function frameStep(now) {
   }
   if (TEST) beforeFrame();
   render(clock, dtStep);
-  if (frame === 2 && startWall < 0) { canvas.classList.add('on'); startWall = now; }
+  // (the canvas fades in once the history has averaged its first 8 frames: before, the clipmap
+  // levels' dither shows as a checkerboard on thin far cloud)
+  if (frame === 10 && startWall < 0) { canvas.classList.add('on'); startWall = now; }
   // hint, by the wall clock so it behaves the same at any frame rate: in 1.8 s after the bird
   // shows, out 8.2 s after it came in, or once the visitor has steered a while. Each clock starts
   // at what the visitor saw: the first frames bake the world, and on a slow device one of them
@@ -130,7 +132,7 @@ addEventListener('keydown', e => {
   const r = (v, d) => +v.toFixed(d);
   const [, x, y, z, yaw, pitch, bank, speed] = poses[0];
   const pose = [r(x, 1), r(y, 1), r(z, 1), r(yaw, 4), r(pitch, 4), r(bank, 4), r(speed, 1)].join(',');
-  const world = ['seed', 'towers'].filter(k => params[k] !== null).map(k => `, ${k}: '${params[k]}'`).join('');
+  const world = ['seed', 'towers', 'weather'].filter(k => params[k] !== null).map(k => `, ${k}: '${params[k]}'`).join('');
   const entry = `{ name: 'new-view', params: { pose: '${pose}'${world} }, brief: '' },`;
   console.log(entry);
   // (the clipboard API wants a secure context: from file://, a selected textarea)
@@ -156,7 +158,7 @@ addEventListener('unhandledrejection', e => {
 try { await pipelinesReady(); } catch (e) { fail('Shader error — ' + e.message); throw e; }
 const start = await started;
 if (start.pose?.refused) refuse(start.pose.refused);
-Object.assign(bird_, newBird(start.sea0));
+Object.assign(bird_, newBird(start.sea0, startYaw(screenAspect())));
 placeBird(bird_, start.pose?.refused ? null : start.pose, params.pose);
 await patchAt(bird_.pos[0], bird_.pos[2]);
 if (await keptFailed()) {

@@ -12,11 +12,12 @@ import { forEachSys } from '../world/cells.js';
 import { cloudTopAt, seaTopAt, towerDistAt, towersNear } from '../world/queries.js';
 
 // where preset `pre` puts the bird: { x, y, z, yaw, gamma, bank, speed } (what is left out: 0, or
-// as it was), or { refused: why } (a test capture with the start in its place would pass)
+// as it was: the start's heading is the screen's), or { refused: why } (a test capture with the
+// start in its place would pass)
 export function presetPose(pre) {
   const sea0 = seaTopAt(0, 0);
   const presets = {
-    start: { y: sea0 + 750, yaw: 0.45, gamma: 0 },
+    start: { y: sea0 + 750, gamma: 0 },
     sun: { y: sea0 + 900, yaw: 0.0, gamma: -0.06 },
     away: { y: sea0 + 900, yaw: PI, gamma: -0.06 },
     side: { y: sea0 + 850, yaw: PI / 2, gamma: -0.05 },
@@ -27,7 +28,7 @@ export function presetPose(pre) {
     bank: { y: sea0 + 1000, yaw: 0.6, gamma: 0, bank: 0.7 },
     fastdive: { y: sea0 + 420, yaw: 0.5, gamma: -0.55, speed: 150 },
     humps: { x: 0, z: 0, y: sea0 + 260, yaw: 0.1, gamma: -0.03 },
-    high2: { x: 0, z: 0, y: 5200, yaw: 0.6, gamma: -0.12 },
+    high2: { x: 0, z: 0, y: 5200, yaw: 0.1, gamma: -0.12 },
     upward: { x: 0, z: 0, y: sea0 + 900, yaw: -0.5, gamma: 0.42 },
   };
   // views of generated towers near the start: from a distance with the sun to the side, close
@@ -42,7 +43,7 @@ export function presetPose(pre) {
       const x = t.x + Math.cos(dir) * d, z = t.z + Math.sin(dir) * d, yy = y === null ? seaTopAt(x, z) + 900 : y;
       if (yy < cloudTopAt(x, z) + 650 || towerDistAt(x, yy, z, Math.min(gap, 4000) + 1000) < gap) continue;
       let seen = true;
-      for (let f = 0.1; f < 0.7 && seen && sight; f += 0.1) {
+      for (let f = 0.03; f < 0.7 && seen && sight; f += 0.05) {
         const px = lerp(x, t.x, f), pz = lerp(z, t.z, f), py = lerp(yy, ym, f);
         if (py < cloudTopAt(px, pz) + 150 || towerDistAt(px, py, pz, 1500) < 0) seen = false;
       }
@@ -80,11 +81,20 @@ export function presetPose(pre) {
   const anv = ts.find(t => isAnvil(t) && sunlit(t)) || ts.find(isAnvil);
   // (seen from high up and far off, against the sun, as from an airliner)
   if (anv) { const v = clearOf(anv, PI / 2 + 0.08, 7000, 3000, 50000); if (v) presets.anvil = Object.assign(v, { gamma: 0.02 }); }
+  // up against a flank, under it, 1.5 km off its bubbles (their billows reach some hundreds of
+  // metres out), where the sun reaches the flank in view: the nearest big tower with such a place
+  const flankLit = v => {
+    let d = 0, y = v.y + 600;
+    const dx = Math.sin(v.yaw), dz = -Math.cos(v.yaw);
+    while (d < 4000 && towerDistAt(v.x + dx * d, y, v.z + dz * d, 1500) > 150) d += 100;
+    for (let s = 300; s < 60000; s += 800) if (towerDistAt(v.x + dx * d + SUN_DIR[0] * s, y + SUN_DIR[1] * s, v.z + dz * d + SUN_DIR[2] * s, 1500) < 0) return false;
+    return d < 4000;
+  };
+  for (const t of big) {
+    const v = clearOf(t, sideDir, t.y0 + 1100, 1500, 3000, false);
+    if (v && flankLit(v)) { presets.close = Object.assign(v, { gamma: 0.42 }); break; }
+  }
   if (bt) {
-    // (up against its flank, under it, 1.5 km off its bubbles: their billows reach some hundreds
-    // of metres out)
-    const v = clearOf(bt, sideDir, bt.y0 + 1100, 1500, 3000, false);
-    if (v) presets.close = Object.assign(v, { gamma: 0.42 });
     const w = clearOf(bt, sideDir, bt.y0 + 1500, 5000, 7000);
     if (w) presets.approach = Object.assign(w, { gamma: 0.0 });
     presets.inside = { x: bt.x, z: bt.z, y: bt.y0 + (bt.top - bt.y0) * 0.4, yaw: 0.3, gamma: 0.0 };
@@ -116,7 +126,7 @@ export function presetPose(pre) {
 export function placeBird(b, p, pose) {
   if (p) {
     b.pos = [p.x || 0, p.y, p.z || 0];
-    b.yaw = p.yaw; b.gamma = p.gamma; b.bank = p.bank || 0;
+    b.yaw = p.yaw ?? b.yaw; b.gamma = p.gamma; b.bank = p.bank || 0;
     if (p.speed) b.speed = p.speed;
   }
   if (pose) { b.pos = [pose[0], pose[1], pose[2]]; b.yaw = pose[3] || 0; b.gamma = pose[4] || 0; b.bank = pose[5] || 0; if (pose[6]) b.speed = pose[6]; }

@@ -63,6 +63,9 @@ function allocate(w, h) {
   });
 }
 
+// the canvas's shape, width over height, before resize() has made it (the start's heading)
+export const screenAspect = () => TEST ? (params.w ?? 960) / (params.h ?? 540) : canvas.clientWidth / Math.max(canvas.clientHeight, 1);
+
 R.maxPixels = COARSE ? 1.15e6 : 2.3e6;
 if (COARSE && !TEST) R.scale = 0.36;
 let allocFails = 0;

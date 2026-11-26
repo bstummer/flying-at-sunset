@@ -50,6 +50,8 @@ function restOf(wx, wz) {
 }
 const _aw = {};
 export const restAt = (x, z) => { warpOf(x, z, _aw); return restOf(_aw.wx, _aw.wz); };
+// where the warp takes a place (the spawn draw moves the restless air with the cells it carries)
+export const warpAt = (x, z) => { warpOf(x, z, _aw); return [_aw.wx, _aw.wz]; };
 // The sea of clouds: the top of the moist layer under the inversion. It rolls in broad swells,
 // hills and narrow deep valleys, and lies higher and rougher where the air is restless. lod 0..2
 // drops the finest rolling mounds (coarse clipmap levels). hb: the sea level without heaps; amp:

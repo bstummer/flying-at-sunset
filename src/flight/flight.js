@@ -5,23 +5,26 @@
 // cloud). A climb never ends for want of speed: as the bird slows from cruise to its climb speed,
 // rising air takes over its weight, so out of a dive it soars up on its speed at 30°, then lowers
 // its nose a little and climbs on for as long as it is held (~26° at 51 m/s: 22 m/s up, from the
-// cloud tops to the start's height in half a minute, to a tower's head in minutes). It can't crash: a soft lift as it sinks into the sea of clouds (by the probe's distance to
-// the real billows or by the sea's top, world/queries.js: whichever says it is deeper) and a hard
+// cloud tops to the start's height in half a minute). Near a living tower the air rises
+// (world/queries.js, liftAt): along its flank the bird is carried up past its head in a few
+// minutes. It can't crash: a soft lift as it sinks into the sea of clouds (by the probe's distance
+// to the real billows or by the sea's top, world/queries.js: whichever says it is deeper) and a hard
 // floor 170 m under the sea's top; heaps piled high and the towers can be flown through. Ceiling
 // 11.5 km.
 //
 // updateFlight(b, dt, time, steer, probe) moves bird b on by dt seconds: steer { sx, sy } in -1..1
 // (core/input.js), probe the GPU's last readback (render/probe.js) or null. It needs only the world
-// (seaTopAt): tests/flight.test.js flies it in Node.
+// (seaTopAt, liftAt): tests/flight.test.js flies it in Node.
 
 import { add, clamp, cross, damp, DEG, lerp, norm, sat, scl, smoothstep, spring, sub } from '../math.js';
-import { seaTopAt } from '../world/queries.js';
+import { liftAt, seaTopAt } from '../world/queries.js';
 
 export const FLIGHT = { vCruise: 64, vClimb: 48, vStall: 31, vMax: 185, g: 11.5, gTurn: 16.5, maxBank: 56 * DEG, maxClimb: 30 * DEG, maxDive: 42 * DEG };
-// a bird at the start, 750 m over the sea's top there (sea0; presets.js and ?pose move it)
-export const newBird = (sea0 = seaTopAt(0, 0)) => ({
-  pos: [0, sea0 + 750, 0], yaw: 0.45, gamma: 0, gammaV: 0, bank: 0, bankV: 0, speed: 66, aoa: 0.05,
-  fwd: [0, 0, -1], up: [0, 1, 0], right: [1, 0, 0], load: 1, turnRate: 0, accel: 0,
+// a bird at the start, 750 m over the sea's top there (sea0), heading yaw (camera.js's startYaw:
+// by the screen; presets.js and ?pose move it)
+export const newBird = (sea0 = seaTopAt(0, 0), yaw = 0.45) => ({
+  pos: [0, sea0 + 750, 0], yaw, gamma: 0, gammaV: 0, bank: 0, bankV: 0, speed: 66, aoa: 0.05,
+  fwd: [0, 0, -1], up: [0, 1, 0], right: [1, 0, 0], load: 1, turnRate: 0, accel: 0, lift: 0,
 });
 // the bird of the page: made once the world has started (main.js; it waits for the worker)
 export const bird_ = {};
@@ -70,6 +73,9 @@ export function updateFlight(b, dt, time, steer, probe) {
   const cg = Math.cos(b.gamma);
   const vel = [Math.sin(b.yaw) * cg, Math.sin(b.gamma), -Math.cos(b.yaw) * cg];
   b.pos = add(b.pos, scl(vel, b.speed * dt));
+  // the air rising around a living tower carries the bird up with it, whatever its heading
+  b.lift = liftAt(b.pos[0], b.pos[1], b.pos[2]);
+  b.pos[1] += b.lift * dt;
   // hard floor, never deep into the sea
   const hardFloor = seaTop - 170;
   if (b.pos[1] < hardFloor) { b.pos[1] = lerp(b.pos[1], hardFloor, 1 - Math.exp(-6 * dt)); b.gamma = Math.max(b.gamma, 0); }

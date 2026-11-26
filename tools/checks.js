@@ -419,7 +419,8 @@ async function checkOutOfMemory(browser, { fail, note, problems }) {
     const { page, done } = await openPage(browser, problems, { viewport: { width: 400, height: 240 } });
     try {
       await page.addInitScript(`(${forceOutOfMemory})(1, 1)`);
-      await page.goto(pageUrl({ test: '', frames: '3', w: '1280', h: '720', scale: '0.3' }));
+      // (12 frames: the canvas shows from the 10th, src/main.js)
+      await page.goto(pageUrl({ test: '', frames: '12', w: '1280', h: '720', scale: '0.3' }));
       await until(page, () => window.__done || window.__error);
       const s = await state(page);
       if (s.forced !== 1 || s.scopes < 3) fail(`at start: ${s.forced} out-of-memory errors forced of 1, ${s.scopes} allocations (did the allocation change?)`);
@@ -561,7 +562,7 @@ async function checkStreaming(browser, { fail, note, problems, outDir }) {
     } else {
       const r = compareSunMaps(sa, sb);
       if (!(r.max <= SUN_TOLERANCE[k])) fail(`${name}: the light differs from a fresh start's by up to ${r.max.toFixed(3)} (mean over a texel column) at texel ${r.worst.join(', ')}`);
-      lines.push(`${name} ${r.max.toFixed(3)} (${r.compared} columns)`);
+      lines.push(`${name} ${r.max.toFixed(3)} (${r.compared} columns, p99 ${r.p99.toFixed(3)}, ${r.over(0.02)} over 0.02)`);
     }
   });
   const d = difference(decodePng(flown.png), decodePng(fresh.png));
@@ -577,21 +578,26 @@ async function checkStreaming(browser, { fail, note, problems, outDir }) {
 // Most each level's may differ (the mean light over a texel column, 0..1): where its window ends
 // the march past it takes over from the window's stretches (points 200 m apart against steps of
 // 80 m), and from the coarse level's, 49 km toward the sun, it crosses L1's edge within ~15 km: a
-// window that ends elsewhere sees a little other light there. After 8 km of flight the fine level's
-// differ by up to ~0.012, the coarse level's by ~0.047 (p99 0.018).
-const SUN_TOLERANCE = [0.05, 0.08];
+// window that ends elsewhere sees a little other light there. And a slab reads L0 where L0's window
+// lay when it was baked (a fresh start's, where it lies now): flown toward the first tower (since
+// leg 14), through heaped sea, the fine level's differ by up to ~0.10 (p99 0.09; over the old
+// world's calm sea 0.015, p99 0.009), the coarse level's by ~0.04 (p99 0.02).
+const SUN_TOLERANCE = [0.12, 0.08];
 export function compareSunMaps(a, b) {
   const [ma, mb] = [a.mean, b.mean].map((s) => new Float64Array(Uint8Array.from(Buffer.from(s, 'base64')).buffer));
   const mod = (x, n) => ((x % n) + n) % n;
   let compared = 0, max = 0, worst = null;
+  const all = [];
   for (let K = Math.max(a.valid[0], b.valid[0]) + 1; K < Math.min(a.valid[1], b.valid[1]) - 3; K++) {
     for (let A = Math.max(a.valid[2], b.valid[2]) + 2; A < Math.min(a.valid[3], b.valid[3]) - 2; A++) {
       const p = mod(A, a.na) * a.nw + mod(K, a.nw), d = Math.abs(ma[p] - mb[p]);
       compared++;
+      all.push(d);
       if (d > max) [max, worst] = [d, [K, A]];
     }
   }
-  return { compared, max, worst };
+  all.sort((x, y) => x - y);
+  return { compared, max, worst, p99: all.length ? all[Math.floor(0.99 * (all.length - 1))] : 0, over: (t) => all.filter((d) => d > t).length };
 }
 
 // Two pages' readLevels() of one level, over where both windows overlap but for their edges:

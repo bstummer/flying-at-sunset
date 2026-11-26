@@ -4,8 +4,9 @@
 //   node tools/flights.js --compare <labelA> <labelB>
 //
 // A still is a fifth of a second of flight; these are 15 s each, from the start and from just
-// over the cloud tops: the flight model, the input scripts, and the probe that feeds the flight
-// (the lift in cloud, read from the GPU's clouds). Recording writes screenshots/flights/<label>.json;
+// over the cloud tops, and one of 6 minutes from the start up the first tower (reach: when its
+// rising air is felt, and how high it carries the bird): the flight model, the input scripts, and
+// the probe that feeds the flight (the lift in cloud, read from the GPU's clouds). Recording writes screenshots/flights/<label>.json;
 // compare says per flight whether the logs are identical, else where they part and by how much.
 // Like captures, the logs repeat exactly on the same backend (the probe makes them depend on it),
 // so a change that keeps the flight shows "identical" for every flight. tools/checks.js's flight
@@ -26,9 +27,11 @@ export const FLIGHTS = {
   weave: { script: 'weave' },
   // from just over the cloud tops, diving and held there: into the heaps, kept from sinking deep
   skim: { preset: 'skim', script: 'holddive' },
+  // on from the start to the first tower, then up it in its rising air (6 minutes at 1/10 s)
+  reach: { script: 'reach', dt: '0.1', frames: '3600' },
 };
 // the columns of a log row (src/core/capture.js)
-export const LOG = { t: 0, x: 1, alt: 2, z: 3, speed: 4, bank: 5, gamma: 6, yaw: 7, sea: 8, cloud: 9, roll: 10, fov: 11 };
+export const LOG = { t: 0, x: 1, alt: 2, z: 3, speed: 4, bank: 5, gamma: 6, yaw: 7, sea: 8, cloud: 9, roll: 10, fov: 11, lift: 12 };
 const AT_ONCE = 2;
 
 // Flies `names` (default all) in `browser`: { name: { log, problems } }.
@@ -50,7 +53,7 @@ async function record(args) {
     const flown = await flyAll(browser);
     let failed = 0;
     for (const [name, { log, problems }] of Object.entries(flown)) {
-      console.log(`  ${problems.length ? 'FAIL' : 'ok  '} ${name.padEnd(6)} ${log.length} frames`);
+      console.log(`  ${problems.length ? 'FAIL' : 'ok  '} ${name.padEnd(6)} ${log.length} frames${name === 'reach' ? `: ${describeReach(log)}` : ''}`);
       for (const p of problems) console.log(`         [${p.kind}] ${p.text}`);
       failed += problems.length ? 1 : 0;
     }
@@ -80,6 +83,14 @@ function compare([labelA, labelB]) {
     console.log(`  ${name.padEnd(6)} ${line}`);
   }
   return differ ? 1 : 0;
+}
+
+// The reach flight: when the first tower's rising air is felt, and how high the bird is carried.
+export function describeReach(log) {
+  const felt = log.find((r) => r[LOG.lift] > 3), top = log.reduce((m, r) => (r[LOG.alt] > m[LOG.alt] ? r : m), log[0]);
+  if (!felt) return 'no rising air met';
+  const strong = log.filter((r) => r[LOG.lift] > 10);
+  return `rising air from ${felt[LOG.t].toFixed(0)} s (${(Math.hypot(felt[LOG.x], felt[LOG.z]) / 1000).toFixed(1)} km out), over 10 m/s for ${(strong.length * (log[1][LOG.t] - log[0][LOG.t])).toFixed(0)} s; ${(top[LOG.alt] / 1000).toFixed(1)} km up at ${top[LOG.t].toFixed(0)} s`;
 }
 
 // "identical", or where two logs part and how far the bird's height, speed and bank drift apart.

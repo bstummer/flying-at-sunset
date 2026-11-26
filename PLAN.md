@@ -6,10 +6,10 @@ that fails goes in the decisions with why and when (evidence for later, not a ru
 comes out; finished work gets a line or two under Done. How things work belongs in the module
 headers, how to work in CLAUDE.md.
 
-The next work is planned below: legs 14 to 22, from the review of 2026-11-25. A leg that is done
+The next work is planned below: legs 15 to 22, from the review of 2026-11-25. A leg that is done
 moves to Done in a line or two, and what it tried and dropped goes in the decisions.
 
-## Next: legs 14 to 22
+## Next: legs 15 to 22
 
 From a review of 2026-11-25 (every view at 960×540 with its flight strip and held-still frames,
 ranked before this file was read, and a second reviewer who saw only the images) and the author's
@@ -36,12 +36,14 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
    → 19
 5. **The towers are never reached, and at the start nothing moves**: those in `start`'s frame
    stand 28–50 km off (seven minutes and more), the nearest (9.8 km) out of frame; a 10 km head is
-   6.4 minutes of held climb; the clouds drift 15 px a second. → 14
+   6.4 minutes of held climb; the clouds drift 15 px a second. → 14 (done: the first tower 10.5 km
+   ahead, its rising air felt after 2.75 minutes at cruise, over its head ~4 minutes later; near
+   heaps under the start, the motion strip 4.7 → 11.1%; the start lower is leg 16's)
 6. **Scale and distance don't read**: `giant`, 20 km off, looks like a mound 50 m away; toward the
    sun haze empties the middle of the frame and cuts towers off their bases (`high2`, `seed3`).
    → 17, 18, 20
 7. **Framing**: the bird centre-low at one size; on a phone held upright the start has no sun in
-   frame and its lower 40% is navy. → 13, 14, 15
+   frame and its lower 40% is navy. → 13, 14, 15 (14: the sun in frame on every shape, the sea warm)
 8. **The bird reads as a white dart** (no fold showing), a ghost in shade and fog. → 15
 9. **The sky**: its streaks all run one way; overhead mauve-grey; opposite the sun teal, where a
    photograph has rose; backlit rims don't blaze. → 16, 20
@@ -51,7 +53,8 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
     fog edge (`exit`), orphan puffs and knobs. → 14, 16, 22
 12. **Loading** is an unlabelled gradient. → 22
 13. **The giants on the horizon look like "chess pieces planted on a chess board"** (the author;
-    `away`, `anvil`, `sun`). → 14, 17, 20
+    `away`, `anvil`, `sun`). → 14, 17, 20 (14: towers at every range behind the start, `away`'s
+    even row gone)
 
 The author's rulings with it: the sun may stand higher than 5°; where "physically right" and
 beautiful part ways, beautiful wins, and it stays realistic; no reference photographs (none is
@@ -67,8 +70,8 @@ itself should change, the legs are moved in this file, so it always reads in the
 
 Why this order: the edge's trial was measured first (Done), because two other legs lean on it.
 Then the three that change every capture, so the cloud legs after them compare
-against captures that hold: the light and the exposure (13, Done), the world around the start (14), the
-camera (15). Then the clouds, the heart: their edge (16: the top finding, and an experiment speaks
+against captures that hold: the light and the exposure (13, Done), the world around the start (14,
+Done), the camera (15). Then the clouds, the heart: their edge (16: the top finding, and an experiment speaks
 for it), their shapes (17), the light on both (18). Then in cloud (19), the air and the sky (20),
 ice (21), loose ends and the review again (22).
 
@@ -84,46 +87,24 @@ ice (21), loose ends and the review again (22).
 - Taste stays the author's (CLAUDE.md §11), shown with a recommendation when its leg comes; where
   the answer can wait, the leg goes on with the recommendation. The sun's height and warmth (13:
   7° with a 5° sun's light, put to the author with the rows);
-  how near the first tower, and how the bird gets up one (14); the bird's size in the frame (15);
+  how near the first tower, and how the bird gets up one (14: ~10 km and rising air, put to the
+  author with four starts); the bird's size in the frame (15);
   whether shreds are missed in flight (16); minutes in fog (19); layers at other heights (20); a
   title while loading (22).
-
-### Leg 14: within reach (the start, the way up)
-
-A tower ahead that the bird reaches in a minute or two and climbs in a few more; something moving
-past from the first second; no board of chess pieces.
-
-1. **The spawn draw** (world/cells.js) asks for a strong cell's flank 5–9 km ahead, beside the sun
-   and in frame on wide and tall screens, and for towers at every range in every quarter but the
-   sun's. Today the start lies in a calm hole: behind it nothing over 6 km stands for 60 km, then
-   38 towers in a band at 62–101 km, the chess pieces of `away` (the world itself is clustered,
-   not even). Heed: a tower across the sun is backlit and dull; a radius of clearance emptied
-   10–20 km. Every view changes with the world, and the poses caught with P land somewhere else:
-   each keeps its world by the old draw's number as a URL parameter, or is found again by its
-   brief.
-2. **The first frames**: the checkerboard on thin far cloud is the levels' dither before the
-   history holds it; the canvas could fade in later.
-3. **The start by the screen**: on a phone held upright the frame is 41° across, and the start
-   looks 26° off the sun. A view at another aspect needs a size of its own (tools/views.js,
-   screenshot.js, tests/views.test.js). The lower start, for speed that shows from the first
-   second, is leg 16's last step: it needs near clouds worth the look. (Leg 16's trial gives them
-   that; at today's `start` it costs the trace +8–11%, lower down nearer `skim`'s +16–21%.)
-4. **The way up**: rising air along a living tower's flank (from the towers' summaries, sent with
-   the patch of domes: the probe can't tell a tower from the sea), or a faster climb (`vClimb`).
-   The feel is the author's.
-
-Judged by the time to the tower's flank and to its head (a flight for tools/flights.js), `start`
-at three aspects, and the author's flight. The fingerprint and the flight logs change: say how.
 
 ### Leg 15: the camera and the bird
 
 The bird reads as folded paper, never a dart or a ghost; the frame is composed on tall screens too.
 
 1. **The camera** sits 18° over the bird's back, the wings nearly edge-on; higher, their upper
-   faces and creases show. Not farther: at 140 px a crease is a pixel or two. Its distance could
+   faces and creases show. At the start (leg 14) the first tower, 10 km off, fills the right half
+   of a 16:9 frame with its top cut off, and a reviewer read it as a wall beside the bird: a camera
+   looking a few degrees up there, or the bird lower in the frame, would show its shoulder. On peach
+   cloud the bird is pale and low in contrast (the old start had it on blue shade). Not farther: at 140 px a crease is a pixel or two. Its distance could
    breathe more with the flight (4.1–5.4 m now), and the bird sit off the middle.
-2. **Tall screens**: more sky, less of the near sea. (A tall cloud ahead takes the horizon
-   whatever the camera does.)
+2. **Tall screens**: more sky, less of the near sea (`start-phone`: about half of it near sea since
+   leg 14 turned the start so the sun is in frame). (A tall cloud ahead takes the horizon whatever
+   the camera does.)
 3. **The paper**: facets that shade apart; in shade lit by the bright horizon and the sea; in fog
    less of the camera's mist in front of it.
 
@@ -277,7 +258,8 @@ Air that shows how far away things are, and a sky a photographer would know.
   ray, in a pass of its own: the trace's 16 textures are taken), it has shafts from behind towers
   and distance in layers.
 - **The haze's amount**: towers keep their bases toward the sun (`seed3`, `high2`); a tower 20 km
-  off has less contrast than the foreground (`giant`); one 60–100 km off is a pale shape, not a
+  off has less contrast than the foreground (`giant`), and the start's first tower 10 km off
+  hardly more haze than the near clouds (leg 14's reviewer: nothing says "far"); one 60–100 km off is a pale shape, not a
   lit piece with an outline (`away`).
 - **The sky**: a deeper blue overhead, rose opposite the sun, high cloud whose streaks turn.
 - **Layers at other heights**, if the author wants them.
@@ -507,6 +489,37 @@ Under luma 96: `side` 80 → 13%, `down` 73 → 0.5%, `belly` 86 → 0%, `under`
 34 → 13%, `close` 67 → 55%. The trace −0 to +1% (the sun's height), post +4–6% (~0.008 ms a frame:
 the meter's histogram).
 
+**Leg 14** (2026-11-26): within reach.
+1. The spawn draw (world/cells.js) moves the weather against the sea: the restless air (REST_O) and,
+   new, the cells' grids with it (SITE_O), so that one of its strong cells (P 3000–4500), nearest the
+   weather's origin first, stands as the first tower. A try holds if the tower, grown, is living and
+   over 8.5 km, the nearest it comes at the bird's height 9–12.5 km ahead (2.5–3 minutes at cruise),
+   its outline's left edge 17–34° right of the sun (in frame on a phone upright), the air toward the
+   sun calm, and strong cells near and far in each quarter but the sun's. Every seed 1–20 holds;
+   seed 7's: a 10.9 km tower 10.5 km ahead (P 3614), strong cells in 4 of the 6 quarters and ranges.
+   It runs once, in the world's worker (the page ran the old draw too, on its main thread, before
+   the worker started); the page takes the worker's weather. `?weather` pins a world: the views by
+   pose made before keep theirs, their captures identical. START_Y follows the drawn sea (it had
+   read the unmoved one; the old world is the same either way). Four starts (5.6, 9.8, 14.9 and
+   10.5 km, the last kept) went to the author.
+2. The first frames: the canvas fades in from the 10th frame, once the history has averaged the
+   levels' dither (it showed as a checkerboard on far thin cloud at frames 3–5).
+3. The start by the screen: its heading puts the sun three quarters of the way to the frame's left
+   edge (flight/camera.js, `startYaw`): 26° on 16:9 as before, 23° at 3:4, 15° on a phone upright,
+   where the sun was out of frame. Views of other shapes (tools/views.js `aspect`, as many pixels
+   as the capture): `start-tablet`, `start-phone`.
+4. The way up: a living tower's air rises (world/queries.js, `liftAt`): 30 m/s in the strongest, by
+   its size and in its prime, within 1.2 km of its bubbles and through them, fading over its head;
+   the worker sends the bubbles with the patch of domes. The `reach` flight (tools/flights.js): on
+   from the start it is felt after 165 s, 10.7 km out; circling in it, the bird climbs from 2.3 to
+   9.9 km in 3 minutes, the head at 10.9 km. The views by preset found again by their briefs
+   (known issues).
+The near sea under the start is heaped now (restless air around the first tower): the start's
+motion strip 4.7 → 11.1% of its pixels, under luma 96 13.4 → 3.4%, `start-phone` 0%. The flight
+logs differ from the first frame: the start's sea lies 415 m higher. No shader changed, but more
+cloud is in view: the trace at `start` +14% (6.3 → 7.1 ms a frame at 960×540), `away` +5%, the sun
+map's first bakes +20–60%. The phone's `?bench` from the start is the author's to run.
+
 ## Decisions: what failed, and why
 
 What was tried and didn't work, why, and when. **A decision is evidence, not a rule**: when its
@@ -540,6 +553,17 @@ until the author says otherwise.
   fragments; dropping small pieces one by one left heads floating without their wakes.
 - **The start's clearance as a radius** (2·P·1.7 + 2.5 km, before the legs) emptied 10–20 km. A huge
   tower right ahead of the start blocks the sunset and is dull, backlit.
+- **The spawn draw by the restless air alone** (until leg 14): the cells' sites stay where the seed
+  put them, so a draw only switches the few near the start on or off. Of 300 draws one had a strong
+  cell 6–15 km ahead with the air toward the sun calm (the two lie side by side in a field ~40 km
+  across). Since then the cells' grids move with the air, and the draw puts a strong cell where the
+  first tower should stand.
+- **The first tower's flank 5–9 km ahead** (leg 14, this plan's numbers): a tower over 8.5 km is
+  6–13 km across, so at 5.6 km its backlit flank was a wall over 60–70% of the frame, its top far
+  out of it; from ~10 km it reads as a column, the sea open to the sun beside it (four starts, the
+  author's to choose). An outline under 40° across: no such tower within 15 km is (the head
+  spreads). The CPU preview (tools/world/preview.js) shows a tower's shade far darker than the
+  trace: judge a start by a capture (`--query "weather=..."`).
 - **The bubble budget** (before the legs): the bake loops over every gathered bubble per texel; 14×
   the bubbles would swamp it (stats.js prints the load).
 - **Against mushrooms** (leg 11): a tower's column drawn out by the shear (every piece lengthened
@@ -828,6 +852,12 @@ until the author says otherwise.
   are at their limit: two levels in one texture), the march's steps there. Within a window the
   map's rays run straight in height, the march past it bends them with the planet: over the coarse
   level's 49 km toward the sun, a cloud 40 km off shades as if ~130 m taller.
+- **The sun map reads the level that covered a slab when it was baked** (render/sunmap.js: L0 where
+  L0's window lay then, else L1), and keeps it until its own window moves: after 8 km of flight
+  toward the start's first tower 10% of the fine level's columns differ from a fresh start's by
+  over 0.02 (up to 0.10; the streaming check's tolerance is 0.12 since leg 14), over the old world's
+  calm sea none (0.015). The images agree within 1.6 levels on average. A lever: the fine level
+  reading L0 only near its own window's middle, which L0 always covers.
 - **Near the camera the sun map's shadows are a texel coarse** (64 m across, 32 m in height): a
   shadow's line can lie a texel off, and lower than the view's own clouds cast it (the map holds no
   domes under ~64 m: up to ~40 m of a top). `backlit`: a faint glow on the lobe's shoulder and the
@@ -900,15 +930,15 @@ until the author says otherwise.
 - `dropAdrift` also removes the tops of some dying towers whose columns evaporated (by design: no
   floating fragments): ~30% fewer towers reach the ceiling.
 - **Other places can be emptier** than the start (the spawn draw makes the start look good): ~30% of
-  the world is calm air with only the sea and its heaps. Seed 5 starts with no tower within 50 km
-  (seed 7 has two above 8 km; `tests/world.test.js` holds it to one); of seeds 1–12, 4, 5, 8 and 11
-  have none within 20 km. The author: other seeds' starts don't matter (2026-11-24).
+  the world is calm air with only the sea and its heaps. Since leg 14 every seed 1–20 starts with its
+  first tower ahead (`tests/world.test.js`), in 50–165 ms of the worker's time. The author: other
+  seeds' starts don't matter (2026-11-24).
 - **A lattice at the level handovers** (~10–13 and ~40–55 km: `away`'s middle distance, `anvil`'s
   far sea): pixels dither between two levels; the history averages it at rest, 12-frame captures
   show it. At 40–55 km it is L2's 2 km columns; at 10–13 km L1's billows, sized from 512 m cells,
   rounder and larger than L0's. Levers: blending (+12–18%, decisions), L1's billow sizes nearer L0's
-  (leg 17); the first half second's checkerboard on thin far cloud is the same dither, before the
-  history holds it (leg 14).
+  (leg 17). The same dither showed as a checkerboard on thin far cloud in the first frames, before
+  the history averaged it: the canvas fades in from the 10th frame since leg 14.
 - **The grain** in flight (tools/measure.js): 0.06–0.72% of a frame over the motion strip, 0.54 and
   1.18% past near clouds (`past`, `gap`). The march has no jitter; what differs is the trace's pixel
   where clouds move past: a very near cloud's thin outline stepping at it (samples of the distance
@@ -917,12 +947,25 @@ until the author says otherwise.
   in at the frame's edge, near outlines against farther clouds in a dive. No limit yet: a change in
   it is a question for `grain.png`. Motion itself (smear, lag in turns) is for the author's eyes.
 - **Sunlit rims**: at rest 0.006–0.035% of a frame flickers, along tower silhouettes and backlit rims,
-  most toward the sun (`sun`). The history blends at half the rate where the image holds still,
+  most toward the sun (`sun`); 0.31% in `climb` since leg 14, along the first tower's sunlit top
+  against the sky, ~10 km off. The history blends at half the rate where the image holds still,
   which may lag or smear in slow motion (the author's eyes). Levers: the cloud scale, the TAAU's
   clamp and blend rate, the approach's floor (trace.wgsl).
 - **The held climb** (since 2026-11-24): its rate and feel are for the author's hands; `vClimb`
-  (flight.js) is the lever (52: 27 m/s up at 30°; 44: 17 at 20°). The air is the same everywhere: lift
-  tied to the world's thermals (stronger under a growing tower) is leg 14's.
+  (flight.js) is the lever (52: 27 m/s up at 30°; 44: 17 at 20°).
+- **The rising air** (since leg 14, world/queries.js `liftAt`): up to 30 m/s (`LIFT`, world/cells.js)
+  within 1.2 km of a living tower's bubbles and through them; its strength, reach and feel are the
+  author's. It lifts the bird whatever it does, as a thermal lifts a glider: flown level past a
+  flank the bird rises too. A dying tower has none: the start's first tower stands beside one (P
+  3401, at the end of its life), and circling between them the air comes and goes (the `reach`
+  flight: over 10 m/s for 112 of 195 s). Circling in it, the bird spends most of the climb in the
+  tower's fog: climbing beside the wall in clear air is the lovelier way, and only a pilot's.
+- **seed3's start**: left of the sun a backlit heap glows in vertical sheets, like the sun map's
+  texels seen end-on (`backlit`'s box; leg 18). New with leg 14's world, not looked into.
+- **The views by preset follow the world** and are found again by their briefs' rules
+  (flight/presets.js): leg 14 checked `tower`'s line of sight from 3% of the way (from 10%, a heap
+  just ahead filled the frame), put `close` at the nearest flank the sun reaches (in shade it read as
+  fog) and turned `high2` toward the sun (the first tower filled half of it).
 - **The measurements' limits** are set for 960×540: at smaller sizes sunlit rims make `high2` and
   `anvil` warn (CLAUDE.md §4). The tone, the texture and the motion have none: they wait for rows
   the author approves (what the author calls right, and what wrong).

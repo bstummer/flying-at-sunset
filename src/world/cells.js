@@ -18,18 +18,18 @@
 //   views and the tools. Grid cells are cached (separately for the coarsest clipmap level, grown
 //   without the pieces under 600 m); worldGC forgets far ones. What a place holds never depends on
 //   what was asked before (tests/world.test.js). forEachDome, forEachSys: what lies over a box.
-// - The spawn draw, as the module loads: the restlessness field is drawn again (REST_O, up to 64
-//   draws) until the start is calm and open toward the sun, with strong cells 12–40 km off to its
-//   right (lit from the side, in view of the start's yaw, their tops drifting away downwind);
-//   failing that, the best draw. If the sun's azimuth, the start's yaw or the wind change, revisit
-//   its bearings.
+// - The spawn draw (spawnDraw, once, in the world's worker): the weather (the restless air, REST_O,
+//   and the grids of sites, SITE_O) is moved against the sea until one of its strong cells stands
+//   ahead of the start as the first tower, beside the sun, with towers near and far around it but
+//   toward the sun; ?weather moves it so instead. If the sun's azimuth, the start's heading or the
+//   wind change, revisit its bearings. A living tower's air rises (lift: queries.js's liftAt).
 
 import { params } from '../core/params.js';
 import { clamp, lerp, mulberry32, PI, sat } from '../math.js';
 import { cellRng, gauss, hashU, poisson } from './noise.js';
-import { airAt, REST_O, restAt, seaLevelAt, setRestOffset } from './air.js';
+import { airAt, REST_O, restAt, seaLevelAt, setRestOffset, warpAt } from './air.js';
 import { ellDist } from './shapes.js';
-import { H_FLAT, headUp, lifeOf, lift, nearStart, placeDome, R_TH, replay, settle, START_Y } from './thermals.js';
+import { H_FLAT, headUp, lifeOf, lift, nearStart, placeDome, R_TH, replay, settle, setStartY, START_Y } from './thermals.js';
 
 // A cell is a place where bubbles keep rising for a while. Its potential P (m) is the size of the
 // strongest bubbles it can send up: small cells are common, big ones rare (a power law), a little
@@ -46,6 +46,9 @@ const TIERS = [
   { S: 32000, pa: 3000, pb: 8000, salt: 0x70e5, cache: new Map(), coarse: new Map(), sites: new Map() },
 ];
 const TIER_REACH = 2;   // grid cells: how far a cell's clouds may reach from its own grid cell
+const LIFT = 30;        // m/s: the rising air of the strongest living tower
+// (m) how far the grids are shifted against the sea: the spawn draw's, with the restless air's REST_O
+let SITE_O = [0, 0];
 // coarse: for the coarsest clipmap level, every pulse grown as for the others but without the pieces
 // under COARSE_R, which it can't hold (grown across its 524 km they would take seconds): its heaps
 // and towers are the others' (tools/world/levels.js)
@@ -184,7 +187,7 @@ function tierSites(T, ci, cj) {
   const lam = TOWER_RATE * cellDensity(1) * (Math.pow(T.pa / P_MIN, -ALPHA) - Math.pow(T.pb / P_MIN, -ALPHA)) * S * S, n = poisson(rng, lam);
   for (let k = 0; k < n; k++) {
     const r = mulberry32(hashU(ci, cj, T.salt + 7919 * (k + 1)));
-    const x = (ci + r()) * S, z = (cj + r()) * S, u = r(), v = r();
+    const x = (ci + r()) * S - SITE_O[0], z = (cj + r()) * S - SITE_O[1], u = r(), v = r();
     const P = T.pa * Math.pow(1 - u * (1 - Math.pow(T.pb / T.pa, -ALPHA)), -1 / ALPHA), I = restAt(x, z);
     if (v <= cellDensity(I) / cellDensity(1) * Math.exp(-(P - P_MIN) / P_CUT)) st.push({ x, z, P, I, k });
   }
@@ -198,7 +201,8 @@ function subsidenceAt(x, z, P) {
   let sup = 0;
   for (let t = 1; t < TIERS.length; t++) {
     const T = TIERS[t], R = 1.8 * SUB_R * T.pb;
-    for (let j = Math.floor((z - R) / T.S); j <= Math.floor((z + R) / T.S); j++) for (let i = Math.floor((x - R) / T.S); i <= Math.floor((x + R) / T.S); i++)
+    const gx = x + SITE_O[0], gz = z + SITE_O[1];
+    for (let j = Math.floor((gz - R) / T.S); j <= Math.floor((gz + R) / T.S); j++) for (let i = Math.floor((gx - R) / T.S); i <= Math.floor((gx + R) / T.S); i++)
       for (const o of tierSites(T, i, j)) {
         if (o.P <= P || o.I < 0.35) continue;
         const d = Math.hypot(o.x - x, o.z - z) / (SUB_R * o.P);
@@ -207,38 +211,86 @@ function subsidenceAt(x, z, P) {
   }
   return sup;
 }
-// The bird sets out where the weather is worth seeing. The restless air is drawn again and again
-// (each draw as random as any other) until one leaves the air around the start calm and open
-// toward the sun, with strong cells off to the right of it (lit from the side, their tops drifting
-// away downwind); failing that, the best of them.
-{
-  const sector = (a0, a1, d0, d1) => {   // mean restlessness over bearings a0..a1 (0: the sun)
-    let s = 0;
-    for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) { const a = lerp(a0, a1, i / 4), d = lerp(d0, d1, j / 4); s += restAt(Math.sin(a) * d, -Math.cos(a) * d); }
-    return s / 25;
-  };
-  let best = -1e9, bo = REST_O;
-  for (let k = 0; k < 64; k++) {
-    const r = mulberry32(hashU(k, 17, 0x5eed));
-    setRestOffset(k ? [(r() - 0.5) * 6e6, (r() - 0.5) * 6e6] : [0, 0]);
-    const sun = sector(-0.35, 0.15, 6000, 35000), near = sector(0, 6.28, 3000, 9000);
-    let big = 0;
-    for (const T of TIERS) T.sites.clear();
-    if (sun < 0.3 && near < 0.3) {
-      for (const T of TIERS.slice(1)) {
-        for (let j = Math.floor(-42000 / T.S); j <= 0; j++) for (let i = 0; i <= Math.floor(42000 / T.S); i++)
-          for (const o of tierSites(T, i, j)) {
-            const a = Math.atan2(o.x, -o.z), d = Math.hypot(o.x, o.z);
-            if (a > 0.3 && a < 0.95 && d > 12000 && d < 40000 && o.P > 2200 && o.I > 0.5 && subsidenceAt(o.x, o.z, o.P) < 0.4) big++;
-          }
-      }
-    }
-    const open = Math.max(sun - 0.3, 0) + Math.max(near - 0.3, 0), score = open > 0 ? -open : Math.min(big, 3);
-    if (score > best) { best = score; bo = REST_O; }
-    if (big >= 3 && sun < 0.3 && near < 0.3) break;
+// The spawn draw: the bird sets out where the weather is worth seeing. The weather (the restless air
+// and the cells' grids) is moved against the sea so that one of its strong cells, nearest the
+// weather's origin first, stands where the first tower should: each try is another cell, as random
+// as any other. A try holds if that cell, grown, is a living tower whose flank the bird meets ahead
+// (FIRST: 2-3 minutes at cruise), beside the sun but not across it, in frame on wide and tall
+// screens (flight/camera.js, startYaw), the air toward the sun calm (the sunset open), and strong
+// cells stand near and far in each quarter but the sun's (a guess from the sites, not grown); the
+// first try that holds all, else the best. SPAWN: what it found (tools/world/stats.js prints it).
+export const SPAWN = { tries: 0 };
+// the first tower: a cell of P pa..pb put at bearing a (0: the sun), d m off; it holds if its top
+// is over `top`, the nearest it comes at the bird's height is near..far m, and its outline's left
+// edge lies at bearings a0..a1
+const FIRST = { pa: 3000, pb: 4500, a: 0.9, d: 14000, top: 8500, near: 9000, far: 12500, a0: 0.3, a1: 0.6 };
+// the weather as four numbers: REST_O, SITE_O (?weather; the worker hands the draw's to the page)
+export const weatherOf = () => [...REST_O, ...SITE_O];
+export function setWeather(w) {
+  setRestOffset([w[0], w[1]]); SITE_O = [w[2], w[3]];
+  for (const T of TIERS) { T.sites.clear(); T.cache.clear(); T.coarse.clear(); }
+  setStartY();
+}
+// mean restlessness over bearings a0..a1 (0: the sun) and distances d0..d1
+function sector(a0, a1, d0, d1) {
+  let s = 0;
+  for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) { const a = lerp(a0, a1, i / 4), d = lerp(d0, d1, j / 4); s += restAt(Math.sin(a) * d, -Math.cos(a) * d); }
+  return s / 25;
+}
+// how near the bubbles bs come to the start at height y (m), and the bearings their outline spans
+function outline(bs, y) {
+  let near = 1e9, a0 = 1e9, a1 = -1e9;
+  for (const b of bs) {
+    const d = Math.hypot(b.x, b.z), a = Math.atan2(b.x, -b.z), w = Math.asin(Math.min(b.br / d, 1));
+    a0 = Math.min(a0, a - w); a1 = Math.max(a1, a + w);
+    const dy = (y - b.y) / (y > b.y ? b.ryU : b.ryD);
+    if (Math.abs(dy) < 1) near = Math.min(near, d - b.rh * Math.sqrt(1 - dy * dy));
   }
-  setRestOffset(bo);
-  for (const T of TIERS) T.sites.clear();
+  return { near, a0, a1 };
+}
+// strong cells by quarter (right, behind, left) and range (10-30, 30-60 km): how many of the six
+// hold any
+function quarters() {
+  const bins = new Set();
+  for (const T of TIERS.slice(1)) {
+    const n = Math.ceil(60000 / T.S) + 1, i0 = Math.floor(SITE_O[0] / T.S), j0 = Math.floor(SITE_O[1] / T.S);
+    for (let j = -n; j <= n; j++) for (let i = -n; i <= n; i++) for (const o of tierSites(T, i0 + i, j0 + j)) {
+      const d = Math.hypot(o.x, o.z), q = Math.floor((Math.atan2(o.x, -o.z) + 2 * PI + PI / 4) / (PI / 2)) % 4;
+      if (q === 0 || d < 10000 || d > 60000 || o.P < 2200 || o.I < 0.5 || subsidenceAt(o.x, o.z, o.P) > 0.4) continue;
+      bins.add(q * 2 + (d < 30000 ? 0 : 1));
+    }
+  }
+  return bins.size;
+}
+// Runs once, in the world's worker (and as the Node tools load the world): the page takes its
+// weather from there (core/world.js). ?weather skips it.
+export function spawnDraw() {
+  if (params.weather) { setWeather(params.weather); return; }
+  // the candidates: the strong cells of the unmoved weather, nearest its origin first
+  setWeather([0, 0, 0, 0]);
+  const cands = [];
+  for (const T of TIERS.slice(1)) {
+    const n = Math.ceil(160000 / T.S);
+    for (let j = -n; j < n; j++) for (let i = -n; i < n; i++) for (const o of tierSites(T, i, j)) if (o.P > FIRST.pa && o.P < FIRST.pb && o.I > 0.55) cands.push({ T, i, j, o, w: warpAt(o.x, o.z) });
+  }
+  cands.sort((p, q) => Math.hypot(p.o.x, p.o.z) - Math.hypot(q.o.x, q.o.z));
+  const px = Math.sin(FIRST.a) * FIRST.d, pz = -Math.cos(FIRST.a) * FIRST.d, wp = warpAt(px, pz);
+  let best = null;
+  for (const c of cands.slice(0, 128)) {
+    SPAWN.tries++;
+    // (the restless air moved with it, as the warp has it: the air around the cell comes along)
+    setWeather([c.w[0] - wp[0], c.w[1] - wp[1], c.o.x - px, c.o.z - pz]);
+    const o = tierSites(c.T, c.i, c.j).find(s => s.k === c.o.k);
+    if (sector(-0.3, 0.1, 6000, 40000) > 0.4 || !o || o.I < 0.5 || subsidenceAt(o.x, o.z, o.P) > 0.45) continue;
+    const g = tierCell(c.T, c.i, c.j), t = g.towers.find(t => t.gen === 0 && t.x === o.x && t.z === o.z);
+    if (!t || t.top < FIRST.top || !t.cell.lift) continue;
+    const { near } = outline(g.bub, START_Y), { a0, a1 } = outline(g.bub.filter(b => b.cell === t.cell), START_Y);
+    const ok = near > FIRST.near && near < FIRST.far && a0 > FIRST.a0 && a0 < FIRST.a1, q = ok ? quarters() : 0, score = (ok ? 10 : 0) + q;
+    if (!best || score > best.score) best = { score, ok, weather: weatherOf(), near, a0, a1, top: t.top, P: t.P, quarters: q };
+    if (ok && q >= 5) break;
+  }
+  setWeather(best ? best.weather : [0, 0, 0, 0]);
+  Object.assign(SPAWN, best);
 }
 // the cells of grid cell (ci, cj) of a tier, grown
 function tierCell(T, ci, cj, coarse = false) {
@@ -273,6 +325,10 @@ function tierCell(T, ci, cj, coarse = false) {
       for (let i = n3; i < bub.length; i++) top = Math.max(top, bub[i].y + bub[i].ryU);
       for (let i = n3; i < bub.length; i++) if (bub[i].y + bub[i].ryU > top - 2000) wide = Math.max(wide, Math.hypot(bub[i].x - x, bub[i].z - z) + bub[i].rh);
       cells.push({ x, z, P, y0: A.zs, top, wide, R0: P, ceil: A.ceil, gen, cell });
+      // the air rising through it while it lives, and up its flanks (queries.js, liftAt): in a big
+      // cell and in its prime the most, as its pulses
+      cell.top = top;
+      cell.lift = cell.age < cell.life ? LIFT * sat((P - 800) / 2200) * Math.sqrt(Math.sin(PI * cell.age / cell.life)) : 0;
     }
     const nd = gen < 2 ? poisson(r, 1.2 * A.I * sat(cell.age / cell.life)) : 0;
     for (let k = 0; k < nd; k++) {
@@ -289,7 +345,7 @@ function tierCell(T, ci, cj, coarse = false) {
   let bx0 = 1e30, bz0 = 1e30, bx1 = -1e30, bz1 = -1e30;
   for (const b of bub) { bx0 = Math.min(bx0, b.x - b.br); bx1 = Math.max(bx1, b.x + b.br); bz0 = Math.min(bz0, b.z - b.br); bz1 = Math.max(bz1, b.z + b.br); }
   for (const d of domes) { bx0 = Math.min(bx0, d.x - d.reach); bx1 = Math.max(bx1, d.x + d.reach); bz0 = Math.min(bz0, d.z - d.reach); bz1 = Math.max(bz1, d.z + d.reach); }
-  c = { bub, domes, towers: cells, box: [bx0, bz0, bx1, bz1], x: (ci + 0.5) * S, z: (cj + 0.5) * S };
+  c = { bub, domes, towers: cells, box: [bx0, bz0, bx1, bz1] };
   cache.set(key, c);
   return c;
 }
@@ -299,13 +355,13 @@ export function worldGC(cx, cz) {
     if (cache.size < 2500) continue;
     for (const k of cache.keys()) {
       const [i, j] = k.split(',').map(Number);
-      if (Math.max(Math.abs((i + 0.5) * T.S - cx), Math.abs((j + 0.5) * T.S - cz)) > keep) cache.delete(k);
+      if (Math.max(Math.abs((i + 0.5) * T.S - SITE_O[0] - cx), Math.abs((j + 0.5) * T.S - SITE_O[1] - cz)) > keep) cache.delete(k);
     }
   }
 }
 function forEachTierCell(T, x0, z0, x1, z1, fn, coarse) {
   const R = T.small ? 1 : TIER_REACH;
-  const i0 = Math.floor(x0 / T.S) - R, i1 = Math.floor(x1 / T.S) + R, j0 = Math.floor(z0 / T.S) - R, j1 = Math.floor(z1 / T.S) + R;
+  const i0 = Math.floor((x0 + SITE_O[0]) / T.S) - R, i1 = Math.floor((x1 + SITE_O[0]) / T.S) + R, j0 = Math.floor((z0 + SITE_O[1]) / T.S) - R, j1 = Math.floor((z1 + SITE_O[1]) / T.S) + R;
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
     const c = tierCell(T, i, j, coarse), b = c.box;
     if (b[2] > x0 && b[0] < x1 && b[3] > z0 && b[1] < z1) fn(c);

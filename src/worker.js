@@ -2,12 +2,15 @@
 // cells of the world never stalls a frame. It answers the page's requests (core/world.js) in the
 // order they came, each reply with its request's id:
 //
-//   start           { sea0: the sea's top at the start, pose: ?preset's pose (flight/presets.js) };
-//                   then, while the page's shaders compile, it grows the cells the first frame's
-//                   volumes will ask for around the bird (warm), so those requests find them grown
+//   start           { weather: the spawn draw's (world/cells.js, drawn as this worker loads: the page
+//                   takes it), sea0: the sea's top at the start, pose: ?preset's pose
+//                   (flight/presets.js) }; then, while the page's shaders compile, it grows the cells
+//                   the first frame's volumes will ask for around the bird (warm), so those requests
+//                   find them grown
 //   fill (a block)  { col: its column data (world/columns.js), RGBA half floats per column }
 //   gather (a box)  { nb, bub: the bubbles near a block, 12 floats each (world/columns.js) }
-//   patch (a box)   { domes: every dome over it, in the order the world's queries meet them }
+//   patch (a box)   { domes: every dome over it, in the order the world's queries meet them; lifts:
+//                   the bubbles of living towers whose rising air reaches into it (world/queries.js) }
 //   gc (x, z)       forgets the cells far from there; no reply
 //
 // Bundled into the page as a classic script (vite.config.js) and started with the page's query as
@@ -16,15 +19,16 @@
 import { params } from './core/params.js';
 import { toHalf } from './math.js';
 import { CLIP_LEVELS } from './constants.js';
-import { forEachDome, forEachSys, worldGC } from './world/cells.js';
+import { forEachDome, forEachSys, spawnDraw, weatherOf, worldGC } from './world/cells.js';
 import { fillColumns, gatherBubbles } from './world/columns.js';
-import { seaTopAt } from './world/queries.js';
+import { liftBubbles, seaTopAt } from './world/queries.js';
 import { presetPose } from './flight/presets.js';
 
+spawnDraw();
 self.onmessage = ({ data: m }) => {
   if (m.kind === 'gc') { worldGC(m.x, m.z); return; }
   let reply = null, moved = [];
-  if (m.kind === 'start') reply = { sea0: seaTopAt(0, 0), pose: params.preset ? presetPose(params.preset) : null };
+  if (m.kind === 'start') reply = { weather: weatherOf(), sea0: seaTopAt(0, 0), pose: params.preset ? presetPose(params.preset) : null };
   else if (m.kind === 'fill') {
     const col = new Float32Array(m.ni * m.nj * 4);
     fillColumns(m.cell, m.lod, m.gi, m.gj, m.ni, m.nj, col);
@@ -38,7 +42,7 @@ self.onmessage = ({ data: m }) => {
   } else if (m.kind === 'patch') {
     const domes = [];
     forEachDome(m.x0, m.z0, m.x1, m.z1, d => domes.push(d));
-    reply = { domes };
+    reply = { domes, lifts: liftBubbles(m.x0, m.z0, m.x1, m.z1) };
   } else throw new Error('the world\'s worker has no request "' + m.kind + '"');
   self.postMessage({ id: m.id, ...reply }, moved);
   if (m.kind === 'start') {

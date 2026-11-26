@@ -1,19 +1,20 @@
 // The world's worker from the page's side (src/worker.js): starting it, its requests and replies,
-// and the domes around the bird for the flight
+// and the domes and rising air around the bird for the flight
 //
 // request(msg) posts a request and returns its record, whose `reply` is filled in when the reply
 // comes (they come in order); busy() counts those still out (main.js waits on it); `started` awaits
-// the start's reply. The flight asks for the sea's surface under the bird every frame (world/queries.js):
-// it is answered from a patch of domes the worker sends, 24 km across, the next asked for once the
-// bird is within 6 km of its edge (half a minute ahead at top speed). They are the world's domes in
-// the world's order, so the surface is the same to the last bit. Outside a patch this thread grows
+// the start's reply. The flight asks for the sea's surface and the rising air at the bird every
+// frame (world/queries.js): they are answered from a patch of domes and living towers' bubbles the
+// worker sends, 24 km across, the next asked for once the bird is within 6 km of its edge (half a
+// minute ahead at top speed). They are the world's domes in the world's order, so the surface is
+// the same to the last bit, and the air too. Outside a patch this thread grows
 // the world's cells itself, as the Node tools do: a stall. patchStats says how it went (the
 // top-speed check, tools/checks.js).
 
 import WorldWorker from '../worker.js?worker&inline';
 import { fail } from './page.js';
-import { forEachDome } from '../world/cells.js';
-import { setDomeSource } from '../world/queries.js';
+import { forEachDome, setWeather } from '../world/cells.js';
+import { liftBubbles, setDomeSource, setLiftSource } from '../world/queries.js';
 
 // (the page's query as the worker's name: its URL parameters, core/params.js)
 const worker = new WorldWorker({ name: location.search });
@@ -36,9 +37,10 @@ const ask = msg => new Promise(done => { request(msg).done = done; });
 export const busy = () => out.length;
 export const forgetFar = (x, z) => worker.postMessage({ kind: 'gc', x, z });
 
-// The start: { sea0, pose } (src/worker.js), asked for as the page loads (the worker grows the
-// world around the start, and looks for ?preset's place, while the shaders compile).
-export const started = ask({ kind: 'start' });
+// The start: { weather, sea0, pose } (src/worker.js), asked for as the page loads (the worker grows
+// the world around the start, and looks for ?preset's place, while the shaders compile). This
+// thread's world takes the worker's weather: the spawn draw runs there alone.
+export const started = ask({ kind: 'start' }).then(r => { setWeather(r.weather); return r; });
 
 // ---- the patch of domes around the bird
 const HALF = 12000, EDGE = 6000;   // m
@@ -60,7 +62,7 @@ export function keepPatch(x, z) {
   if (patch) { const b = patch.box; patchStats.minLead = Math.min(patchStats.minLead, x - b[0], b[2] - x, z - b[1], b[3] - z); }
   if (next && next.reply) {
     patchStats.maxWait = Math.max(patchStats.maxWait, performance.now() - next.t);
-    patch = { box: next.box, domes: next.reply.domes }; next = null;
+    patch = { box: next.box, domes: next.reply.domes, lifts: next.reply.lifts }; next = null;
   }
   if (!next && (!patch || !inside(patch.box, x, z, EDGE))) askPatch(x, z);
 }
@@ -77,4 +79,14 @@ setDomeSource((x, z, each) => {
     return;
   }
   for (const d of patch.domes) if (d.x + d.reach > x && d.x - d.reach < x && d.z + d.reach > z && d.z - d.reach < z) each(d);
+});
+// (the rising air around towers, as the domes)
+setLiftSource((x, z, each) => {
+  if (!patch || !inside(patch.box, x, z, 0)) {
+    const t0 = performance.now();
+    for (const b of liftBubbles(x, z, x, z)) each(b);
+    patchStats.grown++; patchStats.grownMs += performance.now() - t0;
+    return;
+  }
+  for (const b of patch.lifts) each(b);
 });

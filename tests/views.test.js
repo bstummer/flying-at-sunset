@@ -18,7 +18,8 @@ test('view names are unique, lowercase letters and digits, and findView finds ea
 
 for (const view of VIEWS) {
   test(`view "${view.name}" is well-formed`, () => {
-    assert.deepEqual(Object.keys(view).filter((k) => !['name', 'params', 'brief', 'crops', 'limits'].includes(k)), []);
+    assert.deepEqual(Object.keys(view).filter((k) => !['name', 'params', 'brief', 'crops', 'limits', 'aspect'].includes(k)), []);
+    assert.ok(view.aspect === undefined || (Number.isFinite(view.aspect) && view.aspect >= 0.3 && view.aspect <= 4), 'an aspect is the width over the height');
     assert.ok(typeof view.brief === 'string' && view.brief.trim() && !view.brief.includes('\n'), 'a brief: one line on what the shot is for');
     // as tools/browser.js testRender asks for it
     const asked = new URLSearchParams({ test: '', ...view.params }).toString();

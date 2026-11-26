@@ -50,6 +50,9 @@ test("a view's parameters: the capture's size and frames, the view's own, then -
   assert.deepEqual(viewParams(plan, { params: { preset: 'side', dbg: '1' } }), {
     w: '320', h: '180', frames: '12', scale: '0.5', preset: 'side', dbg: '4', seed: '3', exp: '16', cpuprof: '',
   });
+  // (a view at an aspect of its own: as many pixels, in even numbers)
+  const tall = viewParams(plan, { params: {}, aspect: 9 / 19.5 });
+  assert.deepEqual([tall.w, tall.h], ['164', '354']);
 });
 
 test('every view has a unique name, parameters and a brief', () => {

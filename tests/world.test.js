@@ -1,6 +1,7 @@
 // The world generator (src/world/), run as the page runs it: the recorded fingerprint, independence
 // from the order places are asked for, sound data for the GPU over seeds 1 to 20 (the coarsest
-// level's heaps those of the level before it), a tower in view at the start. A module graph holds one world (it reads ?seed as it loads), so each seed runs in a
+// level's heaps those of the level before it), and each seed's first tower ahead of the start (the
+// spawn draw). A module graph holds one world (it reads ?seed as it loads), so each seed runs in a
 // worker thread of its own: this file is also the worker (the end of the file).
 
 import test from 'node:test';
@@ -50,22 +51,24 @@ const JOBS = {
     for (const [bi, bj] of [[-16, -16], [0, -16], [-16, 0], [16, -32]]) { coarse += mean(2, bi, bj, 16); finer += mean(1, 4 * bi, 4 * bj, 64); }
     return { coarse, finer };
   },
-  // the towers within 120 km, and those in the start view (bearing 0 is toward the sun; the start
-  // yaw of 0.45 on a 16:9 screen sees -0.24 .. 1.14) within 50 km
+  // the towers within 120 km; the spawn draw's verdict, and the living towers over 8.5 km within
+  // 18 km of the start, to the right of the sun (bearing 0 is toward it) and in front of the bird
   towers(W) {
     const all = W.towersNear(0, 0, 120000);
-    const inView = W.towersNear(0, 0, 50000).filter((t) => {
+    const first = W.towersNear(0, 0, 18000).filter((t) => {
       const bearing = Math.atan2(t.x, -t.z);
-      return bearing > -0.24 && bearing < 1.14;
+      return t.top > 8500 && t.cell.lift > 0 && bearing > 0.3 && bearing < 1.6;
     });
     return {
       count: all.length,
       highest: Math.max(...all.map((t) => t.top)),
       cloudTop: W.CLOUD_TOP,
-      tallInView: inView.filter((t) => t.top > 8000).length,
+      drawn: W.SPAWN.ok === true,
+      first: first.length,
     };
   },
   fingerprint: (W) => fingerprint(W),
+  weather: (W) => W.weatherOf(),
   // the same, after asking for other places first: far before near, coarse before fine
   fingerprintAfterOthers(W) {
     W.towersNear(150000, -90000, 60000);
@@ -127,6 +130,7 @@ if (isMainThread) {
       assert.ok(within(c.lo[2], c.hi[2], 0.4, 1.3), `seed ${seed}: fine billows ${c.lo[2]} .. ${c.hi[2]}, outside 0.4 .. 1.3`);
       const t = results.find((r) => r.seed === seed && r.job === 'towers').result;
       assert.ok(t.count > 0, `seed ${seed}: no towers within 120 km`);
+      assert.ok(t.drawn && t.first > 0, `seed ${seed}: no first tower ahead of the start (the spawn draw ${t.drawn ? 'held' : 'failed'}; living towers over 8.5 km near: ${t.first})`);
       assert.ok(t.highest < t.cloudTop, `seed ${seed}: a tower tops out at ${t.highest} m, above where the trace stops (${t.cloudTop} m)`);
       // (a third, while the coarsest level took only the domes that grew from the sea)
       const h = results.find((r) => r.seed === seed && r.job === 'heaps').result, k = h.coarse / h.finer;
@@ -134,13 +138,10 @@ if (isMainThread) {
     }
   });
 
-  // The author asked for at least one huge tower in view from the start. The spawn draw (after
-  // subsidenceAt in world/cells.js) looks for one but doesn't promise it for every seed (seed 5 has none): this
-  // holds the piece's own seed to it.
-  test("the piece's seed starts with a tower above 8 km in view", async () => {
+  test('?weather moves the weather as asked, in place of the spawn draw', async () => {
     const W = await loadWorld({ query: '', dir: WORLD_DIR });
-    const [{ result }] = await measure([W.WORLD_SEED], [['towers']]);
-    assert.ok(result.tallInView >= 1, `towers above 8 km in the start view: ${result.tallInView}`);
+    const [{ result }] = await measure([`${W.WORLD_SEED}&weather=1000,-2000,3000.5,-4000`], [['weather']]);
+    assert.deepEqual(result, [1000, -2000, 3000.5, -4000]);
   });
 } else {
   const W = await loadWorld({ query: `seed=${workerData.seed}`, dir: WORLD_DIR });
