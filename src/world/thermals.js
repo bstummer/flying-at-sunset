@@ -35,7 +35,7 @@ import { domeHeightAt, domeSteepness, makeDome } from './shapes.js';
 // wake and everything it shed go to `out`; returns its head. With C.log (an array) it sheds nothing
 // yet: its wake and what it would shed (as lift's arguments) go to the log, in order, for replay
 // (its path never depends on what it sheds).
-export const MIX = 0.6, DRAG = 0.35, SWELL = 0.04, SHED = 0.8, ICE_Y = 8000, H_FLAT = 2200, R_TH = 3500, CROWN_MIN = 0.28, CROWN_MIN_HEAD = 0.2;
+export const MIX = 0.6, DRAG = 0.35, SWELL = 0.04, SHED = 0.8, ICE_Y = 8000, H_FLAT = 2200, R_TH = 3500, CROWN_MIN = 0.36, CROWN_MIN_HEAD = 0.2;
 export function lift(C, x, y, z, r, w, f, t, vx, vz, depth, rng, out, parent) {
   const A = C.A, hd = { head: true, x, y, z, r, t, w, depth, parent, still: false, bu: 0, seed: 0 }, log = depth === C.depth ? C.log : null;
   let w2 = w * w, wPeak = w, trailY = y + 0.3 * r;
@@ -165,9 +165,10 @@ export function settle(c, e, out, tall = false) {
   const stab = tall ? stabTall(A, e) : stabOf(e), S = sat(-e.bu / 0.6) * (0.5 + 3 * Math.pow(sat((e.w - 4) / 22), 1.5));
   const sp = 0.3 * grow * (0.35 + 0.65 * stab), yc = e.y - Math.min(0.25 * age, 0.35 * r);
   // pressed flat under the air that stopped it; the underside sags as it ages; old domes soften; a
-  // crown blends into the head it burst from by a fillet its own size (a bulge, not a ball on a ball)
+  // crown blends into the head it burst from by a fillet wider than itself (a bulge, not a ball on a
+  // ball: by one its own size, a knob)
   const hp = put(x, yc, z, r * (1 + sp) * g, Math.min(r * lerp(tall ? 0.95 : 0.85, 0.3, stab) * lerp(0.85, 1.05, rng()) / (1 + 0.6 * sp), roof) * g,
-    r * (0.6 + 0.45 * grow) * g, lerp(1, 1.35, rng()) * (1 + 0.2 * sp), rng() * PI, e.parent ? 0.7 : 0.3 + 0.15 * sat(age / 1500), 1, null);
+    r * (0.6 + 0.45 * grow) * g, lerp(1, 1.35, rng()) * (1 + 0.2 * sp), rng() * PI, e.parent ? 1.2 : 0.3 + 0.15 * sat(age / 1500), 1, null);
   if (S > 0.15 && r > 350) {
     const n = Math.min(7, Math.round(1 + 2.5 * S)), a0 = rng() * 2 * PI;
     for (let i = 0; i < n; i++) {

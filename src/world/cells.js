@@ -223,7 +223,7 @@ export const SPAWN = { tries: 0 };
 // the first tower: a cell of P pa..pb put at bearing a (0: the sun), d m off; it holds if its top
 // is over `top`, the nearest it comes at the bird's height is near..far m, and its outline's left
 // edge lies at bearings a0..a1
-const FIRST = { pa: 3000, pb: 4500, a: 0.9, d: 14000, top: 8500, near: 9000, far: 12500, a0: 0.3, a1: 0.6 };
+const FIRST = { pa: 3000, pb: 4500, a: 0.9, d: 14000, top: 8500, near: 8500, far: 12500, a0: 0.3, a1: 0.6 };
 // the weather as four numbers: REST_O, SITE_O (?weather; the worker hands the draw's to the page)
 export const weatherOf = () => [...REST_O, ...SITE_O];
 export function setWeather(w) {

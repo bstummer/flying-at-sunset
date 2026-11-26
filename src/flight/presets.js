@@ -64,8 +64,13 @@ export function presetPose(pre) {
     return true;
   };
   const big = ts.filter(t => t.top > 8000 && Math.hypot(t.x, t.z) < 70000);
-  const bt = big.find(sunlit) || big[0] || ts[0];
-  if (bt) { const v = clearOf(bt, sideDir, null, 2500, 9000); if (v) presets.tower = Object.assign(v, { gamma: 0.12 }); }
+  // (the nearest with such a view, sunlit ones first)
+  let bt = null;
+  for (const t of [...big.filter(sunlit), ...big]) {
+    const v = clearOf(t, sideDir, null, 2500, 9000);
+    if (v) { presets.tower = Object.assign(v, { gamma: 0.12 }); bt = t; break; }
+  }
+  bt ??= big[0] || ts[0];
   // (the tallest, from a little over twice its height away: its top near the frame's, its width
   // half the frame's or more; from the sun's side, lit from either side, wherever it is nearest in
   // clear sight; in a crowd, the next tallest that can be seen)
@@ -79,9 +84,13 @@ export function presetPose(pre) {
   }
   // (an anvil is nothing the world makes on purpose: a tower that hit the ceiling and spread wide)
   const isAnvil = t => t.top > t.ceil - 700 && t.wide > Math.max(2.5 * t.R0, 9000);
-  const anv = ts.find(t => isAnvil(t) && sunlit(t)) || ts.find(isAnvil);
-  // (seen from high up and far off, against the sun, as from an airliner)
-  if (anv) { const v = clearOf(anv, PI / 2 + 0.08, 7000, 3000, 50000); if (v) presets.anvil = Object.assign(v, { gamma: 0.02 }); }
+  // (seen from high up and far off, against the sun, as from an airliner: the nearest anvil with
+  // such a place, sunlit ones first)
+  const anvils = ts.filter(isAnvil);
+  for (const anv of [...anvils.filter(sunlit), ...anvils]) {
+    const v = clearOf(anv, PI / 2 + 0.08, 7000, 3000, 50000);
+    if (v) { presets.anvil = Object.assign(v, { gamma: 0.02 }); break; }
+  }
   // up against a flank, under it, 1.5 km off its bubbles (their billows reach some hundreds of
   // metres out), where the sun reaches the flank in view: the nearest big tower with such a place
   const flankLit = v => {

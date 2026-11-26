@@ -509,6 +509,24 @@ change is plainest (`climb`: clay pillows to a cascade of lumps). The capture to
 measurements use) in `--query` without measurements: the probe steers the flight by the clouds'
 shapes, so shape variants framed apart.
 
+**The world's towers** (2026-11-26, the author: "improve the world generator"): a strong pulse as a
+crowd of thermals, and with it the air, the drift and the wake, failed two reviews by reviewers who
+saw only the images (decisions); what came of it, each judged the same way against the world
+before it:
+1. A crown of a tower's head stays in it under 0.36 of it (0.28 since leg 11), and one that
+   rises blends into the head it burst from by a fillet 1.2× its size (0.7: a knob). Knobs within
+   150 km 409 → 309, in the top 2.5 km p50 2 → 1 (stats.js); in the catalog about half the
+   obvious ones, some now low bumps, one blob hanging under a base gone; the GPU views nearly
+   alike (the reviewer: slightly better). The flight logs identical but `reach`'s, from 161 s, by
+   up to 0.6 m.
+2. The streaming bakes a block that would overrun the frame's budget a few passes at a time
+   (render/stream.js; a block's bake was all in one frame: the laptop's densest 1.4 ms, a phone's
+   ~8). At top speed on the laptop no change (no frame over 50 ms either way); the phone's is
+   unmeasured.
+3. The tower and anvil presets try towers in turn, nearest first, until one is in clear sight
+   (one direction from one tower found none in some worlds). The spawn draw takes a first tower
+   from 8.5 km at the bird's height (9: seed 18's held by 4 m). `catalog.js` takes `SCALE`.
+
 ## Decisions: what failed, and why
 
 What was tried and didn't work, why, and when. **A decision is evidence, not a rule**: when its
@@ -562,6 +580,26 @@ until the author says otherwise.
   sausages (shear tilts a lump; its horizontal slices keep their width). A head tied to its
   column's 75th percentile of evaporation, not the median: the same. The small crowns kept in their
   head on every pulse: the sea's heaps in a 30 km box 2258 → 1601 (on towers only since).
+- **A strong pulse as a crowd of thermals** (2026-11-26, against the drum under one ball of a
+  head): a tall pulse over 1.1–1.8 km rising as 5–9 thermals of a quarter to a half its size, those
+  in its middle mixing and dragging as the whole crowd would (so they rose as far as the one
+  bubble had, the rim ones lower), no crowns or shed bubbles in a crowd. It needed the unstable air
+  reaching higher (`el` to the ceiling less 900 m, not 1500, `deep` from 0.8): the turrets' heads
+  are half the ball's size, and the tops came out 1.5 km lower (over 11 km within 150 km 26 → 6).
+  In side views (tools/world/catalog.js) clusters of turrets of many heights; on the GPU, to two
+  reviewers who saw only the images, organ pipes, pawns, snowmen, mushroom heads on thin stems and
+  a shelf jutting from the first tower. The old world won 10 of 11 views and the catalog; the
+  denser crowd (9 thermals, packed, the wake spread wider) came second. With it, each also making
+  its own artefact: rising bubbles keeping the wind from below (upright pillars, not leaning
+  masses), a tower's cloud moving with its cell (no worms of sheared column, but pillars), the wake
+  torn by shear (fewer worms and arches), a crowd's thermals pushed less by the heads they pass (no
+  fingers splaying out like a hand). Its cost: the far level's first bake 100 → 280 ms (a block
+  over the 4096 bubbles of the arena) until each thermal's wake was one lump a step and bubbles
+  buried in the others were dropped (160 ms). Each change swung the spawn draw to another weather
+  (the first tower's outline is knife-edge: seed 18's held by 4 m).
+- **Wake that keeps its roundness as it spreads** (2026-11-26, against flat discs at towers'
+  bases; mushrooms over 2× 6 → 2): to a reviewer who saw only the images, flanks fluted in
+  vertical streaks of stacked beads, and two towers straight-sided drums.
 
 ### The billows and the edge
 
@@ -934,8 +972,13 @@ until the author says otherwise.
   deep shadowed gaps between them; the billows only change its surface (more relief at their
   largest scale made pillows: decisions). The first tower's head is one bubble ~8 km across
   (tools/world/preview.js): bubbles up to R_TH (3.5 km) swell as they rise, and in a tower crowns
-  under 0.28 of their head stay in it (leg 11, against knobs). Levers in the world, untried: a
-  strong cell's pulse as several bubbles side by side, a head boiling into a few great turrets.
+  under 0.36 of their head stay in it (knobs). A strong pulse as several thermals side by side
+  failed (decisions: pillars, pawns, mushrooms; the reviewers preferred the drum's mass and
+  breadth). In the side views (catalog.js) what is left: flat discs and lenses in mid-air (heads'
+  lobes spread under stable air, old wake spread sideways only), a mushroom on a ribbed neck, the
+  flanks' wake in columns of stacked beads, lens-shaped mounds at the bases. Untried: a head
+  boiling into a few great turrets within its own volume (its outline lumpy, its mass kept), the
+  lobes of a spreading head thicker and nearer it.
 - **Popcorn**: `away`'s horizon (60–80 km) is still beads: the 1280 m lobes, 90% of their cells
   filled, the turrets faded by then (leg 17 left the far towers as they were). Nearer, since leg 17
   a tower's great turrets carry 640 m ones on their caps, under ceilings billowed by the domes, but
@@ -945,8 +988,8 @@ until the author says otherwise.
   keeps of a head, a finer far level), sizes within a level by a power law where it doesn't
   compress (clusters failed: decisions). A real tower shows 2–4 dominant turrets, smaller domes on
   their upper, sunward shoulders, older parts smoother (what failed: decisions). **Crowns perched on
-  heads**: the first crowns, about a third of their head, remain (`start`'s middle tower's two
-  bumps). **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird, `sun`,
+  heads**: crowns over 0.36 of their head remain, blended by a fillet wider than themselves (since
+  2026-11-26: half the knobs in the catalog, some now low bumps, a few pointed tips). **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird, `sun`,
   `tower`, `away`): attached (`?dbg=1`), their base melts into the shade.
 - **Tops**: flatter than 0.45 on 5% of the towers, 18% of those at the ceiling (stats.js); `seed3`
   keeps one flat lens against the haze. Deep folds between lobes go near black (`tower`, `close`: a

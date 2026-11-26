@@ -13,7 +13,8 @@
 // Until a shift is baked a level is valid only where its old and new windows overlap, and the
 // shaders fall back to a coarser one. A frame applies what has come within budgets (2 ms of this
 // thread; GPU time as bakeCost estimates it, scaled by what the bakes took on this GPU where it has
-// timestamp queries: BAKES, render/bakescale.js), the first frame and the tests' frames all of it. The
+// timestamp queries: BAKES, render/bakescale.js; a block's bake that would overrun it a few passes
+// at a time, the rest in the frames after: a dense block was a hitch), the first frame and the tests' frames all of it. The
 // bake reads the sea's slope from neighbouring columns, which wrap at the edge: the shaders keep two
 // cells clear of it, and the old edge beside an entering strip is baked again, so a streamed level
 // holds what a fresh start bakes (tools/checks.js streaming). Render space: the world minus an
@@ -109,21 +110,24 @@ function shiftLevel(L, cx, cz) {
   if (!L.pending) L.valid = [ti, tj, ti + CLIP_N, tj + CLIP_N];
 }
 // What a job's GPU work costs, estimated (ms one NVIDIA laptop's GPU took; BAKES scales them to
-// this one's): a bake pass loops over the block's bubbles in every texel, the shadow volume
-// marches every texel toward the sun.
+// this one's): a bake pass (NOUT slices of a block) loops over the block's bubbles in every
+// texel, the shadow volume marches every texel toward the sun. A block's bake is done pass by
+// pass: what is left of it.
+const passCost = job => 0.013 + 1.0e-4 * job.req.reply.nb;
 function bakeCost(job) {
   if (job.fill) return 0;
   if (job.L.tsv) return 0.1 + 1.5e-5 * job.ni * job.nj * job.L.nz;
-  return job.L.nz / NOUT * (0.013 + 1.0e-4 * job.req.reply.nb);
+  return (job.L.nz - (job.z ?? 0)) / NOUT * passCost(job);
 }
-function runJob(job, O) {
+// run a job, or `passes` more passes of a block's bake (0: all of it); true once it is done
+function runJob(job, O, passes = 0) {
   const L = job.L, tx = job.gi & CLIP_M, ty = job.gj & CLIP_M;
   if (job.fill) {
     // column data of the block
     device.queue.writeTexture({ texture: L.col.tex, origin: [tx, ty] }, job.req.reply.col, { bytesPerRow: job.ni * 8 }, [job.ni, job.nj]);
     worldStats.jobs++;
     L.pending--;
-    return;
+    return true;
   }
   if (L.tsv) {
     dispatch(P.tsv, Object.assign(worldUniforms(O), {
@@ -144,11 +148,14 @@ function runJob(job, O) {
       tCol: L.col, bBub: T.bub, tShape: T.shape, nb, b0, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0,
       p0: [job.gi * L.cell - O[0], job.gj * L.cell - O[2]],
     }, warpPhases(O));
-    const viewport = [tx, ty, job.ni, job.nj];
-    for (let z = 0; z < L.nz; z += NOUT) { vals.z0 = z; pass(P.bake, [...slices(L.vol, z, NOUT), ...slices(L.bs, z, NOUT)], vals, { viewport }); }
+    const viewport = [tx, ty, job.ni, job.nj], z1 = passes ? Math.min(L.nz, (job.z ?? 0) + passes * NOUT) : L.nz;
+    for (let z = job.z ?? 0; z < z1; z += NOUT) { vals.z0 = z; pass(P.bake, [...slices(L.vol, z, NOUT), ...slices(L.bs, z, NOUT)], vals, { viewport }); }
+    job.z = z1;
+    if (z1 < L.nz) return false;
   }
   worldStats.jobs++;
   if (--L.pending === 0) L.valid = [L.gi, L.gj, L.gi + CLIP_N, L.gj + CLIP_N];
+  return true;
 }
 // Once a frame, after the camera moved (main.js): shift the windows (coarse levels first; the
 // shadow volume once they are settled), asking the worker for what enters them; now and then the
@@ -173,10 +180,18 @@ export function streamWorld(O, all) {
       const job = bakeQueue[0];
       if (job.L.tsv && (LEVELS[1].pending || LEVELS[2].pending)) break;
       if (job.req && !job.req.reply) break;     // (its data hasn't come yet)
-      const cost = bakeCost(job);
-      if (!all && n && ((gpu + cost) * BAKES.k > GPU_BUDGET || performance.now() - t0 > CPU_BUDGET)) break;
-      bakeQueue.shift();
-      runJob(job, O);
+      let cost = bakeCost(job), passes = 0;
+      if (!all && n && performance.now() - t0 > CPU_BUDGET) break;
+      if (!all && (gpu + cost) * BAKES.k > GPU_BUDGET) {
+        // (a block's bake over the budget: the passes it leaves room for, at least one if
+        // nothing else ran; the rest in the next frames. Any other job: whole, if first)
+        if (!job.fill && !job.L.tsv) {
+          passes = Math.floor((GPU_BUDGET / BAKES.k - gpu) / passCost(job));
+          if (passes < 1) { if (n) break; passes = 1; }
+          cost = Math.min(cost, passes * passCost(job));
+        } else if (n) break;
+      }
+      if (runJob(job, O, passes)) bakeQueue.shift();
       gpu += cost; n++;
     }
     if (!all) break;
