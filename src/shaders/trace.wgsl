@@ -80,17 +80,12 @@ struct Out { @location(0) col: vec4f, @location(1) depth: vec2f }
 // back, until the ray is clear of cloud.
 const OWN_TAU = 0.12;
 const OWN_CLEAR = 12.0;   // m
-// How much of a cloud's edge at depth x (m) is there, at p: wisps of the detail volume's Worley noise
-// (16–64 m and 4–16 m cells; its median 0.475, quartiles 0.39 and 0.56), cut by a threshold that
-// leaves about 60% of the surface holes, 20% 20 m in, none CLOUD_EDGE_W in
-fn fray(p: vec3f, x: f32) -> f32 {
-  let k = 1.0 - saturate(x / CLOUD_EDGE_W);
-  if (k <= 0.0) { return 1.0; }
-  let q = detailAt(p);
-  let n = 0.7 * textureSampleLevel(tDetail, sRep, q * (2.0 / DETAIL_TILE) + 0.21, 0.0).r + 0.3 * textureSampleLevel(tDetail, sRep, q * (8.0 / DETAIL_TILE) + 0.63, 0.0).r;
-  let thr = mix(0.2, 0.5, k);
-  return smoothstep(thr - 0.06, thr + 0.06, n);
-}
+// The edge's fray (chunks/cloud.wgsl: holes and wisps around the medium's own density, metres to
+// 100 m deep) near the camera, fading out over this range (m), where its cells shrink to a few of
+// the trace's pixels and its mean is the medium's. Through the edge's frayed part steps of at most
+// 4 m + 0.008 t (finer cost the trace half again for a little less grain; without them, the grain
+// at near edges as before or worse).
+const FRAY_NEAR = vec2f(1200.0, 2500.0);
 // a step of optical depth tau from a point at distance d0 < 0 (inside) to one at d1 > 0 (outside):
 // (the share of its light to take back, the transmittance to give back) for its part past the
 // surface, where the distance crosses zero between its ends
@@ -175,7 +170,6 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
     let skyAntiO = skyAnti0 * mix(vec3f(1.0), vec3f(1.03, 0.92, 1.18), wSurf);
     let satO = mix(1.0, CLOUD_SAT, wSurf);
     var tauLit = 1e9;    // the optical depth since the light was last made afresh
-    var out = false;     // the ray has come out once
     var gap = 0.0;       // how far clear of cloud the air it is in reaches; where it went back in, and
     var tA = 0.0;        // the last point in the air before
     var dA = -1.0;
@@ -208,16 +202,16 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
         // stored shapes: blocks of veil and surface with stair-stepped edges)
         if (sTau > 0.0) { let c = exitCut(sTau, sD, d); T *= c.y; L += sL * c.x; sTau = 0.0; }
         if (d > OWN_CLEAR) { own = false; dOut = d; break; }
-        out = true;
         gap = max(gap, d);
         tA = t;
         dA = d;
         t += max(d * 0.9, 1.0 + t * 0.01);
         continue;
       }
-      // frayed in its first metres, where dry air mixes in (the medium's thin edge): shreds and holes
-      // that let the lit tops and the sky through; deeper in, variations of density, mist streaming
-      // past as the bird flies
+      // frayed in its first metres, where dry air mixes in (the edge's fray, as every cloud's near the
+      // camera, so no seam shows where the ray goes back into one): shreds and holes that let the lit
+      // tops and the sky through; deeper in, variations of density, mist streaming past as the bird
+      // flies
       let crisp = smoothstep(-150.0, 250.0, h - C.w);
       let edgeW = mix(max(4.0, 2.0 * pix), max(2.0, 1.25 * pix), crisp);
       // (back in after the air: lit as a surface seen from outside, at the main loop's skin, as far as
@@ -230,9 +224,9 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
         dA = -1.0;
         tauLit = 1e9;
       }
-      // (frayed until the ray first comes out: a cloud it dips back into within OWN_CLEAR is the medium
-      // the main loop draws past there, so no seam shows between them)
-      let dens = densityFromSDF(d, wp, 1.0, edgeW, 1.0 - smoothstep(150.0, 900.0, t)) * select(fray(wp, -d), 1.0, out);
+      let R = edgeReach(wp, bs.y);
+      let wFr = 1.0 - smoothstep(FRAY_NEAR.x, FRAY_NEAR.y, t);
+      let dens = densityFromSDF(d, wp, 1.0, edgeW, 1.0 - smoothstep(150.0, 900.0, t), R, wFr);
       let sigma = dens * SIGMA;
       // (in the erosion's ramp, where the density rises over edgeW, steps of 0.4 of it where the ray
       // goes into or out of the cloud as fast as it goes on, up to 0.8 where it runs along the surface:
@@ -256,7 +250,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
         }
         if (tauLit >= 0.4) {
           tauLit = 0.0;
-          lp = lightPath(wpL, wpL.y, -depth, lv, C, bs, lod);
+          lp = lightPath(wpL, wpL.y, -depth, lv, C, bs, lod, R, wFr);
           let S = 22.0 + t * 0.005;
           let up = wpL + vec3f(0.0, S, 0.0);
           nUp = clamp((cloudSDF(up, up.y, vec3f(macroAt(up, lv), bs), C, lod) + depth) / S, -1.0, 1.0);
@@ -311,6 +305,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
   var tS = -1.0;
   var xS = 0.0;
   var gS = 0.0;
+  var fS = 1.0;
   var Sp = vec4f(0.0);
   var sky = vec4f(1.0, 1.0, SEA_LIT, 0.0);
   for (var i = 0; i < 360; i++) {
@@ -387,14 +382,20 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
     // lit sample's. (A sample's density and light for the whole step after it: a near cloud's frayed
     // edge, where the density rises within metres and the steps are longer, came out as much cloud
     // as the step's start happened to see, speckled from ray to ray.)
+    // (frayed near the camera: a stretch by its ends' mean; in the air, as frayed as the sample before)
     let x = -d;
     var g = x - (xS - gS);
+    let wFr = 1.0 - smoothstep(FRAY_NEAR.x, FRAY_NEAR.y, t);
+    var fr = fS;
+    var R = REACH.y;
     if (!air) {
       dPrev = -1.0;
       g = erodedDepth(x, wp, detailW, edgeW);
-      if (entered || tS < 0.0) { tS = select(t, tEntry, entered); xS = select(x, 0.0, entered); gS = select(g, g - x, entered); Sp = vec4f(0.0); }
+      if (x < REACH.y) { R = edgeReach(wp, bs.y); }
+      fr = fray(wp, x, R, wFr);
+      if (entered || tS < 0.0) { tS = select(t, tEntry, entered); xS = select(x, 0.0, entered); gS = select(g, g - x, entered); fS = fr; Sp = vec4f(0.0); }
     }
-    let st = exp(-SIGMA * rampMean(gS, g, edgeW) * profile(0.5 * (xS + x)) * (t - tS));
+    let st = exp(-SIGMA * rampMean(gS, g, edgeW) * profile(0.5 * (xS + x)) * 0.5 * (fS + fr) * (t - tS));
     let Tn = T * st;        // what gets through to this sample
     var dt = 0.0;
     var Sn = vec4f(0.0);    // this sample's light, and its density (none where it isn't lit)
@@ -416,7 +417,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
         }
         return Out(vec4f(c * 0.12, 0.0), vec2f(t * 0.001, tOwn));
       }
-      let dens = saturate(g / edgeW) * profile(x);
+      let dens = saturate(g / edgeW) * profile(x) * fr;
       // stride: aim for a fixed optical depth per step (larger once little light gets through),
       // but stay fine inside the soft rim where most of the visible light is scattered: steps growing
       // with the depth of full density (as fine in the medium's thin edge as in a uniform one, and no
@@ -424,6 +425,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
       // twice it: a cloud's face in three lit samples (by 0.6 of it, four: a tenth more of the trace)
       dt = clamp((0.45 + 1.6 * (1.0 - Tn)) / max(dens * SIGMA, 0.004), dtMin, 8.0 + t * 0.016);
       dt = min(dt, max(edgeW * 0.55, (2.0 * (profileDepth(x) + min(x, 0.0)) + dtMin) / profile(x)));
+      if (wFr > 0.0 && x < 0.7 * R) { dt = min(dt, 4.0 + 0.008 * t); }
       // Which samples are lit: all until little gets through (LIT_T), each by a march of its own. (The
       // deeper ones with the light march of the last, its path toward the sun longer by the depth:
       // lit afresh on every other sample past a threshold, a sample more or less in a thin edge
@@ -442,7 +444,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
         wpL.y = h0 + relL.y + dot(relL.xz, relL.xz) * INV2R;
         // (at the view sample's own detail: rel below compares the two, and where the finest domes
         // fade with distance a coarser march would see a face on every dome's top)
-        let lp = lightPath(wpL, wpL.y, -depthL, lv, C, bs, lod);
+        let lp = lightPath(wpL, wpL.y, -depthL, lv, C, bs, lod, R, wFr);
         // the smallest billows' faces, over 5 m toward the sun, against the face around them: each
         // bulge bright where it turns to the sun, dimmer where it turns away (detail up close, as
         // in the far towers' lobes); the light inside spreads, so only the surface's first metres
@@ -523,6 +525,7 @@ fn exitCut(tau: f32, d0: f32, d1: f32) -> vec2f {
     tS = t;
     xS = x;
     gS = g;
+    fS = fr;
     if (Sn.a > 0.0) { Sp = Sn; }
     t += dt;
   }

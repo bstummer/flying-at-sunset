@@ -6,10 +6,10 @@ that fails goes in the decisions with why and when (evidence for later, not a ru
 comes out; finished work gets a line or two under Done. How things work belongs in the module
 headers, how to work in CLAUDE.md.
 
-The next work is planned below: legs 16 to 22, from the review of 2026-11-25. A leg that is done
+The next work is planned below: legs 17 to 22, from the review of 2026-11-25. A leg that is done
 moves to Done in a line or two, and what it tried and dropped goes in the decisions.
 
-## Next: legs 16 to 22
+## Next: legs 17 to 22
 
 From a review of 2026-11-25 (every view at 960×540 with its flight strip and held-still frames,
 ranked before this file was read, and a second reviewer who saw only the images) and the author's
@@ -22,14 +22,17 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
 
 1. **Up close a cloud is blank**: within about a kilometre a smooth gradient with a clean, soft
    edge (`skim`, `past`, `exit`, the near sea). The author: it may stay smooth, as it is in
-   nature; what it lacks is unevenness, not detail. → 16
+   nature; what it lacks is unevenness, not detail. → 16 (done: every edge frayed within ~2 km,
+   metres deep on growing heads to 100 m on old flanks: `past` and `gap` mist with torn outlines,
+   `close` soft; in shade a near cloud still smooth, `skim`: 18)
 2. **Away from the sun the picture is underexposed and the shade navy**: under luma 96 (of 255)
    `side` 80% of the frame, `down` 73%, `belly` 86%, `under` 100%; nothing over 200 in `away`,
    `side`, `down`. → 13 (done: 13, 0.5, 0, 0.1%; the shade lavender-grey where lit faces hold the
    exposure, `close` 55% and `entry` 54% under 96 still)
 3. **What the clouds are built from shows**: lit towers are bumps of one size (`giant`, `tower`,
    `start`), the sea from above discs (`high2`), hazy faces ring outlines; no edge is ragged, so
-   surfaces read solid: popcorn lit, rock in shade (`belly`, `turn`). → 16, 17, 18
+   surfaces read solid: popcorn lit, rock in shade (`belly`, `turn`). → 16, 17, 18 (16: near edges
+   ragged; from afar as before)
 4. **Inside and under cloud**: `inside` an even tan card, `entry` a cobalt wash, `under` murk. A
    tower is 20 s to two minutes of card at cruise. And the way in (the author, in flight): the
    screen changes drastically as the camera goes into cloud, even at an edge or in a small one.
@@ -38,7 +41,8 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
    stand 28–50 km off (seven minutes and more), the nearest (9.8 km) out of frame; a 10 km head is
    6.4 minutes of held climb; the clouds drift 15 px a second. → 14 (done: the first tower 10.5 km
    ahead, its rising air felt after 2.75 minutes at cruise, over its head ~4 minutes later; near
-   heaps under the start, the motion strip 4.7 → 11.1%; the start lower is leg 16's)
+   heaps under the start, the motion strip 4.7 → 11.1%; the start lower: leg 16 tried it, and the
+   floor stopped a dive from it: decisions)
 6. **Scale and distance don't read**: `giant`, 20 km off, looks like a mound 50 m away; toward the
    sun haze empties the middle of the frame and cuts towers off their bases (`high2`, `seed3`).
    → 17, 18, 20
@@ -51,7 +55,8 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
 9. **The sky**: its streaks all run one way; overhead mauve-grey; opposite the sun teal, where a
    photograph has rose; backlit rims don't blaze. → 16, 20
 10. **The anvil is a mesa**: a lumpy plateau, no fibrous ice, no glow. → 21
-11. **Artefacts**: a straight vertical edge (`past`, 1 s on), a blue outline around near lit cloud
+11. **Artefacts**: a straight vertical edge (`past`, 1 s on; softer since leg 16, still straight: the
+    shape's), a blue outline around near lit cloud
     (`gap`), a checkerboard on thin far cloud in the first half second (`away`), a stair-stepped
     fog edge (`exit`), orphan puffs and knobs. → 14, 16, 22
 12. **Loading** is an unlabelled gradient. → 22
@@ -89,7 +94,7 @@ itself should change, the legs are moved in this file, so it always reads in the
 Why this order: the edge's trial was measured first (Done), because two other legs lean on it.
 Then the three that change every capture, so the cloud legs after them compare
 against captures that hold: the light and the exposure (13, Done), the world around the start (14,
-Done), the camera (15, Done). Then the clouds, the heart: their edge (16: the top finding, and an experiment speaks
+Done), the camera (15, Done). Then the clouds, the heart: their edge (16, Done: the top finding, and an experiment spoke
 for it), their shapes (17), the light on both (18). Then in cloud (19), the air and the sky (20),
 ice (21), loose ends and the review again (22).
 
@@ -109,78 +114,6 @@ ice (21), loose ends and the review again (22).
   author with four starts); the bird's size in the frame (15);
   whether shreds are missed in flight (16); minutes in fog (19); layers at other heights (20); a
   title while loading (22).
-
-### Leg 16: mist, not clay (the edge)
-
-A cloud here is a solid with an outline a pixel wide, even all the way round: popcorn where lit,
-rock in shade, a card up close. Its edge becomes ragged and uneven, long where the cloud is old
-and crisp where it grows. Softer, not more detailed.
-
-Why density and not shape (`?dbg=1`): within a few hundred metres the shapes have bumps to spare,
-which shade shouldn't show (small shading in shade is rock); under ~150 m the domes end (8 m
-cells), and finer ones would not show in a medium whose mean free path is 14–28 m.
-
-Tried in twenty lines and measured (2026-11-25), not kept: the camera's own `fray` (trace.wgsl)
-on every cloud within 1.2–2.5 km (the main loop's density, a sample's and a stretch's, the mean
-of its ends', times it; steps of 2 m + 0.004 t at most through the edge's first 40 m; the light
-march's first two steps' extinction times it). `past` and `gap`, flat cards before, show soft
-masses of light and dark and a ragged outline (`gap`'s near veil thins, and the shaded relief of
-the cloud behind it shows); `past`'s straight vertical edge 1 s on goes soft; `close` loses its
-plaster and cracks; `backlit`'s lobe in shade loses its round outline, soft, near out of focus;
-`sun` gets no veil over the sea; `skim`'s shade barely changes (its sky light doesn't read the
-fray); `entry`'s and `exit`'s fog not at all. Nothing is crisp. The same at the clouds' floor
-(`--scale 0.22`) and at 1920×1080, where the old edge's hairy fringe goes. Shimmer as before; the
-grain past near clouds lower (`past` 0.52 → 0.17%, `gap` 1.16 → 0.61%; at the floor 0.71 → 0.34,
-1.55 → 1.04).
-
-Its cost (the trace by `node tools/cost.js` against the build without it) and the grain over the
-motion strip, part by part:
-
-| | `past` | `gap` | `skim` | `close` | `start` | grain `past`, `gap` |
-|---|---|---|---|---|---|---|
-| without it | | | | | | 0.52, 1.16% |
-| the trial | +54% | +77% | +59% | +59% | +30% | 0.17, 0.61% |
-| no fine steps | +10% | +14% | +12% | | +7% | 0.53, 1.41% |
-| steps 4 m + 0.008 t | +22% | +33% | +21% | +17% | +11% | 0.29, 0.82% |
-| those, within 0.8–1.6 km | +20% | +32% | +19% | +11% | +8% | 0.29, 0.81% |
-| those, the light march not reading it | +19% | +29% | +16% | +11% | +8% | 0.26, 0.71% |
-
-(The trial's steps within 0.6–1.2 km: +41, +75, +43, +17, +12%: `past`'s and `gap`'s clouds lie
-within any limit.) The fray in the density is the look, for ~+10%. The fine steps are three
-quarters of the trial's cost, and what they buy is the grain: without them the edge is a little
-rougher and the grain as before or worse. At 4 m + 0.008 t (about two trace pixels and 4 m) the
-look is the trial's (4% of `gap`'s pixels more than 2 levels apart) for under half its cost, the
-grain still well under today's. The light reading the fray lights thin edges a little more, for
-3–6%. The limit matters only where clouds stand 1–2.5 km off (`close`).
-
-**The budget**: the trace +10–20% in most views, +20–35% where near clouds fill the frame (`past`,
-`gap`): the fray as tried, its steps 4 m + 0.008 t, the light reading it. Untried and cheaper: the
-fray's two lookups folded into the erosion's, which reads the detail volume there already (one
-medium); fine steps only where a ray runs along the surface (where the outline's grain is); the
-reach by the step's footprint (step 4) in place of a limit by distance. Whether the phone keeps
-its frame rate at +30% is its `?bench`'s to say.
-
-1. **One medium**: that fray as every cloud's, inside and out, from one function (the trace's two
-   loops, the probe, the mist puffs). The trial left the seam between the loops as it was (`entry`,
-   `exit`: only the clouds past the fog changed), so the medium alone won't take it; `past`'s edge
-   went soft with it.
-2. **Uneven along a cloud**: its reach by the billow volume's liveliness and a slow field, from
-   metres on a living head to about 100 m on old flanks; outside the surface too, so an old edge
-   trails off.
-3. **The light reads it**, the sky light too, or shade stays as even as it is.
-4. **Far away** it is under a pixel: the outline's width, soft on old parts, crisp on growing
-   ones. Toward the sun a thin edge is the silver lining (dropped as a shell of its own, leg 10).
-5. **Shreds** only if the author misses them in flight: finer octaves, and steps a pixel long
-   where they show, are the dear part.
-6. **The start lower over the billows** (leg 14 left it for now): from 400 m the nearest cloud
-   drifts 15 px a second, and the vision has speed tangible from the first second. With it the
-   motion number at `start`, and new flight logs.
-
-Judged by `past`, `gap`, `skim`, `exit`, `close`, `belly`, grain and shimmer no worse, and by the
-author in flight (an edge that moves ten pixels a frame is the history's to draw). Heed: 30 m
-eaten into the edge unlit read as out of focus, soft rims and a thinner edge too; a fringe of even
-thickness was glowing veils over the sea toward the sun; fine samples near a surface cost half
-the trace again there.
 
 ### Leg 17: sizes as in nature (the shapes)
 
@@ -230,13 +163,14 @@ Fog worth flying through, with a way out to see, and an overhang that reads as o
   changes is switched by the point at the camera, not by how much fog lies in front of it: the
   trace's own loop for the camera's cloud (every pixel's, once that point is inside; lit grey
   deeper than 30 m), the mist puffs and the shake (render/probe.js: at full strength from an
-  extinction of 0.012/m there, a sixth of the medium's, so in the edge's first metres; eased in over
-  a third of a second), the history's fog. (The exposure follows the frame since leg 13, in cloud
+  extinction of 0.012/m there, a sixth of the medium's, so in the edge's first metres, its holes and
+  wisps since leg 16; eased in over a third of a second), the history's fog. (The exposure follows the frame since leg 13, in cloud
   and out alike: no switch there.) Which of them the eye catches is not known yet:
   first a flight across an edge and one through a small cloud, frame by frame, with each turned off
   in turn. Then each follows the fog that is there (the light that gets through it), not whether
-  the camera is in it. The seam between the two loops stays after leg 16's fray (its trial changed
-  `entry`'s and `exit`'s fog not at all): it is this leg's.
+  the camera is in it. Since leg 16 both loops fray a cloud alike (the camera's own loop had frayed
+  only until the ray first came out), but the seam between them stays (`entry`'s and `exit`'s fog
+  hardly changed): it is this leg's.
 - Near a surface it is leg 16's edge from inside.
 - Deep in, fog shows its density only where its light varies (leg 9), and at 30 m of sight
   nothing has parallax. So the fog thins and thickens, and its light with it: brighter toward
@@ -541,6 +475,26 @@ likely rounding, the probe's floor read from volumes streamed around the camera 
 position for the probe, tried, left it the same). The trace −1 to +2% (what the framing puts in
 view: within its spread), the bird's pass unchanged (0.03 ms a frame).
 
+**Leg 16** (2026-11-26): mist, not clay (the edge). The edge's fray (chunks/cloud.wgsl: `fray`,
+`edgeReach`) is every near cloud's medium: holes in a cloud's outer metres, the wisps between them
+as much denser as keeps the medium's mean (so past FRAY_NEAR, 1.2–2.5 km, an edge is as before, and
+as the light's reference has it); its reach 6 m on a growing head to 100 m on an old flank, by the
+billows' liveliness and a slow field, so one flank is crisp and the next ragged. The trace's two
+loops (the camera's own loop had frayed a cloud only until the ray first came out), the light
+march's first two steps, the probe and the mist puffs read the one function; through an edge's
+frayed part the main loop steps 4 m + 0.008 t at most. `past`, a flat card, is mist with a torn
+outline and soft masses on its face (its straight vertical edge 1 s on softer, still straight), its
+grain halved (0.334 → 0.172%); `gap`'s near veil uneven, the heaps by the bird frayed (0.646 →
+0.589%); `close` without its plaster and cracks (0.14 → 0.108%); `entry`'s near top wisps; `exit`'s
+camera sits in a wisp, its fog a little denser and warmer (the darkest third (154,132,134) →
+(179,145,136)). Far views as they were (`tower`, `giant`, `belly`: under 1% of pixels past 2
+levels); shade near the camera still smooth (`skim`). Shimmer as before. At the clouds' floor
+(`--scale 0.22`) the same look, the grain `past` 0.504 → 0.34%, `gap`'s edge 2.71 → 2.95%; at
+1920×1080 `past`'s hairy fringe a soft torn outline. The trace +9% (`past`, `start`), +20% (`gap`),
++14–16% (`skim`, `close`), +8% (`tower`). The flight logs identical but `reach`'s, from 172 s, by
+up to 6.7 m (the probe reads the fray near the tower's cloud). Tried and dropped (decisions): holes
+alone, the sky's light reading the fray, the start lower (the floor stopped a dive from it).
+
 ## Decisions: what failed, and why
 
 What was tried and didn't work, why, and when. **A decision is evidence, not a rule**: when its
@@ -639,10 +593,36 @@ until the author says otherwise.
   side-lit heaps turned soft pillows and `close`'s domes washed out; 65% over 30 m kept the domes and
   hardly lit the rims. The edge's thinness and the domes' crispness are one lever, the author's
   (CLOUD_EDGE0, CLOUD_EDGE_W).
-- **The edge's fray with steps of 2 m + 0.004 t through it** (2026-11-25, leg 16's trial): the
+- **The edge's fray with steps of 2 m + 0.004 t through it** (2026-11-25, before leg 16): the
   trace +30–77% (`gap` most: a ray grazing a near cloud runs long in its edge). Without fine steps
   the grain at near edges as before or worse (`gap` 1.16 → 1.41%); a nearer limit (0.6–1.2 km)
-  saves nothing where near clouds fill the frame. Leg 16 has the numbers.
+  saves nothing where near clouds fill the frame. (Leg 16 kept steps of 4 m + 0.008 t.)
+- **The fray as holes alone** (leg 16, as tried before it, its mean taken from afar): every edge
+  thinner on average, so the medium was no longer the one `constants.js` and the light's reference
+  have (CLOUD_EDGE0, the author's lever), and rays lit more samples before little got through: the
+  trace 4–16% more than holes and denser wisps around the medium's own density. Softer in `gap`
+  (its near veil thinned and showed the shaded cloud behind), otherwise the same look.
+- **The sky's light reading the fray** (leg 16): two taps toward the open sky, the fray's deviation
+  from its mean between the point and the sky dimming or brightening the sky's light. Through the
+  fray as the density has it: white veins in shade, as snow (the Worley noise's network of holes).
+  Through its coarse octave alone, linearly: soft masses of light and dark on `skim`'s shaded flank
+  at 4× (camouflage blotches at 8×), but dirty dark pock-marks on shaded tops seen from above
+  (`seed3`); brightening only, next to no change. Physically the sky's light is diffuse and spreads
+  over the transport mean free path (~100 m): shade near the camera stays smooth, its unevenness the
+  shapes' and the light's (leg 18).
+- **Cheaper fray** (leg 16): the reach looked up once per cloud entered, not per sample: no saving;
+  no fine steps once under a tenth of the light gets through: 1–2%. Of the fray's cost the fine
+  steps are 7–11% of the trace, the noise's lookups 2–6%; the rest is the light marches of samples
+  the holes let the view reach.
+- **The start lower over the billows** (leg 16, for speed tangible from the first second): at
+  550 m over the sea's top (750 before) the near billows streamed past twice as fast (`start`'s
+  motion 10.7 → 21.9%) and the sun and the tower's base stayed in frame (at 450 m the billows hid
+  the horizon). But the bird started 196 m over the billows' highest bound, where the floor's lift
+  begins at 180 m: a held dive from the start levelled out at once (the steering check: S pitched
+  −0.7°; at 650 m −13°, the check wants −15°). And `reach`'s pilot met the rising air's weak edge
+  900 m sooner and circled there: 7.8 km up at 6 minutes, 9.9 km before. 750 m kept: a start
+  lower needs the floor to let a dive through first (`flight.js`: the floor lifts from 180 m over
+  that bound).
 
 ### The light
 
@@ -927,7 +907,8 @@ until the author says otherwise.
 - **Silver linings** of far towers are a pixel wide: a backlit edge 10–20 km off lies within a trace
   pixel (60–80 m) and doesn't blaze (`sun`'s right tower, `anvil`). Thin cloud over the outline's
   footprint, the light march thinned alike, makes them for +7% of the trace (leg 10, step 3); the
-  author: not worth it (2026-11-23). Leg 16's fringe is that thin cloud, there for its own sake.
+  author: not worth it (2026-11-23). Leg 16's fray keeps the medium's mean density, so from afar
+  an edge is as it was: a thin fringe there for its own sake is untried.
 - **Inside cloud** (leg 19), deep in a tower (`inside`), is an even tan card (lit evenly by
   diffusion, its density doesn't show); in motion faint mist puffs drift past and the brightness
   changes slowly (the author's eyes). The puffs and the camera's shake go by `inCloud`, the density
@@ -944,10 +925,16 @@ until the author says otherwise.
   cloud, (5.8, 10.1, 23.1) from the trace: half the red against the blue. Without the tints, or with
   the saturation on the sun's light alone, the author saw barely a difference (leg 8), and kept
   them; leg 18's. The paper bird in shade is a step darker than it, slate blue (leg 15).
-- **Near the camera** (leg 16) every cloud within about a kilometre is a smooth gradient with a soft
-  edge, not the sea into the sun alone (`start` lower left, `seed3`; a soft bluish patch beside the
-  bird in `start`), and the shaded sea seen from above is blotchy (`giant`'s foreground): the light
-  there is diffusion and sky light, smooth over tens of metres, and under ~150 m the domes end.
+- **Near the camera** every cloud's edge is frayed since leg 16 (within ~2 km: mist with a torn
+  outline where it is lit, `past`, `gap`), but in shade a near cloud is still a smooth gradient
+  (`skim`'s flank, `seed3` below the bird), its unevenness at its outline alone, and the shaded sea
+  seen from above is blotchy (`giant`'s foreground): the light there is diffusion and sky light,
+  smooth over tens of metres (the sky's light reading the fray failed: decisions), and under ~150 m
+  the domes end: leg 18's. Untried from leg 16: an old edge trailing out past the surface (wisps
+  outside it: the trace would have to enter a cloud farther out), a far edge soft on old parts by
+  the outline's width (the fray keeps the medium's mean, so from afar an edge is as before), and
+  shreds (finer octaves and steps a pixel long where they show: if the author misses them in
+  flight).
 - **The light against its reference** (`node tools/light/reference.js`): an isolated small ball's lit
   side 5.7× (the trace can't see how little cloud lies behind a billow), its edge 1.75×; a tower's
   shade 3.4–3.7× a ball's, 0.6× a wall's (real towers lie between); tops with the sun behind

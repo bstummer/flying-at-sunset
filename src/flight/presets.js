@@ -9,6 +9,7 @@
 import { lerp, PI } from '../math.js';
 import { SUN_DIR } from '../constants.js';
 import { forEachSys } from '../world/cells.js';
+import { START_UP } from './flight.js';
 import { cloudTopAt, seaTopAt, towerDistAt, towersNear } from '../world/queries.js';
 
 // where preset `pre` puts the bird: { x, y, z, yaw, gamma, bank, speed } (what is left out: 0, or
@@ -17,7 +18,7 @@ import { cloudTopAt, seaTopAt, towerDistAt, towersNear } from '../world/queries.
 export function presetPose(pre) {
   const sea0 = seaTopAt(0, 0);
   const presets = {
-    start: { y: sea0 + 750, gamma: 0 },
+    start: { y: sea0 + START_UP, gamma: 0 },
     sun: { y: sea0 + 900, yaw: 0.0, gamma: -0.06 },
     away: { y: sea0 + 900, yaw: PI, gamma: -0.06 },
     side: { y: sea0 + 850, yaw: PI / 2, gamma: -0.05 },

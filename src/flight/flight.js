@@ -20,10 +20,13 @@ import { add, clamp, cross, damp, DEG, lerp, norm, sat, scl, smoothstep, spring,
 import { liftAt, seaTopAt } from '../world/queries.js';
 
 export const FLIGHT = { vCruise: 64, vClimb: 48, vStall: 31, vMax: 185, g: 11.5, gTurn: 16.5, maxBank: 56 * DEG, maxClimb: 30 * DEG, maxDive: 42 * DEG };
-// a bird at the start, 750 m over the sea's top there (sea0), heading yaw (camera.js's startYaw:
-// by the screen; presets.js and ?pose move it)
+// a bird at the start, START_UP m over the sea's top there (sea0: ~400 m over the billows' highest
+// bound, so a dive from the start has room before the floor above lifts it; at 550 and 650 m it
+// levelled out at once), heading yaw (camera.js's startYaw: by the screen; presets.js and ?pose
+// move it)
+export const START_UP = 750;
 export const newBird = (sea0 = seaTopAt(0, 0), yaw = 0.45) => ({
-  pos: [0, sea0 + 750, 0], yaw, gamma: 0, gammaV: 0, bank: 0, bankV: 0, speed: 66, aoa: 0.05,
+  pos: [0, sea0 + START_UP, 0], yaw, gamma: 0, gammaV: 0, bank: 0, bankV: 0, speed: 66, aoa: 0.05,
   fwd: [0, 0, -1], up: [0, 1, 0], right: [1, 0, 0], load: 1, turnRate: 0, accel: 0, lift: 0,
 });
 // the bird of the page: made once the world has started (main.js; it waits for the worker)

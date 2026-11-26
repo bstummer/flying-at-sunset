@@ -14,7 +14,7 @@
 // ends: each sample has a light march of its own until little gets through (about three a
 // cloud's face), none takes another's; it ends at T < 0.02. The camera's own cloud (a ray that starts in cloud, until
 // it is clear of cloud) is marched first, in a loop of its own: from the camera in fine steps the
-// same for every pixel, each cut at a surface it crosses, frayed in its first 40 m (shreds and
+// same for every pixel, each cut at a surface it crosses, frayed as every near cloud (shreds and
 // holes), on through the air near it (a ray skimming a top dips in and out: one cloud, lit toward
 // the main loop's skin by how far clear the gap took it), greyed deep in and lit as the main loop
 // lights a surface near it, with variations deep in; how much light gets through it goes out with

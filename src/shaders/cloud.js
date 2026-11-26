@@ -31,6 +31,11 @@
 //   variations of density inside cloud near the camera (mist streaming past as the bird flies), while
 //   the camera is in cloud. The trace takes it in two parts: erodedDepth (the depth under the frayed
 //   surface) at its samples, and rampMean, the ramp's mean along the stretch between two of them.
+//   Within ~2 km of the camera the edge's fray on top (fray): holes and wisps around the medium's
+//   own density, as deep as the edge's reach (edgeReach: metres on a growing head, up to 100 m on an
+//   old flank, by the billows' liveliness and a slow field): mist, not a surface, every cloud's
+//   edge uneven. The trace's two loops, the light march's first steps, the probe and the mist puffs
+//   all read it.
 // - lightPath: the light's path toward the sun (6 growing steps from 10 m, each sampled at its
 //   middle, the first three with the view sample's detail: domes of metres shade themselves; then
 //   three long steps through the large shapes): the optical depth through the point's own cloud and

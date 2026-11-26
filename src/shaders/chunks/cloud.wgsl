@@ -110,7 +110,8 @@ fn sceneSDF(wp: vec3f, h: f32, l: i32, lod: f32) -> f32 {
 // by up to ERODE m (detailW fades it out far away; finer near the camera, nearW). That is only the
 // edge: the light doesn't see it, so anything deeper reads as blur, not form (the domes of
 // cloudSDF carry the form). Inside a cloud near the camera: variations of density, mist streaming
-// past as the bird flies.
+// past as the bird flies. Near the camera the edge's fray (R, fw: fray) on top: the medium the
+// trace's two loops, the probe and the mist puffs all see.
 const ERODE = 6.0;
 fn profile(x: f32) -> f32 { return CLOUD_EDGE0 + (1.0 - CLOUD_EDGE0) * saturate(x / CLOUD_EDGE_W); }
 // the depth of full density as much cloud as lies between the surface and depth x
@@ -142,7 +143,10 @@ fn rampMean(g0: f32, g1: f32, w: f32) -> f32 {
   if (abs(dg) < 0.01) { return saturate(g0 / w); }
   return (rampInt(g1, w) - rampInt(g0, w)) / dg;
 }
-fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f32 {
+fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32, R: f32, fw: f32) -> f32 {
+  return densityUnfrayed(d, wp, detailW, edgeW, nearW) * fray(wp, -d, R, fw);
+}
+fn densityUnfrayed(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f32 {
   let x = -d;
   if (x <= 0.0) { return 0.0; }
   let amp = ERODE * detailW;
@@ -162,6 +166,33 @@ fn densityFromSDF(d: f32, wp: vec3f, detailW: f32, edgeW: f32, nearW: f32) -> f3
     dens *= mix(1.0, 0.25 + 1.1 * dn.r * dn.r + 0.3 * dn.g, nearW);
   }
   return dens;
+}
+
+// The edge's fray: how dense a cloud's edge at depth x (m) is at p, against the medium's own density
+// there, where dry air mixes in: wisps of the detail volume's Worley noise (16–64 m and 4–16 m
+// cells: its median 0.475, quartiles 0.415 and 0.537), cut by a threshold that leaves 60% of the
+// surface holes and none R m in (the edge's reach), the wisps between the holes as much denser as
+// keeps the medium's mean (frayMean: the share left, over the noise). So an edge is as thick from
+// afar as up close, where the fray fades out (w: how much of it resolves, the trace's FRAY_NEAR),
+// and as the light's reference has it (tools/light/; holes alone made every edge thinner, lit
+// more samples, and cost the trace a tenth more).
+fn frayThr(x: f32, R: f32) -> f32 { return mix(0.2, 0.5, 1.0 - saturate(x / R)); }
+fn frayMean(x: f32, R: f32) -> f32 { return 1.0 - smoothstep(0.3, 0.66, frayThr(x, R)); }
+fn fray(p: vec3f, x: f32, R: f32, w: f32) -> f32 {
+  if (x >= R || w <= 0.0) { return 1.0; }
+  let m = frayMean(x, R);
+  let q = detailAt(p);
+  let n = 0.7 * textureSampleLevel(tDetail, sRep, q * (2.0 / DETAIL_TILE) + 0.21, 0.0).r + 0.3 * textureSampleLevel(tDetail, sRep, q * (8.0 / DETAIL_TILE) + 0.63, 0.0).r;
+  let thr = frayThr(x, R);
+  return mix(1.0, smoothstep(thr - 0.06, thr + 0.06, n) / m, w);
+}
+// The edge's reach (m): metres on a growing head, up to 100 m on an old flank, by the billows'
+// liveliness (live: the sea is all lively) and a slow field (the detail volume's Perlin noise at
+// 512 m and finer: its median 0.46, quartiles 0.42 and 0.51), so no two flanks of a cloud are alike
+const REACH = vec2f(6.0, 100.0);
+fn edgeReach(p: vec3f, live: f32) -> f32 {
+  let n = textureSampleLevel(tDetail, sRep, detailAt(p) * (0.25 / DETAIL_TILE) + 0.5, 0.0).g;
+  return mix(REACH.y, REACH.x, saturate(0.5 * live + 7.0 * (n - 0.46)));
 }
 
 // optical depth toward the sun from the shadow volume, past the light march's reach: through the
@@ -271,9 +302,11 @@ const AMB_K = 1.0;
 // or a billow hundreds of metres off cast its shadow as a copy of itself where a point hit it, not
 // as the streak it casts at a low sun; farM: those past the march (~1.4 km), from either level, and
 // mw: how far the levels reach there (the shadow volume takes the rest). dView: the point's own
-// distance; l, C, bs: clipmap level, column data and billows of the start.
+// distance; l, C, bs: clipmap level, column data and billows of the start; R, fw: the edge's reach
+// and how much of its fray resolves (the first two steps' density reads it: a thin edge's holes let
+// the sun in).
 struct LightPath { own: f32, other: f32, otherD: f32, nS: f32, muN: f32, muF: f32, near: f32, d0: f32, farM: f32, mw: f32 }
-fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> LightPath {
+fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32, R: f32, fw: f32) -> LightPath {
   // (each level of the sun map weighed where the march looks it up last, ~1.4 km toward the sun,
   // too: the fine one, and the coarse one where the fine one fades)
   let pM = wp0.xz + u.sunDir.xz * LIGHT_NEAR;
@@ -309,7 +342,8 @@ fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0:
     // the air just above it is outside), blurred over 3 m (cloud edges are not hard)
     let g = (d - dPrev) / (sm - sPrev);
     let f = saturate(0.5 - d / max(abs(g) * ds, 3.0));
-    let sig = SIGMA * profileMean(-d, 0.5 * max(abs(g) * ds, 3.0));
+    var sig = SIGMA * profileMean(-d, 0.5 * max(abs(g) * ds, 3.0));
+    if (i < 2) { sig *= fray(wp, -d, R, fw); }
     lp.own += f * inside * ds * sig;
     let ko = select(1.0, mo, i >= 3);
     lp.other += f * (1.0 - inside) * ds * sig * ko;
@@ -372,6 +406,6 @@ fn lightPath(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0:
 }
 // the optical depth toward the sun the march sees, through every cloud
 fn lightTau(wp0: vec3f, h0: f32, dView: f32, l: i32, C: vec4f, bs: vec2f, lod0: f32) -> f32 {
-  let lp = lightPath(wp0, h0, dView, l, C, bs, lod0);
+  let lp = lightPath(wp0, h0, dView, l, C, bs, lod0, 40.0, 0.0);
   return lp.own + lp.other;
 }

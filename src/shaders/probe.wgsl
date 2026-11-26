@@ -14,7 +14,7 @@ fn sigmaAt(wp: vec3f, h: f32) -> vec2f {
   let b = sh.x - shellOf(C.y) - lvMargin(0);
   if (b > 0.0) { return vec2f(0.0, b); }
   let sdf = cloudSDF(wp, h, sh, C, 0.0);
-  return vec2f(densityFromSDF(sdf, wp, 0.6, 40.0, 0.0) * SIGMA, sdf);
+  return vec2f(densityFromSDF(sdf, wp, 0.6, 40.0, 0.0, edgeReach(wp, sh.z), 1.0) * SIGMA, sdf);
 }
 fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0); }
 // One workgroup per field of Probe: they cost very differently, and none waits for another.
@@ -26,7 +26,8 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
   switch wg.x {
     case 0u: {
       let far = tsvTau(bwp, bh);
-      let lp = lightPath(bwp, bh, sigmaAt(bwp, bh).y, 0, C, billowAt(vec3f(bwp.x, bh, bwp.z), 0), 0.0);
+      let bb = billowAt(vec3f(bwp.x, bh, bwp.z), 0);
+      let lp = lightPath(bwp, bh, sigmaAt(bwp, bh).y, 0, C, bb, 0.0, edgeReach(bwp, bb.y), 1.0);
       let tau = (lp.own + lp.other) * 0.6 + far.x + beyond(lp, far);
       let tr = exp(-tau);
       bProbe.sun = vec4f(sunColorAt(bh) * tr, tr);
@@ -50,7 +51,8 @@ fn floorH(xz: vec2f) -> f32 { let C = colAt(xz, 0); return min(C.x, C.w + 330.0)
       // in-cloud mist radiance around the camera (same light model as the cloud volume)
       let scam = sigmaAt(u.camPos, u.camPos.y);
       let depth = max(-scam.y, 0.0);
-      let lp = lightPath(u.camPos, u.camPos.y, scam.y, 0, colAt(u.camPos.xz, 0), billowAt(u.camPos, 0), 0.0);
+      let bc = billowAt(u.camPos, 0);
+      let lp = lightPath(u.camPos, u.camPos.y, scam.y, 0, colAt(u.camPos.xz, 0), bc, 0.0, edgeReach(u.camPos, bc.y), 1.0);
       let far = tsvTau(u.camPos, u.camPos.y);
       let sunL = sunColorAt(u.camPos.y) * sunScatter(lp, far, phaseOctaves(0.3), 1.0, depth);
       bProbe.mistL = vec4f(sunL + ambSky * AMB_K * 0.75 * mix(0.5, 1.0, exp(-profileDepth(depth) / 55.0)), 1.0);

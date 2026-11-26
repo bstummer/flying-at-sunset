@@ -1,9 +1,8 @@
 // Drifting mist: soft puffs near the camera
 // Each puff lives in a wrapped 180 m cell around the camera, samples the real cloud density at its
 // position and is lit with the same model as the volume, so it only shows where cloud really is.
-// 64 instanced puffs, drawn only while the camera is inside cloud, where the trace also frays the
-// camera's own cloud into shreds and holes in its outer 40 m (trace.wgsl, fray): drifting mist,
-// not a white wall.
+// 64 instanced puffs, drawn only while the camera is inside cloud, where the edge's fray (chunks/
+// cloud.wgsl) leaves shreds and holes in a cloud's outer metres: drifting mist, not a white wall.
 
 import { U_CLIP, U_CLOUD } from './cloud.js';
 
