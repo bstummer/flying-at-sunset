@@ -14,7 +14,10 @@
 //   random spheres on two lattices (1280 and 640 m, bent out of round in the bake, the turrets
 //   sparse, of many sizes and mostly on the lobes' caps; both only on bubbles big enough to carry
 //   them, and a smaller bubble boils in turrets of half the size), each clipped to a shell above the surface
-//   so far and united with it (octave: crisp creases); then domes pushing the surface out
+//   so far and united with it (octave: crisp creases). On a tower the turrets are the lobes' own
+//   lattice again, lifting a few great turrets, which carry the 640 m ones on their caps, and the
+//   shell's ceiling is billowed by the next finer domes (ceilOver): a sphere it cuts tops out in
+//   domes, not in a smooth hard-rimmed plateau (a flagstone up close); then domes pushing the surface out
 //   (domeField: sphere caps of random sizes, the highest wins; dome: less the farther out the
 //   surface already is, so none floats) at 320 and 160 m, and from the detail volume (looked up
 //   turned in 3D, detailAt: it doesn't repeat along a surface) at 128 to 32 m and, near the camera,

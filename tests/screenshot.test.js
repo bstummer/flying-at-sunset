@@ -41,6 +41,7 @@ test('a capture plan names its views, size and parameters, and refuses what the 
   assert.throws(() => planCapture({ query: 'w=10', label: 'x' }), /--query can't set w: use --size/);
   assert.throws(() => planCapture({ query: 'test', label: 'x' }), /--query can't set test/);
   for (const key of ['keep', 'every', 'freeze', 'dt', 'jit']) assert.throws(() => planCapture({ query: `${key}=1`, label: 'x' }), /the measurements use it/, key);
+  assert.deepEqual(planCapture({ query: 'freeze', 'no-measurements': true, label: 'x' }).extra, { freeze: '' });
   assert.equal(planCapture({ label: 'x' }).measure, true);
   assert.equal(planCapture({ 'no-measurements': true, label: 'x' }).measure, false);
 });

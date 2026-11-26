@@ -459,8 +459,12 @@ export function planCapture(args) {
   for (const key of ['test', 'w', 'h', 'frames', 'scale', 'seed']) {
     if (key in extra) throw new Error(`--query can't set ${key}: use --${{ w: 'size', h: 'size' }[key] ?? key}${key === 'test' ? ' (always on)' : ''}`);
   }
-  for (const key of ['keep', 'every', 'freeze', 'dt', 'jit']) {
-    if (key in extra) throw new Error(`--query can't set ${key}: the measurements use it`);
+  // (without measurements they are free: `freeze` keeps the flight, which the clouds' shapes steer
+  // through the probe, from moving the frame between two captures of a change to the shapes)
+  if (!args['no-measurements']) {
+    for (const key of ['keep', 'every', 'freeze', 'dt', 'jit']) {
+      if (key in extra) throw new Error(`--query can't set ${key}: the measurements use it`);
+    }
   }
   return {
     views, width: Number(m[1]), height: Number(m[2]), frames, scale, seed: args.seed, extra,

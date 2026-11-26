@@ -6,10 +6,10 @@ that fails goes in the decisions with why and when (evidence for later, not a ru
 comes out; finished work gets a line or two under Done. How things work belongs in the module
 headers, how to work in CLAUDE.md.
 
-The next work is planned below: legs 17 to 22, from the review of 2026-11-25. A leg that is done
+The next work is planned below: legs 18 to 22, from the review of 2026-11-25. A leg that is done
 moves to Done in a line or two, and what it tried and dropped goes in the decisions.
 
-## Next: legs 17 to 22
+## Next: legs 18 to 22
 
 From a review of 2026-11-25 (every view at 960×540 with its flight strip and held-still frames,
 ranked before this file was read, and a second reviewer who saw only the images) and the author's
@@ -32,7 +32,8 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
 3. **What the clouds are built from shows**: lit towers are bumps of one size (`giant`, `tower`,
    `start`), the sea from above discs (`high2`), hazy faces ring outlines; no edge is ragged, so
    surfaces read solid: popcorn lit, rock in shade (`belly`, `turn`). → 16, 17, 18 (16: near edges
-   ragged; from afar as before)
+   ragged; from afar as before. 17: a tower's great turrets carry smaller ones, no flagstones; a
+   tower still a drum, the sea from above discs)
 4. **Inside and under cloud**: `inside` an even tan card, `entry` a cobalt wash, `under` murk. A
    tower is 20 s to two minutes of card at cruise. And the way in (the author, in flight): the
    screen changes drastically as the camera goes into cloud, even at an edge or in a small one.
@@ -95,7 +96,7 @@ Why this order: the edge's trial was measured first (Done), because two other le
 Then the three that change every capture, so the cloud legs after them compare
 against captures that hold: the light and the exposure (13, Done), the world around the start (14,
 Done), the camera (15, Done). Then the clouds, the heart: their edge (16, Done: the top finding, and an experiment spoke
-for it), their shapes (17), the light on both (18). Then in cloud (19), the air and the sky (20),
+for it), their shapes (17, Done), the light on both (18). Then in cloud (19), the air and the sky (20),
 ice (21), loose ends and the review again (22).
 
 - A leg's first step is its cheapest experiment.
@@ -114,27 +115,6 @@ ice (21), loose ends and the review again (22).
   author with four starts); the bird's size in the frame (15);
   whether shreds are missed in flight (16: no, 2026-11-26); minutes in fog (19); layers at other heights (20); a
   title while loading (22).
-
-### Leg 17: sizes as in nature (the shapes)
-
-No size, spacing or outline the eye picks out, on a near tower or on the horizon.
-
-What shows now (chunks/cloud.wgsl, cloudSDF; `?dbg=1`): on a tower's big bubbles the turrets are
-the lobes' own field again (`tb`): one lattice of 1280 m cells twice, 460 m of relief, then
-nothing until the 320 m domes at 45 m. Within a level sizes span 2–3×, in 70–90% of its cells. A
-sphere cut off at its shell (`octave`'s clip) is a disc from above and a ring on a hazy face.
-Liveliness scales the billows by 0.6–1 only. Past 13 km a tower is L1's 512 m cells and those
-lattices; past 40–55 km L2's 2 km cells, where every tower is a rounded cap on a column: the pawn.
-
-Ideas, each first on `?dbg=1`: the level a tower lacks (300–600 m); sizes within a level by a
-power law, dense on what carries them (leg 6's were sparse: lone balls); the cascade running all
-the way down only where the air is alive; a swell in place of the clip; L1's billows sized as
-L0's; the far towers keeping their own outlines (a later handover to L2, what L2 keeps of a head,
-a finer far level: memory, known issues).
-
-Judged by `giant`, `tower`, `start`, `high2` and `away`'s horizon; tools/world/levels.js and
-catalog.js. Heed the swings between popcorn and dough (decisions: each tuned one lattice a level).
-If it swings again, go on to the light, which carries more of the look.
 
 ### Leg 18: the light on them
 
@@ -195,6 +175,9 @@ Air that shows how far away things are, and a sky a photographer would know.
   hardly more haze than the near clouds (leg 14's reviewer: nothing says "far"); one 60–100 km off is a pale shape, not a
   lit piece with an outline (`away`).
 - **The sky**: a deeper blue overhead, rose opposite the sun, high cloud whose streaks turn.
+- **Towers through the layers**: in `climb` and on tall screens the 6.3 km layer lies in front of
+  the first tower's crown as a smooth smear (leg 17 found it, known issues: sunlit rims); a tower
+  that tall would pierce it and clear the air around it.
 - **Layers at other heights**, if the author wants them.
 
 Judged by `sun`, `anvil`, `high2`, `seed3`, `away`, `climb`.
@@ -496,6 +479,36 @@ up to 6.7 m (the probe reads the fray near the tower's cloud). Tried and dropped
 alone, the sky's light reading the fray, the start lower (the floor stopped a dive from it). The
 phone's `?bench` (known issues): 57–60 fps settled, as at leg 12, the level leg from the start 45.
 
+**Leg 17** (2026-11-26): sizes as in nature (the shapes). Judged in three rounds by reviewers who
+saw only the images, blind to which variant was the old picture: the first ranked the old picture
+over every variant of its round (decisions); the second and third ranked this one first, the old
+picture last. On a tower (chunks/cloud.wgsl, `tb`):
+1. The great turrets (the lobes' lattice lifted twice) carry the 640 m turrets on their caps, by
+   how far the two raised the surface there: the size the leg found missing between them and the
+   320 m domes. Each great turret had been a smooth, hard-rimmed shell, stacked like flagstones on
+   `climb`'s face.
+2. Each octave's clip lies under a ceiling the next finer domes billow (`ceilOver`, ±20% of its
+   shell): a sphere the shell cuts tops out in domes, not in a plateau. Not on the sea, where it
+   moved the heaps under the views' moments (`exit`'s camera came out of its wisp).
+3. A tower is where the large shapes lie well above the sea's top and nearer than it (`tb`; by the
+   height over the sea alone, the air over it counted, where the trace's approach reads the
+   octaves: the turrets on the caps cost 9–16% in every view). A tower's low pieces among the sea's
+   heaps are no longer its angular rubble (`tower` beside the bird: larger forms). The caps' turrets
+   only near the surface; farther off the distance moves by their shell, as the octave moves it.
+`climb`: its flank's clay lumps and flagstones are lumps of several sizes, cauliflower crescents
+on the sunlit edge; `giant`, `tower`, `high2`: the great turrets carry smaller ones; `close` a
+crisp sunlit turret where its flank was smooth; the sea and the views' moments as they were
+(`entry`, `exit` under 2% of pixels past 2 levels). What all three reviewers still saw: a tower is a
+drum under one ball of a head (known issues). The trace +7–9% (`start` 8.0 → 8.6 ms a frame at
+960×540), `close` +14% (its new turret by the camera); the bakes as before. Grain in flight up on towers (`tower` 0.31 →
+0.40%, `giant` 0.30 → 0.37, `start-phone` 0.34 → 0.48), `climb`'s shimmer at rest 0.48 → 0.55% (over
+its limit: the crown's lit outline against the sky, lumpier). The flight logs identical but
+`skim`'s from 6.35 s, by up to 4.4 m (the tops it dives into: a tower's low pieces), and `reach`'s,
+by up to 0.9 m. At the clouds' floor (`--scale 0.22`) the same look, softer; at 1920×1080 the
+change is plainest (`climb`: clay pillows to a cascade of lumps). The capture tool takes `freeze` (and the other keys the
+measurements use) in `--query` without measurements: the probe steers the flight by the clouds'
+shapes, so shape variants framed apart.
+
 ## Decisions: what failed, and why
 
 What was tried and didn't work, why, and when. **A decision is evidence, not a rule**: when its
@@ -567,7 +580,24 @@ until the author says otherwise.
 - **Turrets the lobes' own size on a tower's big bubbles** (leg 11, still in the code; the review of
   2026-11-25): it took the carpet of 640 m beads away and left the lobes' lattice twice over:
   florets of one size with one size of bump on them (`giant`, `?dbg=1`), beads still to both
-  reviewers. Every try so far tuned one lattice a level; leg 17 changes the sizes within one.
+  reviewers. Leg 17 kept it and put the 640 m turrets on its caps alone.
+- **The sizes within a level, and between them** (leg 17, `?dbg=1` and three blind reviews; the
+  first reviewer ranked the old picture over every one of these, mostly for its large structure):
+  - *A swell in place of the clip* (a sphere bulging h past the surface swells h·S / (S + h), S
+    the shell): no plateaus, but every bulge lower and rounder: the sea dough, the towers pillows.
+    With a scalar distance to the spheres a plateau can only become a flatter dome: where a big
+    sphere's centre lies against the surface is not known.
+  - *Clusters in the noise* (each lattice cell a sphere with four smaller ones on its surface,
+    power-law radii; smaller ones for rounder caps): dough or plaster with dark pits. Where the clip
+    or the swell lowers a parent, its children are hidden or float.
+  - *The 640 and 320 m octaves on every tower*, with or without a weight by how far the lobes
+    raised the surface: a carpet of small beads, the great turrets gone (gravel lit, plaster in
+    shade).
+  - *A ceiling billowed ±37%*: the flagstones gone, the lobes with them (gravel). ±20% kept.
+  - *More relief at the largest scale* (the baked lobes' shell 500 → 900 m; a level of 5120 m
+    turrets on massive heads in the bake, 1.4 km): the heads smoother, pillows; the drum stays.
+  - *The cascade by liveliness*: the first tower is lively all over (young, in its prime): nothing
+    to vary it by there.
 - **Billows of one size on every bubble** (before the legs, the author: "puffs all one size"): a 400 m
   crown carried lobes as big as a 4 km head's. Without the 640 m turrets a surface reads as smooth
   dough; a billow scale for heaps by their height took their turrets: dough again.
@@ -899,9 +929,21 @@ until the author says otherwise.
   doesn't set and there is no sound** (the author, 2026-11-25: out for now). With drift back,
   the sun map bakes all the time (0.11–0.15 ms a frame, lagging the billows by 2 s, 7 m); or it holds
   the large shapes alone, and the light march the billows' shadows near by.
-- **Popcorn** (leg 17): `away`'s horizon (60–80 km) is still beads: the 1280 m lobes, 90% of their
-  cells filled, the turrets faded by then; and so are the lit towers nearer by (`giant`, `tower`,
-  `start`: the review of 2026-11-25). A real tower shows 2–4 dominant turrets, smaller domes on
+- **The towers' build** (all three reviewers of leg 17): a tower reads as a straight-sided drum
+  under one ball of a head, its face evenly covered in lumps, no few great turrets leaning out with
+  deep shadowed gaps between them; the billows only change its surface (more relief at their
+  largest scale made pillows: decisions). The first tower's head is one bubble ~8 km across
+  (tools/world/preview.js): bubbles up to R_TH (3.5 km) swell as they rise, and in a tower crowns
+  under 0.28 of their head stay in it (leg 11, against knobs). Levers in the world, untried: a
+  strong cell's pulse as several bubbles side by side, a head boiling into a few great turrets.
+- **Popcorn**: `away`'s horizon (60–80 km) is still beads: the 1280 m lobes, 90% of their cells
+  filled, the turrets faded by then (leg 17 left the far towers as they were). Nearer, since leg 17
+  a tower's great turrets carry 640 m ones on their caps, under ceilings billowed by the domes, but
+  on the sea the lobes and turrets are still cut flat at their shell: discs seen from above
+  (`high2`'s near sea; the ceiling there moved the views' moments). Untried from leg 17: L1's
+  billows sized as L0's, the far towers keeping their own outlines (a later handover to L2, what L2
+  keeps of a head, a finer far level), sizes within a level by a power law where it doesn't
+  compress (clusters failed: decisions). A real tower shows 2–4 dominant turrets, smaller domes on
   their upper, sunward shoulders, older parts smoother (what failed: decisions). **Crowns perched on
   heads**: the first crowns, about a third of their head, remain (`start`'s middle tower's two
   bumps). **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird, `sun`,
@@ -971,7 +1013,7 @@ until the author says otherwise.
   far sea): pixels dither between two levels; the history averages it at rest, 12-frame captures
   show it. At 40–55 km it is L2's 2 km columns; at 10–13 km L1's billows, sized from 512 m cells,
   rounder and larger than L0's. Levers: blending (+12–18%, decisions), L1's billow sizes nearer L0's
-  (leg 17). The same dither showed as a checkerboard on thin far cloud in the first frames, before
+  (untried). The same dither showed as a checkerboard on thin far cloud in the first frames, before
   the history averaged it: the canvas fades in from the 10th frame since leg 14.
 - **The grain** in flight (tools/measure.js): 0.06–0.72% of a frame over the motion strip, 0.54 and
   1.18% past near clouds (`past`, `gap`). The march has no jitter; what differs is the trace's pixel
@@ -982,9 +1024,13 @@ until the author says otherwise.
   it is a question for `grain.png`. Motion itself (smear, lag in turns) is for the author's eyes.
 - **Sunlit rims**: at rest 0.006–0.035% of a frame flickers, along tower silhouettes and backlit rims,
   most toward the sun (`sun`); in `climb` along the first tower's sunlit crown against the sky,
-  ~10 km off: 0.31% since leg 14, 0.48% since leg 15 (its camera higher: more of the crown; the
-  limit 0.5%), and since leg 15 0.26% in `start-tablet` and 0.19% in `start-phone`, where the camera
-  looks up at the same head. The reviewer saw it as a smooth smear with a stair-stepped edge. The history blends at half the rate where the image holds still,
+  ~10 km off: 0.31% since leg 14, 0.48% since leg 15 (its camera higher: more of the crown), 0.56%
+  since leg 17 (its outline lumpier; over the limit of 0.5%: `climb` warns), and 0.32% in
+  `start-tablet` and 0.29% in `start-phone`, where the camera looks up at the same head. The
+  review's "smooth smear" there is not the crown: the high layer at 6.3 km lies between the camera
+  and the tower (it shows in `?dbg=1` too; without it the crown's outline is clean against the sky).
+  A tower 10 km tall would pierce it: towers clearing the layers around them is leg 20's (the TAAU
+  pass would need a distance volume). The history blends at half the rate where the image holds still,
   which may lag or smear in slow motion (the author's eyes). Levers: the cloud scale, the TAAU's
   clamp and blend rate, the approach's floor (trace.wgsl).
 - **The bird in the frame** (leg 15): its size (1 m across 4.3 m off: 140 px of 960 on 16:9, a third

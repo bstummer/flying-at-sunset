@@ -110,7 +110,8 @@ Screenshot args: `--views start,tower` (default: all), `--label` (default `<git 
 `--query "dbg=1&exp=16"` (more URL parameters, §7), `--gl auto|hardware|swiftshader` (auto: the GPU, else
 SwiftShader, which WebGPU has on Linux only), `--profile` (per-pass GPU times in `info.json` and the
 compare), `--checks`, `--no-measurements` (stills only: CI's, as the measurements only warn and would
-take most of a run on SwiftShader).
+take most of a run on SwiftShader; it frees `--query` to set `freeze`, which a change to the clouds'
+shapes needs to frame its variants alike: the probe steers the flight by them).
 
 **The benchmark** (`?bench`, `src/core/benchmark.js`): the piece flies a fixed route from the start (level,
 a long turn, a dive and climb, a weave) as in normal use, measuring each leg, then shows a summary

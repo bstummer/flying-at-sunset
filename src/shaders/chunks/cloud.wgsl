@@ -34,6 +34,11 @@ fn detailAt(p: vec3f) -> vec3f { return DETAIL_ROT * p + u.detailOff; }
 
 // where the domes of a field b (0..1) are highest: the next finer ones heap up there
 fn onDome(b: f32) -> f32 { return 0.4 + 0.6 * smoothstep(0.05, 0.5, b); }
+// an octave's ceiling over a field of domes b (0..1, about 0.35 on average), by how much of it is a
+// tower's (t): there ±20% of its shell, so a sphere it cuts is a cluster of domes on top, not a
+// flagstone (±37% dissolved the lobes into gravel); flat on the sea, whose heaps it changed under
+// the moments the views keep
+fn ceilOver(b: f32, t: f32) -> f32 { return 1.0 + t * (0.45 * (b - 0.35) - 0.08); }
 // a field of domes moving the surface ds out by a (in where a < 0), less the farther out it already
 // is (none past k): domes swell out of the surface, none floats above it
 fn dome(ds: f32, a: f32, k: f32) -> f32 { return ds - a * (1.0 - smoothstep(0.0, k, ds)); }
@@ -41,7 +46,8 @@ fn dome(ds: f32, a: f32, k: f32) -> f32 { return ds - a * (1.0 - smoothstep(0.0,
 // Signed distance (m) to the cloud surface: the large shapes (sh.x, from a clipmap), lobes of bent
 // spheres heaped on them, and domes on those, down to metres; the lobes and turrets only where the
 // billows of the nearest bubble are big enough (sh.y, m), and on a tower's bubbles big enough for
-// the lobes the turrets as big as the lobes; all of them lower where those have lost their life
+// the lobes the turrets as big as the lobes, carrying turrets half their size on their caps, each
+// clipped there under a ceiling the next finer domes billow; all of them lower where those have lost their life
 // (sh.z: old parts and wakes soften). C: column data. lod: the pixel's footprint over 52 m (0 =
 // full detail): each octave fades as its cells shrink from about 4 pixels to 2.
 fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
@@ -56,20 +62,39 @@ fn cloudSDF(wp: vec3f, h: f32, sh: vec3f, C: vec4f, lod: f32) -> f32 {
   // metres across boils in small domes, not in lobes bigger than itself)
   let wL = smoothstep(700.0, 1500.0, sh.y) * (1.0 - smoothstep(5.6, 11.2, lod));
   let wT = smoothstep(350.0, 800.0, sh.y) * (1.0 - smoothstep(2.8, 5.6, lod));
-  var ds = octave(dm, sf.x * 1280.0, 300.0 * A * wL, 300.0 * wL + 4.0);
+  // (on a tower, well above the sea: tb, where the large shapes lie nearer than the sea below. By
+  // height above the sea alone, the air over it counted as a tower's, where the trace's approach
+  // reads the octaves too: the turrets on the great turrets' caps cost it 9–16% in every view; and
+  // a tower's low pieces were angular rubble. By wL: a weight of the billows' size of its own put
+  // the trace past a cliff of registers, +11%)
+  let tb = wL * smoothstep(300.0, 1500.0, h - C.x - max(dm, 0.0));
+  // (on a tower each under a ceiling billowed by the next finer domes: ceilOver)
+  var ds = octave(dm, sf.x * 1280.0, 300.0 * A * wL, 300.0 * wL + 4.0, ceilOver(s.z, tb));
   // (the turrets heap on the lobes' caps: the lobes' flanks and the creases between them stay
-  // broad, so the billows come in sizes, not as one bubbly texture. On a tower, well above the sea,
-  // a bubble with billows big enough for the lobes boils in turrets the lobes' own size, lifting
-  // them into a few great turrets: 640 m ones there, a carpet of beads from afar. By wL: a weight
-  // of the billows' size of its own put the trace past a cliff of registers, +11%)
-  let tb = wL * smoothstep(300.0, 1500.0, h - C.x);
+  // broad, so the billows come in sizes, not as one bubbly texture. On a tower a bubble with
+  // billows big enough for the lobes boils in turrets the lobes' own size, lifting them into a few
+  // great turrets: 640 m ones there, a carpet of beads from afar)
   let tf = mix(sf.y * 640.0, sf.x * 1280.0, tb);
-  ds = octave(ds, tf, 160.0 * A * wT * mix(mix(0.3, 1.0, onCap(sf.x * 1280.0, 300.0)), 1.0, tb), 160.0 * wT + 4.0);
-  // (a bubble too small for those boils in turrets half their size)
+  ds = octave(ds, tf, 160.0 * A * wT * mix(mix(0.3, 1.0, onCap(sf.x * 1280.0, 300.0)), 1.0, tb), 160.0 * wT + 4.0, ceilOver(s.w, tb));
+  // (then an octave of smaller ones, in one call: a bubble too small for those boils in turrets
+  // half their size; on a tower the great turrets carry the 640 m ones on their caps, by how far the
+  // two raised the surface there: the size between them and the 320 m domes, without which each
+  // great turret was a smooth hard-rimmed shell, stacked like flagstones on a tower's face. Those
+  // only near the surface: farther off the octave moves the distance by its shell, as here)
   let wS = smoothstep(800.0, 350.0, sh.y) * (1.0 - smoothstep(1.4, 2.8, lod));
-  if (wS > 0.01) {
-    let st = textureSampleLevel(tShape, sRep, warpLand(wp) * (vec3f(2.0, 2.7, 2.0) / SHAPE_TILE) + vec3f(0.43, 0.29, 0.71), 0.0).y;
-    ds = octave(ds, (st * 2.0 - 1.0) * (320.0 / 1.35), 80.0 * A * wS * mix(0.25, 1.0, onCap(tf, 160.0)), 80.0 * wS + 4.0);
+  let sT = 140.0 * A * wT * tb * smoothstep(0.15, 0.6, (dm - ds) / max(460.0 * A, 1.0));
+  if (wS <= 0.01 && ds > sT + 200.0) { ds -= sT; }
+  else if (wS > 0.01 || sT > 0.5) {
+    var n = sf.y * 640.0;
+    var sS = sT;
+    var kS = 140.0 * wT + 4.0;
+    if (wS > 0.01) {
+      let st = textureSampleLevel(tShape, sRep, warpLand(wp) * (vec3f(2.0, 2.7, 2.0) / SHAPE_TILE) + vec3f(0.43, 0.29, 0.71), 0.0).y;
+      n = (st * 2.0 - 1.0) * (320.0 / 1.35);
+      sS = 80.0 * A * wS * mix(0.25, 1.0, onCap(tf, 160.0));
+      kS = 80.0 * wS + 4.0;
+    }
+    ds = octave(ds, n, sS, kS, 1.0);
   }
   // cauliflower everywhere, strongest on the upper parts of the sea and on everything heaped above
   // it: domes pushing the surface out (320 and 160 m cells), more on the lobes' caps and each
