@@ -1,6 +1,6 @@
 // How far the clipmap levels disagree, over boxes. Each level's large shapes are baked on the CPU as
 // the GPU bakes them (the column data and the bubbles the world's worker hands over, block by block;
-// the sea and the bubbles united as shaders/bake.wgsl unites them, without the largest lobes), read
+// the sea and the bubbles united as shaders/bake.wgsl unites them), read
 // as the trace reads them (trilinear), and compared column by column at the finer level's cells: the
 // top surface's height, the cloud's thickness above the sea level, the towers' peaks, the domes each
 // level takes. The trace dithers between two levels over a handover (7–10 and 40–55 km): where they

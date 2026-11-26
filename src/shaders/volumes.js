@@ -67,13 +67,12 @@ export { default as CS_SUNSCAN } from './sunmap-scan.wgsl';
 export const NOUT = 4;
 // Bakes NOUT slices of a block of one clipmap level: the sea (from the column map: its surface
 // and slope) united with the tower bubbles near the block (ellipsoids; crisp creases between
-// them, a broad fillet where they swell out of the sea), and the largest lobes on the towers
-// (chunks/lobes.wgsl, from the shape volume); and the billows' scale and liveliness, each bubble's
-// own (world/cells.js) blended by how near its surface is, the sea's where the sea is nearer. Positions are relative to the block, whose corner
-// is at p0 in render space (the lobes and their warp are the trace's, in render space). Its
-// bubbles: nb of bBub (3 vec4f each, world/columns.js), from the b0th on.
+// them, a broad fillet where they swell out of the sea); and the billows' scale and liveliness,
+// each bubble's own (world/cells.js) blended by how near its surface is, the sea's where the sea is
+// nearer. Positions are relative to the block. Its bubbles: nb of bBub (3 vec4f each,
+// world/columns.js), from the b0th on. (A tower's largest lobes are the world's turrets,
+// world/thermals.js: grown here from noise, clipped to a shell, they were shelves on its flanks.)
 export const U_BAKE = {
   nb: 'i32', b0: 'i32', z0: 'i32', mask: 'i32', tex0: 'vec2i', cellH: 'f32', cellV: 'f32', maxD: 'f32',
-  p0: 'vec2f', warpPh: 'vec4f', warpPh2: 'vec2f',
 };
 export { default as FS_BAKE } from './bake.wgsl';

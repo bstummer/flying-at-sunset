@@ -1,7 +1,7 @@
 // The world generator (src/world/), run as the page runs it: the recorded fingerprint, independence
 // from the order places are asked for, sound data for the GPU over seeds 1 to 20 (the coarsest
-// level's heaps those of the level before it), and each seed's first tower ahead of the start (the
-// spawn draw). A module graph holds one world (it reads ?seed as it loads), so each seed runs in a
+// level's heaps those of the level before it), each seed's first tower ahead of the start (the
+// spawn draw), and towers that stand on their feet (none a mushroom, none hanging off its foot). A module graph holds one world (it reads ?seed as it loads), so each seed runs in a
 // worker thread of its own: this file is also the worker (the end of the file).
 
 import test from 'node:test';
@@ -11,6 +11,7 @@ import { availableParallelism } from 'node:os';
 import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads';
 import { differences, fingerprint, RECORDED } from '../tools/world/fingerprint.js';
 import { loadWorld, WORLD_DIR } from '../tools/world/load.js';
+import { towerShape } from '../tools/world/shape.js';
 
 const SEEDS = Array.from({ length: 20 }, (_, i) => i + 1);
 const CHUNK = [32, 32, 16];   // (render/stream.js's blocks)
@@ -67,6 +68,20 @@ const JOBS = {
       first: first.length,
     };
   },
+  // the worst of the towers rising over 5 km within 40 km of the start: how top-heavy, how far it
+  // leans (tools/world/shape.js, on a coarse grid)
+  shape(W) {
+    const own = new Map();
+    W.forEachSys(-40000, -40000, 40000, 40000, (c) => { for (const b of c.bub) { const l = own.get(b.cell); if (l) l.push(b); else own.set(b.cell, [b]); } });
+    let heavy = 0, lean = 0, n = 0;
+    for (const t of W.towersNear(0, 0, 40000)) {
+      const bs = own.get(t.cell);
+      if (t.top - t.y0 < 5000 || !bs) continue;
+      const shape = towerShape(W, t, bs, { G: 500, N: 9 });
+      heavy = Math.max(heavy, shape.heavy); lean = Math.max(lean, shape.lean); n++;
+    }
+    return { heavy, lean, n };
+  },
   fingerprint: (W) => fingerprint(W),
   weather: (W) => W.weatherOf(),
   // the same, after asking for other places first: far before near, coarse before fine
@@ -118,8 +133,8 @@ if (isMainThread) {
     }
   });
 
-  test('every seed, 1 to 20, gives the GPU sound column data and towers the trace can reach', async () => {
-    const results = await measure(SEEDS, [['columns', 'towers', 'heaps']]);
+  test('every seed, 1 to 20, gives the GPU sound column data and towers the trace can reach, standing on their feet', async () => {
+    const results = await measure(SEEDS, [['columns', 'towers', 'heaps', 'shape']]);
     // (the columns are float32, as the GPU gets them)
     const within = (lo, hi, min, max) => lo >= Math.fround(min) && hi <= Math.fround(max);
     for (const seed of SEEDS) {
@@ -132,6 +147,10 @@ if (isMainThread) {
       assert.ok(t.count > 0, `seed ${seed}: no towers within 120 km`);
       assert.ok(t.drawn && t.first > 0, `seed ${seed}: no first tower ahead of the start (the spawn draw ${t.drawn ? 'held' : 'failed'}; living towers over 8.5 km near: ${t.first})`);
       assert.ok(t.highest < t.cloudTop, `seed ${seed}: a tower tops out at ${t.highest} m, above where the trace stops (${t.cloudTop} m)`);
+      // (a tower is a heap, broad below: before the heaps, drums under wide heads came to 3 and leaned 1.8)
+      const s = results.find((r) => r.seed === seed && r.job === 'shape').result;
+      assert.ok(s.heavy < 1.8, `seed ${seed}: a tower ${s.heavy.toFixed(2)} times as wide in its upper third as in its middle (a mushroom)`);
+      assert.ok(s.lean < 1, `seed ${seed}: a tower leaning ${s.lean.toFixed(2)} m per metre of height (its top hangs off its foot)`);
       // (a third, while the coarsest level took only the domes that grew from the sea)
       const h = results.find((r) => r.seed === seed && r.job === 'heaps').result, k = h.coarse / h.finer;
       assert.ok(k > 0.7 && k < 1.3, `seed ${seed}: the coarsest level's heaps ${k.toFixed(2)} × the finer level's`);

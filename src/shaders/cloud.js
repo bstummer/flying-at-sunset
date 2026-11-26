@@ -5,10 +5,8 @@
 //   picks a level by distance (dithered handovers at ~10–13 and ~40–55 km; a coarser one outside a
 //   level's valid window), macroAt reads its distance volume, billowAt its billow scale (how big
 //   the billows of the nearest tower bubble are, the sea's elsewhere: read only where billows are
-//   built, never by the empty-space skipping), colAt its column data. The bake
-//   (shaders/volumes.js) grows the largest lobes on the towers into them (bigLobes: bent spheres on
-//   2560 m cells, only well above the sea and near massive bubbles), so they cost the trace nothing
-//   and the light march and the shadow volume see them.
+//   built, never by the empty-space skipping), colAt its column data. A tower's
+//   largest lobes are in them already: the world's turrets (world/thermals.js).
 // - cloudSDF heaps billows on them, from the shape volume (tiled over 5120 m, looked up through a
 //   slow warp that never repeats and squashed vertically): lobes and turrets, signed distances to
 //   random spheres on two lattices (1280 and 640 m, bent out of round in the bake, the turrets

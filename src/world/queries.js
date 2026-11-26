@@ -2,7 +2,7 @@
 //
 // seaSurfaceAt(x, z): hb, the sea's level; hs, with its domes (cloudTopAt); and the floor the bird
 // skims, min(hs, hb + 330) (seaTopAt): heaps piled higher may be flown into. towerDistAt: a rough
-// distance to the bubbles (where presets may go); towersNear: the towers' summaries (world/cells.js);
+// distance to the bubbles, united as the bake unites them (where presets may go); towersNear: the towers' summaries (world/cells.js);
 // liftAt: the air rising around living towers.
 // The domes come from the world's cells, grown as needed; the page, whose world grows in a worker,
 // hands over the domes it has around the bird instead (setDomeSource, core/world.js): the same ones
@@ -25,10 +25,12 @@ export function seaSurfaceAt(x, z) {
 }
 export const seaTopAt = (x, z) => seaSurfaceAt(x, z).floor;
 export const cloudTopAt = (x, z) => seaSurfaceAt(x, z).hs;
-// a rough distance to the bubbles near a point (not the sea): where presets may go
+// a rough distance to the bubbles near a point (not the sea), united as the bake unites them (the
+// fillets between them fill the corners a turret makes with its tower): where presets may go
+const sminJS = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };
 export function towerDistAt(x, y, z, reach = 3000) {
   let d = 1e9;
-  forEachSys(x - reach, z - reach, x + reach, z + reach, c => { for (const b of c.bub) if (Math.abs(b.x - x) < b.br + reach && Math.abs(b.z - z) < b.br + reach) d = Math.min(d, ellDist(b, x, y, z)); });
+  forEachSys(x - reach, z - reach, x + reach, z + reach, c => { for (const b of c.bub) if (Math.abs(b.x - x) < b.br + reach && Math.abs(b.z - z) < b.br + reach) d = sminJS(d, ellDist(b, x, y, z), b.k); });
   return d;
 }
 // The air rising around living towers (m/s), which carries the bird up their flanks and through

@@ -51,8 +51,11 @@ What the author keeps coming back to (what the result should be; how to get ther
   looking placed: no bumps of one size ("popcorn"), no towers spread evenly ("chess pieces on a
   board"), no kit of set shapes. Flying on keeps surprising.
 - **Enormous towers** that rise far above the bird, one of them within a minute or two of the
-  start, broad where they swell out of the sea (never a wide top on a thin stem, "like a
-  mushroom"); lone giants, walls and clusters with open sea between, some to fly under.
+  start, each a heap of turrets as a cumulus is built, big ones carrying smaller ones down to the
+  finest billows (never one ball or drum under a skin of bumps), broad where they swell out of
+  the sea (never a wide top on a thin stem, "like a mushroom"), standing on their feet (leaning,
+  never hanging in mid-air); lone giants, walls and clusters with open sea between, some to fly
+  under.
 - **Cloud, not pillow and not rock.** Crisply sculpted from afar, soft up close; never smooth
   pillows all over, never solid like rock or dough.
 - **A billowy sea** with large relief: not a flat blanket, not "sand dunes", no sharp ridgelines.
@@ -97,6 +100,7 @@ What the author keeps coming back to (what the result should be; how to get ther
 | `node tools/checks.js [names]` | The behaviour checks alone (`streaming top-speed flight steering reproducible out-of-memory volumes pointer-and-keys errors player benchmark`), writing into `screenshots/checks/`. |
 | `node tools/cost.js [--against HEAD] [--views a,b] [--frames 200] [--rounds 3]` | What a change costs the GPU: the working tree's build against another commit's (built in a temporary git worktree), interleaved A B B A A B, a view at a time, with `?cpuprof`; per view and pass the totals, the change and each side's spread (a change within it is noise), every run in `screenshots/cost/<label>.json`. After committing a change, `--against HEAD~1`. About 6 minutes for the six default views on a desktop GPU. The same build against itself reads the trace within 0–2%: a change past ~3% is real (`world` and `sunmap` swing far more: the first frame's bakes). |
 | `node tools/flights.js [--label L]`, `--compare A B` | The scripted flights' logs (15 s each, from the start and diving into the cloud tops; and `reach`, 6 minutes from the start up the first tower in its rising air: when the air is felt, how high it carries the bird) into `screenshots/flights/<label>.json`; compare says per flight "identical" or where they part and by how much. About 1.5 min. |
+| `node tools/survey.js [--label L] [--towers 8] [--seed 3]`, `--poses A` | An unpicked sample of the world's towers, rendered: the towers nearest the start, each from two sides (sun behind, and against the light), into `screenshots/survey/<label>/` (`NN-k.png`, `sheet-K.png`, `poses.json`); `--poses A` renders survey A's cameras and weather again (another build, or a changed world: view for view). The tower presets choose sunlit towers in clear sight and flatter the generator: a change to the world's shapes is judged here. About 20 s a tower. |
 | `npm run map` | `tools/world/map.js`: a top-down map of the world (restlessness, towers by height), without rendering. |
 | `node tools/world/fingerprint.js [--write]` | Whether the CPU world is the one recorded in `tests/fixtures/world-fingerprint.json`; `--write` records it after a deliberate change. |
 | `node tools/light/reference.js [--cases top,face] [--shade] [--fresh]` | The trace's light against a Monte Carlo of the medium (`tools/light/`): per shape (tops, slopes, faces, walls lit from behind, balls) and view, the radiance a real cloud sends and the trace's (its model, `tools/light/model.js`); then the shade (`--shade` alone): in colour under the page's sky, in another cloud's shadow, beside a sunlit wall, folds, an overhang over a sea lit or in shadow. The Monte Carlo's numbers are kept in `screenshots/light/` (minutes to make again; made again when the medium in `constants.js` or the sky changes). The sky is read out of the built page once (`tools/light/sky.js`; again when the atmosphere changes). |
@@ -127,9 +131,9 @@ lands on what was on screen. How a moment the author saw in flight reaches a ses
 press P there and paste it.
 
 The world in Node (`tools/world/`, no browser; `QS="seed=3"` for another world, `WSRC=dir` for another
-checkout's `src/world`): `stats.js` (the sea, towers by size and how flat their tops, mushrooms (a
-tower's widest section up top against its narrowest in the middle) and knobs (small bubbles perched
-on big ones), the bubble load), `map.js`, `preview.js`
+checkout's `src/world`): `stats.js` (the sea, towers by size and how flat their tops, how top-heavy
+(a tower's widest section up top against its narrowest in the middle: a mushroom) and how far
+leaning (`shape.js`, which the tests share), the bubble load), `map.js`, `preview.js`
 (a CPU sphere-traced view of the large shapes in seconds), `catalog.js` (side views of the biggest
 towers, for silhouettes), `pose.js` (a camera pose looking at a point, for `?pose=`), `levels.js` (how far
 the clipmap levels' large shapes disagree over boxes: the top surface, the heaps, the towers' peaks; each
@@ -170,6 +174,11 @@ For every change that can affect pixels:
   (SwiftShader compiles for the CPU it runs on: compare the container's with the container's).
 - For a lighting or post tunable with a URL parameter (§7), try values before editing: `--query
   "rays=0.24"`, and isolate its pass with `view=` (`--query "view=4&rays=0.24"`).
+- A change to the world's shapes: `node tools/survey.js --label before` before, `--label after
+  --poses before` after, and the two looked at view for view. The views' tower presets pick sunlit
+  towers in clear sight (the author, 2026-11-26: "probably the best parts of the world"); and a
+  session's eye for its own variants has lost to a reviewer who saw only images under neutral
+  letters (§11, PLAN.md): rank variants that way.
 - A change that can touch the flight (flight, input, camera, the probe, the world near the bird):
   `node tools/flights.js --label before` before, `--label after` after, then `--compare`.
 - Something new worth watching gets a view in `tools/views.js`, with a `brief`: one line on what the
@@ -178,7 +187,7 @@ For every change that can affect pixels:
   pose keeps its world with `weather` when the spawn draw moves.
 - The limits (`tools/measure.js`: banded and shimmering share of the frame) only warn; a warning is a
   question to look at the image, and a change that raises one says why when it is handed over. They are
-  set for the default 960×540: at smaller sizes sunlit rims make `high2` and `anvil` warn (PLAN.md,
+  set for the default 960×540: at smaller sizes sunlit rims make `high2` warn (PLAN.md,
   known issues). The measurements move with exposure, glow and the tone curve too: a change in them is
   a question for `shimmer.png` and `banding.png`, not a result.
 - After a deliberate change to the world, `node tools/world/fingerprint.js --write`, and say so in the
@@ -192,7 +201,8 @@ For every change that can affect pixels:
   and what it imports), and `tests/world.test.js` holds it to: the recorded fingerprint (a change to
   the world must be deliberate), independence from the order places are asked for (what streaming
   relies on), and invariants of properties over seeds 1–20 (sound column data for the GPU, towers
-  under the trace's ceiling, a first tower ahead of the start: the spawn draw).
+  under the trace's ceiling, a first tower ahead of the start: the spawn draw, and towers that
+  stand on their feet: none top-heavy, none leaning off its foot, `tools/world/shape.js`).
 - Invariants are properties, not specific numbers, and each seed's world runs in a worker thread of its
   own (a module graph holds one world).
 - The flight model runs in Node too (`src/flight/flight.js` needs only the world): `tests/flight.test.js` holds
@@ -305,7 +315,7 @@ header; outside the test mode one the page can't read is a console warning, and 
 | `?bench` | the benchmark (§3) |
 | `?seed=N`, `?towers=K` | another world (default 7); the density of convective cells (default 1) |
 | `?weather=rx,rz,sx,sz` | where the weather (the restless air, the cells' grids) lies against the sea and the start, in place of the spawn draw's choice (`world/cells.js`; `node tools/world/stats.js` prints the draw's): the views made before leg 14 keep their world by it |
-| `?preset=start\|sun\|away\|side\|skim\|high\|bank\|fastdive\|humps\|high2\|upward\|tower\|giant\|anvil\|close\|approach\|inside\|under` | where the bird starts (in normal play too: `?preset=tower`); the last seven look at generated towers |
+| `?preset=start\|sun\|away\|side\|skim\|high\|bank\|fastdive\|humps\|high2\|upward\|tower\|giant\|far\|close\|approach\|inside\|under` | where the bird starts (in normal play too: `?preset=tower`); the last seven look at generated towers |
 | `?view=1..5` | cloud transmittance, raw cloud light, depth, sun rays, bloom |
 | `?dbg=1..7` | cloud debug: normals, sun visibility, the shadow volume and the sun map, march cost, lighting terms |
 | `?raw` | each frame's own cloud trace, upsampled without the history: what the trace alone gives a frame (its noise and aliasing, before the temporal upsampling averages them) |

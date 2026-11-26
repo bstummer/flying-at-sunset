@@ -39,8 +39,8 @@ towers that rise above the sea, but the bird is softly kept from sinking deep in
 * **Clouds** — raymarched volumes defined by signed distance fields. The world is endless and
   never repeats: every feature is drawn from a hash of where it is, generated as you fly toward
   it. Nothing is placed by hand, and there is no kit of set shapes.
-  * *Grown, not built.* There are no tower types, anvils or overhangs in the code; the clouds
-    grow from a few natural causes and every shape emerges from them:
+  * *Grown, not built.* There are no tower types or set shapes in the code; the clouds grow
+    from a few natural causes and every shape emerges from them:
     * *The air.* Slow fields decide how restless it is (broad unstable patches and long
       winding bands where air streams converge; elsewhere calm), how much stronger the wind
       blows higher up and from where, where the ceiling (tropopause) lies, how strong the
@@ -52,22 +52,27 @@ towers that rise above the sea, but the bird is softly kept from sinking deep in
       crowd outward, and boils up into domes on domes as it slows. Calm air holds even big
       bubbles down under its inversion; restless air lets them break through and climb until the
       air above stops them, the strongest up to the ceiling, which nothing passes.
+    * *Towers.* Where a pulse rises high it leaves a tower built as a cumulus is: a heap of
+      turrets, thermal on thermal, each a third to a half the size of what it rose through,
+      packed over a body that is broad where it swells out of the sea and narrower toward its
+      head, the highest turret off the middle. The wind leans it; as it ages its turrets melt
+      into it and it goes from the top down.
     * *Time.* A cell keeps sending bubbles up for a while: weak while it builds up, strongest in
       its prime, dying down at the end, each bubble rising through what the earlier ones left and
-      squeezing past the domes in its way. What stopped rising settles into domes, spreads out
-      beneath stable air (a little under the inversion, far under the ceiling), sags, drifts with
-      the wind of its height and evaporates, ice high up lingering longest. Outflows set off new
-      cells nearby, while the air sinking around a strong tower holds weaker cells next to it
-      down.
+      squeezing past the domes in its way. What stopped rising low settles into domes and spreads
+      out beneath the inversion; everything sags, drifts with the wind of its height and
+      evaporates, ice high up lingering longest. Outflows set off new cells nearby, while the
+      air sinking around a strong tower holds weaker cells next to it down.
     * Out of this come heaps on a lumpy, swelling sea, lone giants rising 10 km and more above
-      it, clusters and long walls, leaning and sheared towers, overhangs and gaps to fly under,
-      decaying towers torn by the wind and crumbling from the top, and storms that hit the
-      ceiling and spread into wide, flat anvils. Weak pulses lie on the sea as domes of its
-      surface; tall ones are true 3D bubbles, so the sea and the towers are one system. A piece
-      of cloud cut off from the rest evaporates first, so nothing floats free.
-    * *Where you start.* The restless air is drawn again and again (each draw as random as any
-      other) until one leaves the air around the bird calm and open toward the sun, with strong
-      cells off to the right of it, lit from the side.
+      it, clusters and long walls, leaning towers with turrets to fly under and gaps to fly
+      through, old towers softening and crumbling from the top, and giants rounding off under
+      the ceiling. Weak pulses lie on the sea as domes of its surface; tall ones are true 3D
+      bubbles, so the sea and the towers are one system. A piece of cloud cut off from the rest
+      evaporates first, so nothing floats free.
+    * *Where you start.* The weather is moved against the sea again and again (each try as
+      random as any other) until one leaves the air around the bird calm and open toward the
+      sun, with a strong tower ahead to the right of it, lit from the side, into whose rising
+      air the bird flies in two or three minutes if it just flies on.
   * *Billows.* The sea itself is always overturning, so it is billowy everywhere: big rolling
     mounds covered in smaller bulges, covered in even smaller ones. They are an *fbm of spheres*
     (random spheres baked into tileable 3D textures, the large ones packed close, merged octave

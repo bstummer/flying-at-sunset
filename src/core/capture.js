@@ -26,9 +26,11 @@ const KEEP = params.keep ?? 1, EVERY = params.every ?? 1;
 const LAST = FRAMES - 1 + (KEEP - 1) * EVERY;   // the index of the last frame rendered
 
 // The scripted flights (tools/flights.js, the flight check): steer(t) gives [right, up] in -1..1
-// at t seconds. reach: on from the start until the first tower's rising air is felt, then a held
-// climb in it, circling (its time to the flank and to the head: tools/flights.js).
-let felt = null;
+// at t seconds. reach: on from the start into the first tower's rising air, until it is strong (or
+// 25 s after it was first felt: a tower is broadest at its foot, and a climb begun at the first
+// whiff circled out of its air), then a held climb in it, circling (its time to the flank and to
+// the head: tools/flights.js).
+let felt = null, whiff = null;
 const ROUTES = {
   dive: (t) => [0, t > 1 && t < 9 ? -1 : 0],
   climb: (t) => [0, t > 1 && t < 12 ? 1 : 0],
@@ -37,7 +39,8 @@ const ROUTES = {
   divedeep: (t) => [0, t > 0.5 ? -1 : 0],
   holddive: () => [0, -1],
   reach: (t) => {
-    if (felt === null && bird_.lift > 3) felt = t;
+    if (whiff === null && bird_.lift > 3) whiff = t;
+    if (felt === null && (bird_.lift > 12 || (whiff !== null && t - whiff > 25))) felt = t;
     return felt === null ? [0, 0] : [0.35, 1];
   },
 };

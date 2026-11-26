@@ -143,11 +143,7 @@ function runJob(job, O, passes = 0) {
     const b0 = bubUsed;
     if (nb) device.queue.writeBuffer(T.bub.buf, b0 * 48, bub);
     bubUsed += nb;
-    // (the largest lobes are baked in render space: the block's corner there, the billow warp)
-    const vals = Object.assign({
-      tCol: L.col, bBub: T.bub, tShape: T.shape, nb, b0, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0,
-      p0: [job.gi * L.cell - O[0], job.gj * L.cell - O[2]],
-    }, warpPhases(O));
+    const vals = { tCol: L.col, bBub: T.bub, nb, b0, tex0: [tx, ty], cellH: L.cell, cellV: L.cellV, maxD: L.maxD, mask: CLIP_M, z0: 0 };
     const viewport = [tx, ty, job.ni, job.nj], z1 = passes ? Math.min(L.nz, (job.z ?? 0) + passes * NOUT) : L.nz;
     for (let z = job.z ?? 0; z < z1; z += NOUT) { vals.z0 = z; pass(P.bake, [...slices(L.vol, z, NOUT), ...slices(L.bs, z, NOUT)], vals, { viewport }); }
     job.z = z1;

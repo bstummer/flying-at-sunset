@@ -5,23 +5,26 @@
 //   ("tiers") by size, 8, 16 and 32 km across.
 // - growCell: a cell sends up pulses through its life, weak as it builds up, strongest in its prime;
 //   no bubble bigger than R_TH (a bigger cell sends more of them). Each pulse is lifted alone first
-//   (thermals.js): if it rises past H_FLAT it is tall and grown in full as 3D bubbles, else its
-//   pieces become 2D domes on the sea. Each 3D bubble carries how big its billows are (bs: a
-//   quarter to two thirds of its radius, drawn per bubble: the shaders grow lobes only on big ones)
-//   and how lively (act: young heads 1, fading with age, sooner in the wake: old parts soften).
+//   (thermals.js): if it rises past H_FLAT it is tall, a heap of turrets (3D bubbles: heap), else
+//   what it shed is grown and its pieces become 2D domes on the sea. Each 3D bubble carries how big
+//   its billows are (bs: its own size to half again, drawn per bubble: a turret carries lobes, the
+//   shaders grow them only on big ones) and how lively (act: young ones 1, fading with age, sooner
+//   in the body: old parts soften).
 // - subsidenceAt: air sinking around a stronger cell nearby holds weaker ones down (a stronger
 //   inversion, less buoyancy, a lower top), which spaces the towers. A cell's outflow also sets off
 //   younger cells near it, mostly downwind, two generations deep.
 // - tierCell grows the cells of one grid cell, dropping a cell's 3D bubbles if any comes near the
-//   bird's start, bubbles a bigger one holds (pruneBubbles) and pieces that don't hang together with
-//   the sea (dropAdrift: cut off, they would evaporate first), and sums up each tower for the test
+//   bird's start, bubbles a bigger one holds (pruneBubbles) or the others hide between them
+//   (dropBuried; not for the coarsest level, whose towers have few turrets) and pieces that don't hang together with the sea (dropAdrift: cut off, they would
+//   evaporate first), and sums up each tower for the test
 //   views and the tools. Grid cells are cached (separately for the coarsest clipmap level, grown
 //   without the pieces under 600 m); worldGC forgets far ones. What a place holds never depends on
 //   what was asked before (tests/world.test.js). forEachDome, forEachSys: what lies over a box.
 // - The spawn draw (spawnDraw, once, in the world's worker): the weather (the restless air, REST_O,
 //   and the grids of sites, SITE_O) is moved against the sea until one of its strong cells stands
-//   ahead of the start as the first tower, beside the sun, with towers near and far around it but
-//   toward the sun; ?weather moves it so instead. If the sun's azimuth, the start's heading or the
+//   ahead of the start as the first tower, beside the sun, where the bird flies into its rising air
+//   if it just flies on, with towers near and far around it but toward the sun; ?weather moves it
+//   so instead. If the sun's azimuth, the start's heading or the
 //   wind change, revisit its bearings. A living tower's air rises (lift: queries.js's liftAt).
 
 import { params } from '../core/params.js';
@@ -29,7 +32,7 @@ import { clamp, lerp, mulberry32, PI, sat } from '../math.js';
 import { cellRng, gauss, hashU, poisson } from './noise.js';
 import { airAt, REST_O, restAt, seaLevelAt, setRestOffset, warpAt } from './air.js';
 import { ellDist } from './shapes.js';
-import { H_FLAT, headUp, lifeOf, lift, nearStart, placeDome, R_TH, replay, settle, setStartY, START_Y } from './thermals.js';
+import { H_FLAT, headUp, heap, lift, nearStart, placeDome, R_TH, replay, settle, setStartY, START_Y } from './thermals.js';
 
 // A cell is a place where bubbles keep rising for a while. Its potential P (m) is the size of the
 // strongest bubbles it can send up: small cells are common, big ones rare (a power law), a little
@@ -50,9 +53,11 @@ const LIFT = 30;        // m/s: the rising air of the strongest living tower
 // (m) how far the grids are shifted against the sea: the spawn draw's, with the restless air's REST_O
 let SITE_O = [0, 0];
 // coarse: for the coarsest clipmap level, every pulse grown as for the others but without the pieces
-// under COARSE_R, which it can't hold (grown across its 524 km they would take seconds): its heaps
-// and towers are the others' (tools/world/levels.js)
-const COARSE_R = 600;
+// under COARSE_R, which it can't hold (grown across its 524 km they would take seconds), and of a
+// tower's turrets only those of COARSE_T or more (its cells are 2 km: a body without turrets
+// keeps a wake's width, about what they add up to): its heaps and towers are the others'
+// (tools/world/levels.js)
+const COARSE_R = 600, COARSE_T = 1400;
 function growCell(c, coarse, out3, out2) {
   const A = c.A, rng = mulberry32(c.seed);
   const C = { A, age: c.age, depth: c.P < 1000 ? 2 : 3, log: null, paths: [], heads: [] };
@@ -84,21 +89,21 @@ function growCell(c, coarse, out3, out2) {
     // the bubble alone first: how high it gets decides whether this pulse stays low; then what it
     // shed (its path is the same whatever it sheds: that draws from streams of its own)
     const path = [t, zs], log = [], list = [];
-    Object.assign(C, { log, trails: false, path, top: -1e9 });
+    Object.assign(C, { log, path, top: -1e9 });
     const hd = lift(C, lx, zs - 0.6 * r0, lz, r0, w0, 1, t, 0, 0, C.depth, mulberry32(seed), [], null);
     const tall = Math.max(C.top, hd.y + headUp(A, hd)) >= zs + H_FLAT;
     path.push(Math.max(hd.t, t + 1), hd.y + 0.5 * hd.r);
-    Object.assign(C, { log: null, trails: tall, minR: coarse ? COARSE_R : tall ? 250 : 150 });
-    replay(C, log, hd, list);
+    Object.assign(C, { log: null, minR: coarse ? COARSE_R : 150 });
     C.paths.push(path);
     if (!hd.still) C.heads.push(hd);
-    // what it left, aged to the moment the world shows: tall pulses as bubbles (3D), low ones as
-    // domes on the sea (2D: heads and lobes, each on the dome of what it grew from)
+    // what it left, aged to the moment the world shows: a low pulse as domes on the sea (2D: heads
+    // and lobes, each on the dome of what it grew from), a tall one as a heap of turrets (3D
+    // bubbles, none under 420 m: the billows are that size)
     const pieces = [];
     if (!tall) {
+      replay(C, log, hd, list);
       list.sort((p, q) => q.depth - p.depth);
       for (const e of list) {
-        if (!e.head) continue;
         pieces.length = 0;
         const hp = settle(c, e, pieces);
         if (!hp) continue;
@@ -107,30 +112,15 @@ function growCell(c, coarse, out3, out2) {
         for (const p of pieces) placeDome(p, sea, out2);
       }
     } else {
-      // (bubbles too small to matter beside the billows are left out whole, wake and all)
-      // a head evaporates no slower than the column under it: as far as the middle of the wake it
-      // left, above the lowest third of its rise (near the sea the moist air keeps the column); a
-      // crown without a wake of its own, as its parent (a wide top on a stem the dry air has eaten
-      // would be a mushroom)
-      const stem = new Map();
-      for (const e of list) {
-        if (e.head || e.r <= 420 || e.y < zs + (e.of.y - zs) / 3) continue;
-        const l = stem.get(e.of), ev = (c.age - e.t) / lifeOf(c, e);
-        if (l) l.push(ev); else stem.set(e.of, [ev]);
-      }
-      for (const e of list.filter(e => e.head).sort((p, q) => q.depth - p.depth)) {
-        const l = stem.get(e);
-        if (l) e.colEv = l.sort((p, q) => p - q)[l.length >> 1];
-        else if (e.parent && e.parent.colEv !== undefined) e.colEv = e.parent.colEv;
-      }
-      for (const e of list) if (e.r > 420) settle(c, e, pieces, true);
+      heap(c, zs, log.filter(e => !Array.isArray(e)), hd, seed ^ 0x5bd1e995, coarse ? COARSE_T : 420, pieces);
       for (const p of pieces) {
         if (Math.max(p.rh, p.ryU) < 200 || p.y + p.ryU < zs - 150) continue;
         const rmin = Math.min(p.rh * Math.min(p.an, 1 / p.an), p.ryU, p.ryD);
-        // how big the billows on it are: a quarter to two thirds of its radius, each bubble its own
-        // (one boils in small turrets, its neighbour in broad lobes); and how lively they still are:
-        // the eddies die down as a piece ages, sooner in the wake than in a head (old parts soften)
-        const bs = p.rh * lerp(0.25, 0.7, hashU(Math.floor(p.x), Math.floor(p.z), 0xb105) / 4294967296);
+        // how big the billows on it are: its own size to half again, each bubble its own (so a
+        // turret carries lobes and those carry turrets: shaders/cloud.js; one boils finer than its
+        // neighbour); and how lively they still are: the eddies die down as a piece ages, sooner in
+        // the body than in a turret (old parts soften)
+        const bs = p.rh * lerp(1, 1.6, hashU(Math.floor(p.x), Math.floor(p.z), 0xb105) / 4294967296);
         const act = Math.exp(-p.age / 700) * (p.kind === 0 ? 0.8 : 1);
         out3.push({ x: p.x, y: p.y, z: p.z, rh: p.rh, ryU: p.ryU, ryD: p.ryD, an: p.an, ang: p.ang, k: p.kf * rmin, bs, act,
           br: Math.max(p.rh * Math.max(p.an, 1 / p.an), p.ryU, p.ryD), cell: c });
@@ -151,6 +141,33 @@ function pruneBubbles(out, from) {
     }
     if (!inside) out.push(b);
   }
+}
+// drop the bubbles (of out[from..]) that lie wholly inside the others (a turret on the side
+// another body covers): nothing of them shows, and the bakes loop over every one. (Each against
+// its neighbours along x only: against every other, a cell took a third longer to grow.)
+const DIRS = [];
+for (let i = 0; i < 20; i++) { const y = 1 - (i + 0.5) / 10, r = Math.sqrt(1 - y * y), a = i * 2.39996; DIRS.push([Math.cos(a) * r, y, Math.sin(a) * r]); }
+function dropBuried(out, from) {
+  const bub = out.splice(from).sort((a, b) => a.br - b.br), n = bub.length, gone = new Uint8Array(n);
+  const byX = bub.map((b, i) => i).sort((i, j) => bub[i].x - bub[j].x), at = new Int32Array(n);
+  byX.forEach((i, k) => { at[i] = k; });
+  const big = n ? bub[n - 1].br : 0;
+  for (let i = 0; i < n; i++) {
+    const b = bub[i], near = [], reach = b.br + big;
+    const take = j => { const o = bub[j]; if (!gone[j] && Math.abs(o.x - b.x) < o.br + b.br && Math.abs(o.z - b.z) < o.br + b.br && Math.abs(o.y - b.y) < o.br + b.br) near.push(o); };
+    for (let k = at[i] - 1; k >= 0 && b.x - bub[byX[k]].x < reach; k--) take(byX[k]);
+    for (let k = at[i] + 1; k < n && bub[byX[k]].x - b.x < reach; k++) take(byX[k]);
+    const ca = Math.cos(b.ang), sa = Math.sin(b.ang);
+    let buried = near.length > 0;
+    for (const d of DIRS) {
+      const qx = d[0] * b.rh * b.an, qz = d[2] * b.rh / b.an, px = b.x + qx * ca - qz * sa, py = b.y + d[1] * (d[1] > 0 ? b.ryU : b.ryD), pz = b.z + qx * sa + qz * ca;
+      let inside = false;
+      for (const o of near) if (ellDist(o, px, py, pz) < -40) { inside = true; break; }
+      if (!inside) { buried = false; break; }
+    }
+    if (buried) gone[i] = 1;
+  }
+  for (let i = n - 1; i >= 0; i--) if (!gone[i]) out.push(bub[i]);
 }
 // a piece of cloud cut off from the rest, up in the air, is surrounded by dry air and evaporates
 // first: keep only the pieces (of out[from..]) that hang together, piece by piece, with the sea (zs)
@@ -213,17 +230,23 @@ function subsidenceAt(x, z, P) {
 }
 // The spawn draw: the bird sets out where the weather is worth seeing. The weather (the restless air
 // and the cells' grids) is moved against the sea so that one of its strong cells, nearest the
-// weather's origin first, stands where the first tower should: each try is another cell, as random
-// as any other. A try holds if that cell, grown, is a living tower whose flank the bird meets ahead
-// (FIRST: 2-3 minutes at cruise), beside the sun but not across it, in frame on wide and tall
-// screens (flight/camera.js, startYaw), the air toward the sun calm (the sunset open), and strong
-// cells stand near and far in each quarter but the sun's (a guess from the sites, not grown); the
-// first try that holds all, else the best. SPAWN: what it found (tools/world/stats.js prints it).
+// weather's origin first, stands where the first tower should, or, if none fits there, a little
+// off it (PLACES): each try is another cell or place, as random as any other. A try holds if that cell, grown, is a
+// living tower into whose rising air the bird flies if it just flies on (FIRST: 2-3 minutes at
+// cruise, on the heading of a wide screen: flight/camera.js, startYaw), with nothing nearer the
+// start, what of it stands in the sky beside the sun but not across it (in frame on wide and tall
+// screens), the air toward the sun calm (the sunset open), and strong cells stand near and far in
+// each quarter but the sun's (a guess from the sites, not grown); the first try that holds all,
+// else the best: of those that hold, by the cells around; else the one that came nearest.
+// SPAWN: what it found (tools/world/stats.js prints it).
 export const SPAWN = { tries: 0 };
 // the first tower: a cell of P pa..pb put at bearing a (0: the sun), d m off; it holds if its top
-// is over `top`, the nearest it comes at the bird's height is near..far m, and its outline's left
-// edge lies at bearings a0..a1
-const FIRST = { pa: 3000, pb: 4500, a: 0.9, d: 14000, top: 8500, near: 8500, far: 12500, a0: 0.3, a1: 0.6 };
+// is over `top`, its air rises at `lift` m/s or more, a bird flying on at bearing `yaw` is within
+// reach of that air m0..m1 m on, nothing of its grid cell stands within `clear` m of the start at
+// the bird's height, and the left edge of what stands over the bird's height lies at bearings a0..a1
+const FIRST = { pa: 3000, pb: 4500, a: 0.85, d: 13500, top: 8500, lift: 18, yaw: 0.45, m0: 6500, m1: 11200, clear: 6000, a0: 0.27, a1: 0.6 };
+// (the places a cell is tried at: how far off FIRST's bearing and distance)
+const PLACES = [[0, 0], [-0.1, -1000], [0.1, 1000], [-0.2, -1500]];
 // the weather as four numbers: REST_O, SITE_O (?weather; the worker hands the draw's to the page)
 export const weatherOf = () => [...REST_O, ...SITE_O];
 export function setWeather(w) {
@@ -247,6 +270,16 @@ function outline(bs, y) {
     if (Math.abs(dy) < 1) near = Math.min(near, d - b.rh * Math.sqrt(1 - dy * dy));
   }
   return { near, a0, a1 };
+}
+// how far a bird flying straight on from the start (at bearing FIRST.yaw) flies until it is within
+// reach of the air rising around the bubbles bs (queries.js, liftAt: over a third of its strength)
+function meets(bs) {
+  const sx = Math.sin(FIRST.yaw), sz = -Math.cos(FIRST.yaw);
+  for (let d = 2000; d < 16000; d += 150) for (const b of bs) {
+    const x = sx * d, z = sz * d;
+    if (Math.abs(b.x - x) < b.br + 700 && Math.abs(b.z - z) < b.br + 700 && ellDist(b, x, START_Y, z) < 650) return d;
+  }
+  return 1e9;
 }
 // strong cells by quarter (right, behind, left) and range (10-30, 30-60 km): how many of the six
 // hold any
@@ -274,20 +307,27 @@ export function spawnDraw() {
     for (let j = -n; j < n; j++) for (let i = -n; i < n; i++) for (const o of tierSites(T, i, j)) if (o.P > FIRST.pa && o.P < FIRST.pb && o.I > 0.55) cands.push({ T, i, j, o, w: warpAt(o.x, o.z) });
   }
   cands.sort((p, q) => Math.hypot(p.o.x, p.o.z) - Math.hypot(q.o.x, q.o.z));
-  const px = Math.sin(FIRST.a) * FIRST.d, pz = -Math.cos(FIRST.a) * FIRST.d, wp = warpAt(px, pz);
   let best = null;
-  for (const c of cands.slice(0, 128)) {
-    SPAWN.tries++;
-    // (the restless air moved with it, as the warp has it: the air around the cell comes along)
-    setWeather([c.w[0] - wp[0], c.w[1] - wp[1], c.o.x - px, c.o.z - pz]);
-    const o = tierSites(c.T, c.i, c.j).find(s => s.k === c.o.k);
-    if (sector(-0.3, 0.1, 6000, 40000) > 0.4 || !o || o.I < 0.5 || subsidenceAt(o.x, o.z, o.P) > 0.45) continue;
-    const g = tierCell(c.T, c.i, c.j), t = g.towers.find(t => t.gen === 0 && t.x === o.x && t.z === o.z);
-    if (!t || t.top < FIRST.top || !t.cell.lift) continue;
-    const { near } = outline(g.bub, START_Y), { a0, a1 } = outline(g.bub.filter(b => b.cell === t.cell), START_Y);
-    const ok = near > FIRST.near && near < FIRST.far && a0 > FIRST.a0 && a0 < FIRST.a1, q = ok ? quarters() : 0, score = (ok ? 10 : 0) + q;
-    if (!best || score > best.score) best = { score, ok, weather: weatherOf(), near, a0, a1, top: t.top, P: t.P, quarters: q };
-    if (ok && q >= 5) break;
+  // (a place at a time, the next only if no cell held at the ones before: every try grows a cell)
+  draw: for (const [da, dd] of PLACES) {
+    if (best?.ok) break;
+    const px = Math.sin(FIRST.a + da) * (FIRST.d + dd), pz = -Math.cos(FIRST.a + da) * (FIRST.d + dd), wp = warpAt(px, pz);
+    for (const c of cands.slice(0, 128)) {
+      SPAWN.tries++;
+      // (the restless air moved with it, as the warp has it: the air around the cell comes along)
+      setWeather([c.w[0] - wp[0], c.w[1] - wp[1], c.o.x - px, c.o.z - pz]);
+      const o = tierSites(c.T, c.i, c.j).find(s => s.k === c.o.k);
+      if (sector(-0.3, 0.1, 6000, 40000) > 0.4 || !o || o.I < 0.5 || subsidenceAt(o.x, o.z, o.P) > 0.45) continue;
+      const g = tierCell(c.T, c.i, c.j), t = g.towers.find(t => t.gen === 0 && t.x === o.x && t.z === o.z);
+      if (!t || t.top < FIRST.top || t.cell.lift < FIRST.lift) continue;
+      const own = g.bub.filter(b => b.cell === t.cell), { near } = outline(g.bub, START_Y), { a0, a1 } = outline(own.filter(b => b.y + b.ryU > START_Y + 800), START_Y), met = meets(own);
+      const ok = near > FIRST.clear && met > FIRST.m0 && met < FIRST.m1 && a0 > FIRST.a0 && a0 < FIRST.a1;
+      // (how far off a try that does not hold is: km along the flight, a tenth of a radian, km of clear air)
+      const miss = Math.min(Math.max(0, FIRST.m0 - met, met - FIRST.m1), 1e4) / 1000 + 10 * Math.max(0, FIRST.a0 - a0, a0 - FIRST.a1) + Math.max(0, FIRST.clear - near) / 1000;
+      const q = ok ? quarters() : 0, score = ok ? 10 + q : -miss;
+      if (!best || score > best.score) best = { score, ok, weather: weatherOf(), near, met, a0, a1, top: t.top, P: t.P, quarters: q };
+      if (ok && q >= 5) break draw;
+    }
   }
   setWeather(best ? best.weather : [0, 0, 0, 0]);
   Object.assign(SPAWN, best);
@@ -319,6 +359,7 @@ function tierCell(T, ci, cj, coarse = false) {
     }
     if (bub.length > n3) {
       pruneBubbles(bub, n3);
+      if (!coarse) dropBuried(bub, n3);
       dropAdrift(bub, n3, A.zs);
       // what became of it (for the views of the test presets): its top, how far its top spread
       let top = 0, wide = 0;

@@ -1,5 +1,6 @@
 // The labels the tools name their output by in screenshots/: a capture's folder
-// (tools/screenshot.js), a flight log's file (tools/flights.js), a cost run's (tools/cost.js). A
+// (tools/screenshot.js), a flight log's file (tools/flights.js), a cost run's (tools/cost.js), a
+// survey's folder (tools/survey.js). A
 // module of its own: flights.js importing them from screenshot.js would close the loop
 // screenshot.js → checks.js → flights.js, and a tool's main, awaited at its top level, would wait
 // for itself (tests/layout.test.js).
@@ -10,7 +11,7 @@ import { ROOT } from './browser.js';
 const RESERVED_LABELS = {
   compare: 'compare sheets go there', world: 'the world tools write their images there',
   checks: 'tools/checks.js run alone writes its images there', flights: 'tools/flights.js writes its logs there',
-  cost: 'tools/cost.js writes its runs there',
+  cost: 'tools/cost.js writes its runs there', survey: 'tools/survey.js writes its surveys there',
 };
 
 // The commit the tools ran on: its short hash, with '-dirty' when the working tree has changes.

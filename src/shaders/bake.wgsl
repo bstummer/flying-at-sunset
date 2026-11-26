@@ -1,10 +1,9 @@
 #include "chunks/common.wgsl"
-#include "chunks/lobes.wgsl"
 
 // NOUT slices of a block of a clipmap's distance volume: the sea (from the column map, its distance
-// slope-corrected) united with the block's bubbles, with a broad fillet where they swell out of it,
-// and the largest lobes on the towers; and the same slices of its billows: how big and how lively
-// those of the nearest are (shaders/volumes.js)
+// slope-corrected) united with the block's bubbles, with a broad fillet where they swell out of it;
+// and the same slices of its billows: how big and how lively those of the nearest are
+// (shaders/volumes.js)
 const NOUT = 4;
 struct Slices {
   @location(0) o0: f32,
@@ -31,14 +30,13 @@ fn ellD(q: vec3f, r: vec3f) -> f32 {   // distance to an ellipsoid (good near it
   let y0 = (f32(u.z0) + 0.5) * u.cellV;
   let y1 = y0 + u.cellV * f32(NOUT - 1);
   var acc: array<f32, NOUT>;
-  var big: array<f32, NOUT>;   // (the distance to the massive bubbles alone)
   // (the billow scales of the bubbles, weighted by how near their surfaces are: within about KS
   // the nearest decides, between two they blend; the same in every level, or the billows would
   // change where the trace hands over from one level to the next)
   var sw: array<f32, NOUT>;
   var sws: array<vec2f, NOUT>;
   let KS = 250.0;
-  for (var k = 0; k < NOUT; k++) { acc[k] = u.maxD; big[k] = u.maxD; sw[k] = 0.0; sws[k] = vec2f(0.0); }
+  for (var k = 0; k < NOUT; k++) { acc[k] = u.maxD; sw[k] = 0.0; sws[k] = vec2f(0.0); }
   for (var b = 0; b < u.nb; b++) {
     let i = 3 * (u.b0 + b);
     let A = bBub[i];
@@ -50,12 +48,10 @@ fn ellD(q: vec3f, r: vec3f) -> f32 {   // distance to an ellipsoid (good near it
     let sa = sin(B.w);
     let q = vec2f(dxz.x * ca + dxz.y * sa, -dxz.x * sa + dxz.y * ca);
     let rxz = vec2f(A.w * B.z, A.w / B.z);
-    let massive = E.y >= 700.0;
     for (var k = 0; k < NOUT; k++) {
       let dy = y0 + f32(k) * u.cellV - A.y;
       let e = ellD(vec3f(q.x, dy, q.y), vec3f(rxz.x, select(B.y, B.x, dy > 0.0), rxz.y));
       acc[k] = smin(acc[k], e, E.x);
-      if (massive) { big[k] = min(big[k], e); }
       let we = exp2(-max(e, 0.0) / KS);
       sw[k] += we;
       sws[k] += we * E.zw;
@@ -65,17 +61,11 @@ fn ellD(q: vec3f, r: vec3f) -> f32 {   // distance to an ellipsoid (good near it
   var bil: array<vec2f, NOUT>;
   for (var k = 0; k < NOUT; k++) {
     let above = y0 + f32(k) * u.cellV - hs;
-    var r = smin(above * cs, acc[k], mix(700.0, 60.0, smoothstep(0.0, 1800.0, above)));
+    let r = smin(above * cs, acc[k], mix(700.0, 60.0, smoothstep(0.0, 1800.0, above)));
     let ws = exp2(-max(above * cs, 0.0) / KS);
     let wt = sw[k] + ws;
     // (the sea's billows: SEA_BS, lively)
     let bb = select(vec2f(SEA_BS, 1.0), (sws[k] + ws * vec2f(SEA_BS, 1.0)) / wt, wt > 1e-30);
-    let bs = bb.x;
-    // the largest lobes, on big towers only: well above the sea and its heaps (their shell never
-    // reaches down to it), near massive bubbles (a fragment would swell into a ball floating in the
-    // sky) whose billows are broad
-    let w = smoothstep(600.0, 1600.0, above) * (1.0 - smoothstep(500.0, 1200.0, big[k])) * smoothstep(600.0, 1400.0, bs);
-    if (w > 0.01) { r = bigLobes(r, vec3f(u.p0.x + pl.x, y0 + f32(k) * u.cellV, u.p0.y + pl.y), w); }
     res[k] = vec2f(clamp(r, -u.maxD, u.maxD), 0.0);
     bil[k] = bb;
   }

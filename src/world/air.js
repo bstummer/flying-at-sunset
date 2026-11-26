@@ -5,10 +5,11 @@
 // is, how much stronger the wind blows higher up, where the ceiling is and how moist the air is.
 // Bubbles of warm air rise out of the sea of clouds, a few far stronger than the rest: they swell,
 // shed smaller bubbles that crowd outward, lose strength as they mix with the air around them and
-// settle into domes when it runs out; the ceiling stops even the strongest, which then spread out
-// sideways. A convective cell keeps sending bubbles up for a while, each rising through what the
-// earlier ones left. Whatever stopped rising drifts with the wind of its height, spreads, sags and
-// evaporates. Most cells only heap up the sea; the strong ones grow towers out of it.
+// settle into domes when it runs out; the ceiling stops even the strongest. A convective cell keeps
+// sending bubbles up for a while, each rising through what the earlier ones left. Whatever stopped
+// rising drifts with the wind of its height, spreads, sags and evaporates. Most cells only heap up
+// the sea; the strong ones grow towers out of it, each a heap of turrets: thermal on thermal,
+// every one a third to a half the size of what it rose through, as a cumulus is built.
 // air.js the air and the sea of clouds · thermals.js rising bubbles and what becomes of them ·
 // cells.js convective cells · shapes.js domes and bubbles · noise.js the seed and the noise ·
 // queries.js what the flight and the test views ask · columns.js what the GPU gets

@@ -33,7 +33,8 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
    `start`), the sea from above discs (`high2`), hazy faces ring outlines; no edge is ragged, so
    surfaces read solid: popcorn lit, rock in shade (`belly`, `turn`). → 16, 17, 18 (16: near edges
    ragged; from afar as before. 17: a tower's great turrets carry smaller ones, no flagstones; a
-   tower still a drum, the sea from above discs)
+   tower still a drum, the sea from above discs. 2026-11-27: a tower a heap of turrets in stages,
+   Done; the sea as it was)
 4. **Inside and under cloud**: `inside` an even tan card, `entry` a cobalt wash, `under` murk. A
    tower is 20 s to two minutes of card at cruise. And the way in (the author, in flight): the
    screen changes drastically as the camera goes into cloud, even at an edge or in a small one.
@@ -55,7 +56,8 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
    wings folded, seen from 20° over its back and a little to the side, the facets shading apart)
 9. **The sky**: its streaks all run one way; overhead mauve-grey; opposite the sun teal, where a
    photograph has rose; backlit rims don't blaze. → 16, 20
-10. **The anvil is a mesa**: a lumpy plateau, no fibrous ice, no glow. → 21
+10. **The anvil is a mesa**: a lumpy plateau, no fibrous ice, no glow. → 21 (2026-11-27: no
+    tower spreads under the ceiling any more, so there is no anvil at all: leg 21 grows one)
 11. **Artefacts**: a straight vertical edge (`past`, 1 s on; softer since leg 16, still straight: the
     shape's), a blue outline around near lit cloud
     (`gap`), a checkerboard on thin far cloud in the first half second (`away`), a stair-stepped
@@ -180,14 +182,18 @@ Air that shows how far away things are, and a sky a photographer would know.
   that tall would pierce it and clear the air around it.
 - **Layers at other heights**, if the author wants them.
 
-Judged by `sun`, `anvil`, `high2`, `seed3`, `away`, `climb`.
+Judged by `sun`, `far`, `high2`, `seed3`, `away`, `climb`.
 
 ### Leg 21: ice
 
 An anvil is smooth, fibrous, thin at its rim, and glows where the sun comes through. Old cloud
 high up is ice: no cauliflower, a long fringe drawn out along the wind, a thinner medium, an
 outline soft at any distance. The shaders have its height and its liveliness; the world could thin
-an anvil to its rim. Judged by `anvil`.
+an anvil to its rim. Judged by `far` (`anvil` until 2026-11-27). Since the towers are heaps
+(Done), none spreads under the ceiling: the giants round off there, and an anvil has to be grown
+here first, as ice: a thin smooth sheet drawn out from a giant's head, wider than the tower. Not
+lobes of the cumulus kind again: those were mushroom caps, discs and lenses (decisions), and a
+wide top fails the towers' test (tests/world.test.js) unless it is told apart.
 
 ### Leg 22: loose ends, then the review again
 
@@ -527,6 +533,67 @@ before it:
    (one direction from one tower found none in some worlds). The spawn draw takes a first tower
    from 8.5 km at the bird's height (9: seed 18's held by 4 m). `catalog.js` takes `SCALE`.
 
+**Towers as heaps of turrets** (2026-11-27, the author, of a tower that was a dome of even knobs
+on a wider drum: "still not acceptable"; "you can even rethink the entire idea of how towers
+should look like"; and, of the views a session looks at: "probably the best parts of the world").
+Judged throughout on the eight towers nearest the start, each from two sides, none picked
+(tools/survey.js), by reviewers who saw only images under neutral letters.
+1. **A tall pulse is a heap of turrets** (world/thermals.js, `heap`; the wake as a drum under one
+   ball of a head, its crowns and its lobes are gone from towers). The wake's lumps, drawn in
+   toward the path, are a body 0.62 of the bubble that rose (broader by 0.45 at the sea); it
+   narrows in up to three stages, each to 0.58–0.85 of itself and standing to one side of the one
+   below: shoulders. All over it, on the shoulders and over the head, turrets of 0.25–0.7 of the
+   bubble (most small, a few great), their centres just under the body's surface, 1.45 radii
+   apart, meeting in creases: each shows as a cap. The head is the size of its stage, its top
+   where the pulse's was, its greatest turret off the middle. It leans 0.25 m per metre at most,
+   0.6 in the most sheared tenth of the air; nothing in it is further gone than what stands on it;
+   old, its turrets melt into it. Each bubble's billows are its own size to half again (a quarter
+   to two thirds before), so the shader's lobes and turrets grow on every turret.
+2. **The bake grows no lobes** (shaders/bake.wgsl; `bigLobes`, its warp uniforms and the shape
+   volume are out of the bake): on turrets they were horizontal shelves, lenses and ledges.
+3. **The old world against the heap**, by the stats and the new test: top-heavy (the widest section
+   of a tower's upper third over the narrowest of its middle third) p50 1.20 → 0.93, p90 1.73 →
+   1.09, the worst 2.99 → 1.25 (over seeds 1–20 at most 1.36; the old world 2.2–3.4 on the
+   three tried); leaning p50 0.55 → 0.28 m per metre,
+   the worst 1.82 → 0.60; tops over 9 km 68 → 71, over 12 km 13 → 14; how far a tower's top
+   reaches from its cell (P 3–5 km) 9.9 → 4.8 km; the sky at 6 km over the sea 8.2% → ~4% cloud
+   (scratch); bubbles in the 120 km box 4022 → 3767. tests/world.test.js holds every seed's towers
+   to it (under 1.8 and under 1 m per metre; the old world fails on every seed tried);
+   tools/world/shape.js measures, stats.js prints (its count of knobs is gone: turrets are meant).
+4. **The reviews** (each blind): the first heap against the old world 13 of 14 views, the old
+   world none ("primitives wrapped in one bump texture" against "towers made of turrets"); then,
+   four versions ranked on the same views, the one kept first with 33 of 42 points, the first
+   heap last (decisions); then its stages against it without them, 10 views to 2. No reviewer
+   found a view that passes as a photograph up close or in shade: what they still name is in the
+   known issues, most of it the light's (leg 18).
+5. **The spawn draw** asks what the piece promises: a bird flying straight on (the heading of a
+   wide screen) comes within reach of the first tower's rising air 6.5–11.2 km on, nothing of its
+   grid cell within 6 km of the start, the left edge of what stands over the bird at bearings
+   0.27–0.6; each cell tried at four places. It holds on seeds 1–20 (the bird in rising air over
+   10 m/s after 116–166 s); the nearest miss is kept where none holds. The other places only
+   where no cell fits the first (every try grows a cell: 66 tries a seed, as before). The cell at
+   bearing 0.85, 13.5 km (0.9, 14: the heaps are slimmer than the drums).
+6. **Presets and views**: `tower` and `approach` take the nearest clear place on a tower's sunward
+   side, either way round (a twin stood in the one direction tried); `giant` looks from a quarter
+   of the way up its tower; `under` is beneath the outer part of a turret with the most room
+   (8 of 8 seeds tried have one); `anvil` is retired, `far` in its place: the tallest tower from 40 km and 7 km up, against the sun. towerDistAt unites the
+   bubbles as the bake does. The `reach` flight circles once the air is strong (at the first
+   whiff it circled out of a tower that narrows upward): felt after 126 s (165), over 10 m/s for
+   91 s (111), 9.2 km up at 360 s (9.9).
+7. **What it costs** (tools/cost.js against the commit before, the laptop): the trace on the
+   views that stand where they stood, `start` −4%, `high2` −4%, `climb` +5%, `close` 0%
+   (`tower` and `giant` frame other places now). The bakes' load by level 26 / 24 / 114 ms
+   estimated (25 / 25 / 96): the far level takes a body and its turrets of 1.4 km or more (its
+   cells are 2 km), and keeps the pieces the others hide (dropping them there took the worker
+   0.3 s). The worker grows the world around the start in 2.8 s (2.6: Node, one thread), and the
+   first frame comes at 3.9 s (3.5; tools/checks.js player). At top speed no frame over 50 ms,
+   as before (the check alone; inside verify, sharing the GPU, 43).
+8. **tools/survey.js**: the towers nearest the start, each from two sides, none picked, and the
+   same cameras again for another build (`--poses`): what every step here was judged on.
+The sea's heaps are the old world's to the bit under one `?weather` (the views by pose keep their
+moments); the flights from the start differ from the first frame by 5–11 m (the draw's weather:
+the sea under the start).
+
 ## Decisions: what failed, and why
 
 What was tried and didn't work, why, and when. **A decision is evidence, not a rule**: when its
@@ -600,6 +667,50 @@ until the author says otherwise.
 - **Wake that keeps its roundness as it spreads** (2026-11-26, against flat discs at towers'
   bases; mushrooms over 2× 6 → 2): to a reviewer who saw only the images, flanks fluted in
   vertical streaks of stacked beads, and two towers straight-sided drums.
+
+- **The first heaps: balls on a thin core** (2026-11-27): turrets of 0.3–0.6 of the column
+  standing almost whole out of a core 0.6 of it, in rings a turret's height apart, then wound up
+  it in a spiral. Against the old world it won 13 of 14 views; ranked later among four it came
+  last: "whole spheres with pimples", balloons with black gaps between them, heads on necks,
+  boulders over haze. Rings were collars with bare trunk between; the spiral, at four to six a
+  turn, a string of beads; turrets that evaporated sooner than the trunk left a snowman (a head
+  with its turrets on a bare neck): everything in a heap now goes no sooner than what stands on
+  it. Two to four lesser turrets on each great one were pimples (a crown again): that size is the
+  shader's lobes, by each bubble's `bs`.
+- **One continuous body under shallow caps** (2026-11-27, after the first reviewer asked for
+  "shallow caps on a common body"): a body 0.72–0.85 of the column, turrets sunk 0.15–0.75 of
+  their radius into it and blended by 0.3 of their size. The session judged it the best yet; the
+  next reviewer, blind, put the balls before it 7 views to 2 ("a dome, a drum, a pill, a corn cob
+  in one-size popcorn": the turrets had merged into the envelope) and it came third of four. What
+  won: a slim body (0.62), turrets of many sizes standing 0.6–0.9 out of it but packed, meeting in
+  creases (a fillet of 0.12 of their size).
+- **A session's eye for its own towers** (2026-11-27): twice the version the session thought best
+  lost a blind ranking, and side views on the CPU misled it again (a lumpy potato there was the
+  winner on the GPU, with the shader's lobes on it). Variants on the same poses, ranked by someone
+  who sees only letters, decided every step after that.
+- **The bake's largest lobes on turrets** (2026-11-27): horizontal shelves, "meringue lenses" and
+  "bracket-fungus ledges" on near flanks (clipped to a flat ceiling, squashed 1.2×); without them
+  the same flank is round cauliflower. Removed (Done).
+- **A tower sheared as far as the wind takes it** (the old world, and the first heaps): the bubble
+  drifts as it rises and every piece again as it ages, so a head stood kilometres off its foot: "a
+  boulder hovering on haze", undercut bellies, the worst shapes of every review. Capped (`LEAN`).
+  Capped at 0.3 everywhere, no seed had anything to fly under; hence more in the most sheared air.
+- **A cell's pulses spread over the cell** (2026-11-27: within P, not 0.6 P, the strong ones no
+  nearer the middle): towers as massifs, no better in the views than the stages of one column,
+  and it moves every heap on the sea, which the views by pose stand on. Dropped: the sea is the
+  old one to the bit.
+- **A head's turrets clipped to its top** (2026-11-27): the great ones were cut flat at one
+  height: a lid, with a beak where one hung over the edge. **The head raised to the pulse's top
+  without the trunk** left a bare neck (top-heavy to 2.3 on some seeds: the test caught it).
+  **The wake's lumps half as far off the path as they were shed**: small turrets where the body
+  had drawn back stood beside it, stray dark balls; a quarter now, and no turret's centre outside
+  the body. **A stage narrower than its turrets need**: a bare finger on a shoulder.
+- **Reference photographs** (2026-11-27): the author's ruling stands against them, and the session
+  read it too late: three of these reviews had eight public photographs of towering cumulus
+  beside the renders, as a yardstick for how a tower is built (never in the repo or the piece; the
+  last check went by the vision's words alone, and agreed). What they taught is in the vision's
+  wording now (CLAUDE.md §1: a heap of turrets, big ones carrying smaller ones, broad at the sea,
+  standing on its feet). The author may want that judged again without them.
 
 ### The billows and the edge
 
@@ -967,18 +1078,27 @@ until the author says otherwise.
   doesn't set and there is no sound** (the author, 2026-11-25: out for now). With drift back,
   the sun map bakes all the time (0.11–0.15 ms a frame, lagging the billows by 2 s, 7 m); or it holds
   the large shapes alone, and the light march the billows' shadows near by.
-- **The towers' build** (all three reviewers of leg 17): a tower reads as a straight-sided drum
-  under one ball of a head, its face evenly covered in lumps, no few great turrets leaning out with
-  deep shadowed gaps between them; the billows only change its surface (more relief at their
-  largest scale made pillows: decisions). The first tower's head is one bubble ~8 km across
-  (tools/world/preview.js): bubbles up to R_TH (3.5 km) swell as they rise, and in a tower crowns
-  under 0.36 of their head stay in it (knobs). A strong pulse as several thermals side by side
-  failed (decisions: pillars, pawns, mushrooms; the reviewers preferred the drum's mass and
-  breadth). In the side views (catalog.js) what is left: flat discs and lenses in mid-air (heads'
-  lobes spread under stable air, old wake spread sideways only), a mushroom on a ribbed neck, the
-  flanks' wake in columns of stacked beads, lens-shaped mounds at the bases. Untried: a head
-  boiling into a few great turrets within its own volume (its outline lumpy, its mass kept), the
-  lobes of a spreading head thicker and nearer it.
+- **The towers** (the blind reviews of 2026-11-27, what they still name, most serious first):
+  - *The light's, on every version alike* (leg 18): a tower in shade is pale translucent fog, as
+    bright as the sky behind it, with a lit scoop on top and a ruler-straight line between; up
+    close in shade rock, packed snow or putty, with hard little shadows; the same crisp bumps from
+    crown to foot, so a backlit tower is pebble-dash, each bump with its own glint; sunlit faces
+    burnt to flat white; a haze band cuts every tower off the sea, so its broad foot is not seen.
+  - *The build's*: some towers are still one volume (an egg, a dome, a thumb) where a column has
+    no stage or one, and the size between a turret and the shader's bumps is thin from afar (the
+    1280 m lobes; beyond ~12 km the middle level's 512 m cells hold no turret under ~1 km). Level
+    dark slabs stand between towers (the sea's highest heaps, or what is left of old towers: not
+    looked into). Neighbouring towers top out at one height (the level where the air stops
+    buoying them). Nothing is ragged: no shreds, veils or scud at the flanks. There is no anvil
+    (leg 21).
+  - *To fly under* (the vision asks for it; the reviewers call every overhang a fault): only under
+    a turret of a tower leaning in strongly sheared air; `under` picks the roomiest such place,
+    600–850 m of clear air.
+  - *The far level* (beyond 40–55 km) takes a tower's body and its turrets of 1.4 km or more: its
+    cloud over the sea +4% against the middle level (−5% before), towers 3–6% lower there.
+  - *Loading*: the first frame 0.4 s later on the laptop (3.9 s; the heaps take the worker
+    longer to grow); a phone's is unmeasured.
+  - *Unmeasured*: the phone (`?bench`), and motion: the towers were judged in stills.
 - **Popcorn**: `away`'s horizon (60–80 km) is still beads: the 1280 m lobes, 90% of their cells
   filled, the turrets faded by then (leg 17 left the far towers as they were). Nearer, since leg 17
   a tower's great turrets carry 640 m ones on their caps, under ceilings billowed by the domes, but
@@ -987,15 +1107,12 @@ until the author says otherwise.
   billows sized as L0's, the far towers keeping their own outlines (a later handover to L2, what L2
   keeps of a head, a finer far level), sizes within a level by a power law where it doesn't
   compress (clusters failed: decisions). A real tower shows 2–4 dominant turrets, smaller domes on
-  their upper, sunward shoulders, older parts smoother (what failed: decisions). **Crowns perched on
-  heads**: crowns over 0.36 of their head remain, blended by a fillet wider than themselves (since
-  2026-11-26: half the knobs in the catalog, some now low bumps, a few pointed tips). **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird, `sun`,
+  their upper, sunward shoulders, older parts smoother (what failed: decisions). **Sunlit turret tops in shade** read as floating puffs (`start` beside the bird, `sun`,
   `tower`, `away`): attached (`?dbg=1`), their base melts into the shade.
-- **Tops**: flatter than 0.45 on 5% of the towers, 18% of those at the ceiling (stats.js); `seed3`
-  keeps one flat lens against the haze. Deep folds between lobes go near black (`tower`, `close`: a
+- **Tops**: flatter than 0.45 on 1% of the towers, none at the ceiling (stats.js, 2026-11-27). Deep folds between lobes go near black (`tower`, `close`: a
   navy pit).
 - **Silver linings** of far towers are a pixel wide: a backlit edge 10–20 km off lies within a trace
-  pixel (60–80 m) and doesn't blaze (`sun`'s right tower, `anvil`). Thin cloud over the outline's
+  pixel (60–80 m) and doesn't blaze (`sun`'s right tower, `anvil`, a view retired 2026-11-27: `far` now). Thin cloud over the outline's
   footprint, the light march thinned alike, makes them for +7% of the trace (leg 10, step 3); the
   author: not worth it (2026-11-23). Leg 16's fray keeps the medium's mean density, so from afar
   an edge is as it was: a thin fringe there for its own sake is untried.
@@ -1052,7 +1169,7 @@ until the author says otherwise.
   the world is calm air with only the sea and its heaps. Since leg 14 every seed 1–20 starts with its
   first tower ahead (`tests/world.test.js`), in 50–165 ms of the worker's time. The author: other
   seeds' starts don't matter (2026-11-24).
-- **A lattice at the level handovers** (~10–13 and ~40–55 km: `away`'s middle distance, `anvil`'s
+- **A lattice at the level handovers** (~10–13 and ~40–55 km: `away`'s middle distance, the retired `anvil`'s
   far sea): pixels dither between two levels; the history averages it at rest, 12-frame captures
   show it. At 40–55 km it is L2's 2 km columns; at 10–13 km L1's billows, sized from 512 m cells,
   rounder and larger than L0's. Levers: blending (+12–18%, decisions), L1's billow sizes nearer L0's
@@ -1105,7 +1222,7 @@ until the author says otherwise.
   just ahead filled the frame), put `close` at the nearest flank the sun reaches (in shade it read as
   fog) and turned `high2` toward the sun (the first tower filled half of it).
 - **The measurements' limits** are set for 960×540: at smaller sizes sunlit rims make `high2` and
-  `anvil` warn (CLAUDE.md §4). The tone, the texture and the motion have none: they wait for rows
+  `anvil` (retired 2026-11-27: `far` is unmeasured there) warn (CLAUDE.md §4). The tone, the texture and the motion have none: they wait for rows
   the author approves (what the author calls right, and what wrong).
 - The trace binds 16 sampled textures, core WebGPU's limit a stage: another needs two of them in one
   texture.

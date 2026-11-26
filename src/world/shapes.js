@@ -40,9 +40,10 @@ export function domeHeightAt(d, x, z) {   // its surface above (x, z), or -1e9 o
 }
 
 // ---- bubbles: ellipsoids, rounder or flatter above than below (3D)
-// approximate distance from (x, y, z) to bubble b (negative inside)
+// approximate distance from (x, y, z) to bubble b (negative inside; it keeps its angle's cosine
+// and sine on b: a tower's bubbles are asked thousands of times as it is grown)
 export function ellDist(b, x, y, z) {
-  const dx = x - b.x, dz = z - b.z, ca = Math.cos(b.ang), sa = Math.sin(b.ang);
+  const dx = x - b.x, dz = z - b.z, ca = b.ca ?? (b.ca = Math.cos(b.ang)), sa = b.sa ?? (b.sa = Math.sin(b.ang));
   const qx = dx * ca + dz * sa, qz = -dx * sa + dz * ca, qy = y - b.y;
   const rx = b.rh * b.an, rz = b.rh / b.an, ry = qy > 0 ? b.ryU : b.ryD;
   const k0 = Math.hypot(qx / rx, qy / ry, qz / rz), k1 = Math.hypot(qx / (rx * rx), qy / (ry * ry), qz / (rz * rz));

@@ -1,8 +1,8 @@
 // Where the bird starts for the test views (?preset=..., ?pose=...)
 //
 // Around the start: start sun away side skim high bank fastdive humps high2 upward. At towers the
-// world generated within 200 km, picked sunlit and in clear sight: tower giant anvil close approach
-// inside under (an anvil: a tower that reached its ceiling and spread wide). presetPose runs in the
+// world generated within 200 km, picked sunlit and in clear sight: tower giant far close approach
+// inside under. presetPose runs in the
 // world's worker (src/worker.js), and only when a preset is asked for: the search takes seconds;
 // placeBird puts the page's bird there, then at ?pose (main.js).
 
@@ -64,32 +64,41 @@ export function presetPose(pre) {
     return true;
   };
   const big = ts.filter(t => t.top > 8000 && Math.hypot(t.x, t.z) < 70000);
-  // (the nearest with such a view, sunlit ones first)
+  // the nearest place around a tower's sunward side with such a view (the sun behind the viewer,
+  // to one side or the other: a neighbour may stand in any one of them)
+  const sideOf = (t, y, gap, dmin) => {
+    let best = null;
+    for (const a of [1.1, 0.8, 1.4, -1.1, -0.8, -1.4]) {
+      const v = clearOf(t, -PI / 2 + a, y, gap, dmin);
+      if (v && (!best || Math.hypot(v.x - t.x, v.z - t.z) < Math.hypot(best.x - t.x, best.z - t.z))) best = v;
+    }
+    return best;
+  };
+  // (the nearest with such a view, sunlit ones first; from 9 km or its own height away, whichever is more)
   let bt = null;
   for (const t of [...big.filter(sunlit), ...big]) {
-    const v = clearOf(t, sideDir, null, 2500, 9000);
-    if (v) { presets.tower = Object.assign(v, { gamma: 0.12 }); bt = t; break; }
+    const v = sideOf(t, t.y0 + 1500, 2500, Math.max(9000, 1.1 * (t.top - t.y0)));
+    if (v) { presets.tower = Object.assign(v, { gamma: 0.1 }); bt = t; break; }
   }
   bt ??= big[0] || ts[0];
-  // (the tallest, from a little over twice its height away: its top near the frame's, its width
-  // half the frame's or more; from the sun's side, lit from either side, wherever it is nearest in
-  // clear sight; in a crowd, the next tallest that can be seen)
-  for (const g of [...big].sort((a, b) => b.top - a.top)) {
+  // (the tallest, from a little over twice its height away and a quarter of the way up it, over
+  // the sea's heaps: its top near the frame's, its width half the frame's or more; from the sun's
+  // side, lit from either side, wherever it is nearest in clear sight; in a crowd, the next tallest
+  // that can be seen)
+  const tallest = [...big].sort((a, b) => b.top - a.top);
+  for (const g of tallest) {
     let best = null;
     for (const a of [1.1, 0.8, 0.5, -0.5, -0.8, -1.1]) {
-      const v = clearOf(g, -PI / 2 + a, null, 3000, 2.2 * (g.top - g.y0));
+      const v = clearOf(g, -PI / 2 + a, g.y0 + 0.25 * (g.top - g.y0), 3000, 2.2 * (g.top - g.y0));
       if (v && (!best || Math.hypot(v.x - g.x, v.z - g.z) < Math.hypot(best.x - g.x, best.z - g.z))) best = v;
     }
-    if (best) { presets.giant = Object.assign(best, { gamma: 0.15 }); break; }
+    if (best) { presets.giant = Object.assign(best, { gamma: 0.1 }); break; }
   }
-  // (an anvil is nothing the world makes on purpose: a tower that hit the ceiling and spread wide)
-  const isAnvil = t => t.top > t.ceil - 700 && t.wide > Math.max(2.5 * t.R0, 9000);
-  // (seen from high up and far off, against the sun, as from an airliner: the nearest anvil with
-  // such a place, sunlit ones first)
-  const anvils = ts.filter(isAnvil);
-  for (const anv of [...anvils.filter(sunlit), ...anvils]) {
-    const v = clearOf(anv, PI / 2 + 0.08, 7000, 3000, 50000);
-    if (v) { presets.anvil = Object.assign(v, { gamma: 0.02 }); break; }
+  // (a tall tower from high up and far off, against the sun, as from an airliner: the tallest with
+  // such a place)
+  for (const g of tallest) {
+    const v = clearOf(g, PI / 2 + 0.08, 7000, 3000, 40000);
+    if (v) { presets.far = Object.assign(v, { gamma: 0.02 }); break; }
   }
   // up against a flank, under it, 1.5 km off its bubbles (their billows reach some hundreds of
   // metres out), where the sun reaches the flank in view: the nearest big tower with such a place
@@ -105,30 +114,30 @@ export function presetPose(pre) {
     if (v && flankLit(v)) { presets.close = Object.assign(v, { gamma: 0.42 }); break; }
   }
   if (bt) {
-    const w = clearOf(bt, sideDir, bt.y0 + 1500, 5000, 7000);
+    const w = sideOf(bt, bt.y0 + 1500, 5000, 7000);
     if (w) presets.approach = Object.assign(w, { gamma: 0.0 });
     presets.inside = { x: bt.x, z: bt.z, y: bt.y0 + (bt.top - bt.y0) * 0.4, yaw: 0.3, gamma: 0.0 };
   }
-  // under an overhang: beneath a big dome of a tower with clear air below it, looking up at it (the
-  // nearest such; most towers have none)
+  // under an overhang: beneath the outer part of a big turret of a tower with clear air below it
+  // (where a tower leans out over the sea, in strongly sheared air), looking up at it and in toward
+  // the tower: of the towers nearest the start, the place with the most room (most towers have
+  // none, and some worlds: the heaps stand on their feet)
+  let under = null;
   for (const t of ts.slice(0, 48)) {
-    const bs = [];
-    forEachSys(t.x - 30000, t.z - 30000, t.x + 30000, t.z + 30000, c => { for (const b of c.bub) if (b.cell === t.cell && b.rh > 700) bs.push(b); });
-    bs.sort((a, b) => b.rh - a.rh);
-    let found = null;
-    for (const b of bs) {
-      const bottom = b.y - b.ryD;
-      let top = cloudTopAt(b.x, b.z);
-      for (let q = 0; q < 8; q++) top = Math.max(top, cloudTopAt(b.x + Math.cos(q * 0.785) * 900, b.z + Math.sin(q * 0.785) * 900));
-      const y = Math.max(top + 800, bottom - 1500);
-      if (y > bottom - 700 || towerDistAt(b.x, y, b.z, 2500) < 1000) continue;
-      found = { x: b.x, z: b.z, y, yaw: Math.atan2(t.x - b.x, -(t.z - b.z)), gamma: 0.42 };
-      break;
-    }
-    if (found) { presets.under = found; break; }
+    forEachSys(t.x - 30000, t.z - 30000, t.x + 30000, t.z + 30000, c => {
+      for (const b of c.bub) if (b.cell === t.cell && b.rh > 600) for (let q = 0; q < 8; q++) {
+        const x = b.x + Math.cos(q * PI / 4) * 0.7 * b.rh, z = b.z + Math.sin(q * PI / 4) * 0.7 * b.rh, bottom = b.y - 0.71 * b.ryD;
+        const y = Math.max(cloudTopAt(x, z) + 600, bottom - 1000);
+        if (y > bottom - 400) continue;
+        const room = towerDistAt(x, y, z, 3500);
+        if (room > 600 && (!under || room > under.room)) under = { room, x, z, y, yaw: Math.atan2(t.x - x, -(t.z - z)), gamma: 0.42 };
+      }
+    });
+    if (under) break;
   }
+  if (under) presets.under = under;
   // (only the table's own entries, not what every object inherits, such as "constructor")
-  const towers = ['tower', 'giant', 'anvil', 'close', 'approach', 'inside', 'under'];
+  const towers = ['tower', 'giant', 'far', 'close', 'approach', 'inside', 'under'];
   if (!Object.hasOwn(presets, pre)) return { refused: towers.includes(pre) ? `this world has no place for the preset "${pre}"` : `no preset "${pre}"` };
   return presets[pre];
 }
