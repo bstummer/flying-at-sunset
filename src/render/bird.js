@@ -1,9 +1,11 @@
 // The paper bird: its mesh and shadow map, and drawing it
 //
-// An origami crane: flat-shaded creases, a procedural paper fibre texture, translucency (it glows
-// when backlit), a shadow map of its own in which paper layers let some light through
-// (shaders/bird.js), wings that flex with load, a slow breathing and a flutter at speed; lit by the
-// probe (sun and sky at the bird, in cloud or not).
+// An origami crane: flat-shaded creases, each wing folded along its middle (toward the low sun one
+// facet catches the light and the other falls in shade, and from behind with the sun the other way
+// round: the fold reads, where a flat wing was a white dart), a procedural paper fibre texture,
+// translucency (it glows when backlit), a shadow map of its own in which paper layers let some light
+// through (shaders/bird.js), wings that flex with load, a slow breathing and a flutter at speed; lit
+// by the probe (sun and sky at the bird, in cloud or not) and the sky's light by direction (bAmb).
 //
 // Drawn with 4x MSAA into targets only as big as the box the bird can take on screen (its bounding
 // sphere seen from the chase camera at its nearest; all of the canvas for the close-up test
@@ -41,9 +43,10 @@ const bird = (() => {
     Hc: [0, 0.148, -0.43], Hs: [0.007, 0.118, -0.446], Hb: [0, 0.08, -0.5],
     // tail spike rising behind
     Tm: [0.018, 0.012, 0.215], Tt: [0, 0.085, 0.45],
-    // wings: broad triangles with a centre crease and a flex line at 45% span
-    Wa: [0.008, 0.06, -0.122], Wm: [0.008, 0.071, 0.0], Wb: [0.008, 0.06, 0.122],
-    La: [0.23, 0.089, -0.052], Lm: [0.23, 0.101, 0.018], Lb: [0.23, 0.085, 0.084],
+    // wings: broad triangles with a centre crease (a mountain fold, each facet 14–20° off the wing's
+    // plane) and a flex line at 45% span
+    Wa: [0.008, 0.06, -0.122], Wm: [0.008, 0.09, 0.0], Wb: [0.008, 0.06, 0.122],
+    La: [0.23, 0.089, -0.052], Lm: [0.23, 0.115, 0.018], Lb: [0.23, 0.085, 0.084],
     Wt: [0.505, 0.126, 0.036],
   };
   const flex = { La: 0.42, Lm: 0.42, Lb: 0.42, Wt: 1.0 };
@@ -101,7 +104,7 @@ export function renderBird(time, VP, birdRel) {
   const SV = viewFromBasis(sR, sU, sF, eye);
   const SP = ortho(-0.62, 0.62, -0.62, 0.62, 0.5, 6);
   const shadowVP = mat4Mul(SP, SV);
-  const vals = { model: M, viewProj: shadowVP, shadowVP, flex, sunDir: SUN_DIR, shadowTexel: 1 / SHADOW_N, bProbe: T.probe, tShadowMap: T.shadow };
+  const vals = { model: M, viewProj: shadowVP, shadowVP, flex, sunDir: SUN_DIR, shadowTexel: 1 / SHADOW_N, bProbe: T.probe, bAmb: T.amb, tShadowMap: T.shadow };
   let offsets = uniforms(P.shadow, vals);
   let rp = enc().beginRenderPass({
     colorAttachments: [],

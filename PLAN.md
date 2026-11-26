@@ -6,10 +6,10 @@ that fails goes in the decisions with why and when (evidence for later, not a ru
 comes out; finished work gets a line or two under Done. How things work belongs in the module
 headers, how to work in CLAUDE.md.
 
-The next work is planned below: legs 15 to 22, from the review of 2026-11-25. A leg that is done
+The next work is planned below: legs 16 to 22, from the review of 2026-11-25. A leg that is done
 moves to Done in a line or two, and what it tried and dropped goes in the decisions.
 
-## Next: legs 15 to 22
+## Next: legs 16 to 22
 
 From a review of 2026-11-25 (every view at 960×540 with its flight strip and held-still frames,
 ranked before this file was read, and a second reviewer who saw only the images) and the author's
@@ -43,8 +43,11 @@ map is natural (clusters, open stretches). Not judged: motion past 1.75 s, steer
    sun haze empties the middle of the frame and cuts towers off their bases (`high2`, `seed3`).
    → 17, 18, 20
 7. **Framing**: the bird centre-low at one size; on a phone held upright the start has no sun in
-   frame and its lower 40% is navy. → 13, 14, 15 (14: the sun in frame on every shape, the sea warm)
-8. **The bird reads as a white dart** (no fold showing), a ghost in shade and fog. → 15
+   frame and its lower 40% is navy. → 13, 14, 15 (14: the sun in frame on every shape, the sea warm;
+   15: the bird low in the middle, 80% down the frame on every shape, tall screens looking up at sky
+   and towers)
+8. **The bird reads as a white dart** (no fold showing), a ghost in shade and fog. → 15 (done: its
+   wings folded, seen from 20° over its back and a little to the side, the facets shading apart)
 9. **The sky**: its streaks all run one way; overhead mauve-grey; opposite the sun teal, where a
    photograph has rose; backlit rims don't blaze. → 16, 20
 10. **The anvil is a mesa**: a lumpy plateau, no fibrous ice, no glow. → 21
@@ -61,6 +64,21 @@ beautiful part ways, beautiful wins, and it stays realistic; no reference photog
 perfect, and the piece would be fitted to the few that were chosen); sound and a sun that sets are
 out for now.
 
+The review again after leg 15 (2026-11-26: every view, a reviewer who saw only the images and the
+vision): still no view passes as a photograph but `skim`, `exit` and, as stills, `past` and `gap`;
+the rest paintings or worse. Its ranking: towers of smooth lumps one size, clay or rock (17, 18);
+a milky veil over the frames toward the sun, the shade lifted mauve or brown (13's meter and veil;
+18, 20); in cloud an even card (19); popcorn and beads (`high2`'s sea, `away`'s middle distance,
+`tower`, `giant`; 17); the shaded sea as snow or ice (16, 18); grain on sunlit rims in motion;
+`anvil` with no anvil, `giant` not dominating (17, 21). New beside the known: the first tower's
+crown a smooth smear with a stair-stepped edge, flickering at rest, in `climb` and now on tall
+screens (`start-tablet`, `start-phone`, where the camera looks up at it); thin dark lines like
+contours over `down`'s sea; dark pock-marks on `giant`'s lit turrets; bright scratch-like filaments
+in `under`; a dark fleck for one frame in `gap`'s strip (22 if no cloud leg takes them). The bird:
+paper in `climb`, `start` and the tall starts; a flat grey-blue kite in `belly`, its tail fading
+into the cloud behind, a dim blue ghost in `inside`, a grey dart in `entry` (known issues: the paper
+in fog); placed too low at 85% (80% since) and too big on a phone.
+
 ### How the legs run
 
 The legs are done in the order they stand in, by the session that takes them up: nobody picks
@@ -71,7 +89,7 @@ itself should change, the legs are moved in this file, so it always reads in the
 Why this order: the edge's trial was measured first (Done), because two other legs lean on it.
 Then the three that change every capture, so the cloud legs after them compare
 against captures that hold: the light and the exposure (13, Done), the world around the start (14,
-Done), the camera (15). Then the clouds, the heart: their edge (16: the top finding, and an experiment speaks
+Done), the camera (15, Done). Then the clouds, the heart: their edge (16: the top finding, and an experiment speaks
 for it), their shapes (17), the light on both (18). Then in cloud (19), the air and the sky (20),
 ice (21), loose ends and the review again (22).
 
@@ -91,25 +109,6 @@ ice (21), loose ends and the review again (22).
   author with four starts); the bird's size in the frame (15);
   whether shreds are missed in flight (16); minutes in fog (19); layers at other heights (20); a
   title while loading (22).
-
-### Leg 15: the camera and the bird
-
-The bird reads as folded paper, never a dart or a ghost; the frame is composed on tall screens too.
-
-1. **The camera** sits 18° over the bird's back, the wings nearly edge-on; higher, their upper
-   faces and creases show. At the start (leg 14) the first tower, 10 km off, fills the right half
-   of a 16:9 frame with its top cut off, and a reviewer read it as a wall beside the bird: a camera
-   looking a few degrees up there, or the bird lower in the frame, would show its shoulder. On peach
-   cloud the bird is pale and low in contrast (the old start had it on blue shade). Not farther: at 140 px a crease is a pixel or two. Its distance could
-   breathe more with the flight (4.1–5.4 m now), and the bird sit off the middle.
-2. **Tall screens**: more sky, less of the near sea (`start-phone`: about half of it near sea since
-   leg 14 turned the start so the sun is in frame). (A tall cloud ahead takes the horizon whatever
-   the camera does.)
-3. **The paper**: facets that shade apart; in shade lit by the bright horizon and the sea; in fog
-   less of the camera's mist in front of it.
-
-Judged by the bird's crops at three aspects; `climb` keeps it whole in the frame; the lag and the
-swing are the author's. The flight logs stay identical.
 
 ### Leg 16: mist, not clay (the edge)
 
@@ -520,6 +519,28 @@ logs differ from the first frame: the start's sea lies 415 m higher. No shader c
 cloud is in view: the trace at `start` +14% (6.3 → 7.1 ms a frame at 960×540), `away` +5%, the sun
 map's first bakes +20–60%. The phone's `?bench` from the start is the author's to run.
 
+**Leg 15** (2026-11-26): the camera and the bird.
+1. The camera (flight/camera.js) sits 20° over the bird's back (18° before) and 6° to its left,
+   looking at it, 4.3 m off at cruise, breathing more with the flight: 6.2 m at top speed, 3.7 m
+   slowing hard (4.1–5.4 m). It frames the bird in the middle, 80% down the frame whatever the
+   screen's shape (on 16:9 it was 78%, on a phone 63%): on a phone or a tablet upright it looks 6°
+   up, the first tower's head and the sky where half the frame was near sea; on 16:9 5.5° down (4°).
+   Where a pull-up or a banked wing would take the bird's lowest tip past 96% down, the look comes
+   down (pulling up, the bird had left the frame's bottom edge, 108% down on 16:9). `tests/camera.test.js`: the bird low on three shapes, whole
+   through a held climb, a held dive and turns at full bank.
+2. The paper (render/bird.js, shaders/bird-fs.wgsl): each wing folded along its middle (a mountain
+   fold, facets 14–20° off the wing): toward the low sun the fore facet catches the light and the aft
+   one falls in shade, with the sun behind the other way round. The sky's light by the way a facet
+   faces (an ambient cube of bAmb's three faces and the sea's light from below), at a cloud's
+   strength (1.5× before: from above, in shade, the paper was as pale as the cloud behind it). In
+   cloud the mist lights it by its facing, 0.4–1.2 of its radiance (evenly before), and 0.4 of the
+   mist between it and the camera is left.
+The bird's crops at three shapes: `start`, `start-tablet` (new), `start-phone`. The flight logs
+identical but `reach`'s, from 144 s on, by up to 0.1 m in height (0.00 m/s, 0.0° of bank): most
+likely rounding, the probe's floor read from volumes streamed around the camera (the bird's own
+position for the probe, tried, left it the same). The trace −1 to +2% (what the framing puts in
+view: within its spread), the bird's pass unchanged (0.03 ms a frame).
+
 ## Decisions: what failed, and why
 
 What was tried and didn't work, why, and when. **A decision is evidence, not a rule**: when its
@@ -812,6 +833,28 @@ until the author says otherwise.
 - **The ambient light as a read-only storage buffer in the trace** (before the legs): ~4% slower than
   a uniform buffer (Chrome on Windows, FXC).
 
+### The camera and the bird
+
+- **The camera alone against the dart** (leg 15): from 24–30° over the back the wings' upper faces
+  show (close-ups, `?closeup`), but the paper stayed one pale tone, the near cloud's: lit by the sky
+  by the facing's height alone (up or down) and by a low sun at a few degrees, every facet got the
+  same light. The fold and the sky's light by direction did what the angle didn't.
+- **The camera higher than 20°** (leg 15): on 16:9 (47° tall) the bird can sit only ~20° under the
+  look, so 25° over its back looks 7° down, the sea for most of the frame and the first tower's top
+  cut; 20° with the bird 80% down looks 5.5° down (4° before).
+- **The camera 12° to the side** (leg 15): the neck and tail cross the wings as an X; 6° kept. Looking
+  past the bird, 6° put it 4% of the frame right of the middle (9% on a phone): to the reviewer
+  after the leg "neither centred nor on a third, accidental"; the camera looks at it now.
+- **The bird 85% down the frame and lower** (leg 15): at 87.5% a banked wing's tip touched the bottom
+  edge; at 85% the reviewer found it crowding the edge (`climb`'s brief: not sunk to it); 80% kept.
+- **The sky's light on the paper half as strong again as on a cloud** (before leg 15, and kept a while
+  in it): seen from above in shade (`belly`), the wings were as pale as the shaded flank behind
+  them, a ghost; at a cloud's strength a step darker, slate blue. (It looked navy at a cloud's
+  strength only while the old camera, sunk in a climb, saw the bird's underside.)
+- **What covers the sky over the bird** (leg 15): five rays up from the probe, the paper's light from
+  above the cloud's underside's where they met cloud: no visible change (`under` 27% covered, the
+  bird in sunlight; `belly` 10%, its flank ahead, not overhead); dropped.
+
 ## Known issues and ideas
 
 - **Measured on few devices**: the NVIDIA laptop (60 fps, the clouds at their 0.75 ceiling at
@@ -900,7 +943,7 @@ until the author says otherwise.
   light's reference in shade (`--shade`) has a top in shadow at (10.3, 13.5, 20.4) from the
   cloud, (5.8, 10.1, 23.1) from the trace: half the red against the blue. Without the tints, or with
   the saturation on the sun's light alone, the author saw barely a difference (leg 8), and kept
-  them; leg 18's. The bird in shade nearly vanishes into it (leg 15).
+  them; leg 18's. The paper bird in shade is a step darker than it, slate blue (leg 15).
 - **Near the camera** (leg 16) every cloud within about a kilometre is a smooth gradient with a soft
   edge, not the sea into the sun alone (`start` lower left, `seed3`; a soft bluish patch beside the
   bird in `start`), and the shaded sea seen from above is blotchy (`giant`'s foreground): the light
@@ -947,10 +990,25 @@ until the author says otherwise.
   in at the frame's edge, near outlines against farther clouds in a dive. No limit yet: a change in
   it is a question for `grain.png`. Motion itself (smear, lag in turns) is for the author's eyes.
 - **Sunlit rims**: at rest 0.006–0.035% of a frame flickers, along tower silhouettes and backlit rims,
-  most toward the sun (`sun`); 0.31% in `climb` since leg 14, along the first tower's sunlit top
-  against the sky, ~10 km off. The history blends at half the rate where the image holds still,
+  most toward the sun (`sun`); in `climb` along the first tower's sunlit crown against the sky,
+  ~10 km off: 0.31% since leg 14, 0.48% since leg 15 (its camera higher: more of the crown; the
+  limit 0.5%), and since leg 15 0.26% in `start-tablet` and 0.19% in `start-phone`, where the camera
+  looks up at the same head. The reviewer saw it as a smooth smear with a stair-stepped edge. The history blends at half the rate where the image holds still,
   which may lag or smear in slow motion (the author's eyes). Levers: the cloud scale, the TAAU's
   clamp and blend rate, the approach's floor (trace.wgsl).
+- **The bird in the frame** (leg 15): its size (1 m across 4.3 m off: 140 px of 960 on 16:9, a third
+  of a phone's width, which the reviewer found too big there; `screenshots/bird-sizes.png` showed
+  3.6, 4.3 and 5.3 m to the author), its place (80% down, in the middle, seen from its left) and the
+  camera's breathing are the author's; levers `CAM_DIST`, `BIRD_LOW`, `CAM_SIDE` (flight/camera.js).
+  On 16:9 the look is 5.5° down (4° before leg 15): the first tower's top is cut a little more at
+  the start, where on tall screens its head is now in frame. The bird's edges are crisp polygons
+  (4× MSAA): to the reviewer CG rather than paper, zoomed. The lag, the swing, the breathing
+  and the in-frame limit (the look coming down in a pull-up) in motion are for the author's eyes.
+- **The paper in fog** (leg 15): the mist's light the probe gives the bird (`mistL`) is bluer than
+  the fog the trace draws: in `inside` the bird is ~10% darker and a little bluer than the fog
+  around it, to the reviewer still a dim blue ghost (a grey dart in `entry`). The fog behind the
+  bird, read from the scene, would light it in the fog's own colour; the facets could shade apart
+  more there.
 - **The held climb** (since 2026-11-24): its rate and feel are for the author's hands; `vClimb`
   (flight.js) is the lever (52: 27 m/s up at 30°; 44: 17 at 20°).
 - **The rising air** (since leg 14, world/queries.js `liftAt`): up to 30 m/s (`LIFT`, world/cells.js)

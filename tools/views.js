@@ -17,16 +17,17 @@ const BEFORE_14 = '-2515099.4220748544,-283357.23700001836,0,0';
 
 export const VIEWS = [
   { name: 'start', params: {}, brief: 'What a visitor sees first: the low sun, a billowy sea to the horizon, the first tower beside the sun rising far above the bird, two or three minutes ahead, more towers beyond; near clouds below; not much open space.',
-    crops: { tower: [0.42, 0.06, 0.25, 0.25], bird: [0.42, 0.66, 0.16, 0.16] } },
+    crops: { tower: [0.42, 0.06, 0.25, 0.25], bird: [0.41, 0.71, 0.18, 0.18] } },
   // (the start on screens of other shapes: the start's heading and the field of view follow it,
   // flight/camera.js)
-  { name: 'start-tablet', params: {}, aspect: 3 / 4, brief: 'The start on a tablet held upright: the sun in frame, the first tower beside it, the bird whole, the sea not a dark band.' },
+  { name: 'start-tablet', params: {}, aspect: 3 / 4, brief: 'The start on a tablet held upright: the sun in frame, the first tower beside it, more sky than near sea, the bird whole.',
+    crops: { bird: [0.37, 0.72, 0.26, 0.16] } },
   { name: 'start-phone', params: {}, aspect: 9 / 19.5, brief: 'The start on a phone held upright (41° across): the sun in frame, the first tower beside it, more sky than near sea, the bird whole.',
-    crops: { bird: [0.35, 0.55, 0.3, 0.14] } },
+    crops: { bird: [0.32, 0.73, 0.36, 0.13] } },
   { name: 'sun', params: { preset: 'sun' }, brief: 'Into the sun: bright and dazzling, thin edges shining where the light comes through, backlit billows in luminous shade with golden rims, never navy or brown.',
     crops: { rim: [0.72, 0.04, 0.25, 0.25] } },
   { name: 'away', params: { preset: 'away' }, brief: 'The sun behind: faces glowing gold, orange and peach, long shadows across the sea, the far clouds melting into blue haze.',
-    crops: { bird: [0.42, 0.66, 0.16, 0.16] } },
+    crops: { bird: [0.41, 0.69, 0.18, 0.18] } },
   { name: 'side', params: { preset: 'side' }, brief: 'The sun to the left: lit and shaded sides, the sea\'s swells, valleys and heaps, its shade a luminous cool blue and violet, never navy or brown.' },
   // (the side view flown through banking turns: its motion strip and grain are the turn's)
   { name: 'turn', params: { preset: 'side', script: 'weave' }, brief: 'Banking through a turn over the sea: the edges of the clouds and their lit rims steady in motion, not grainy.' },
@@ -35,7 +36,7 @@ export const VIEWS = [
   { name: 'skim', params: { pose: '0,1493,0,0.35,-0.03,0', weather: BEFORE_14 }, brief: 'Just over the cloud tops: a billowy sea with large relief, and near the bird mist, not a surface: soft and smooth as in nature, but never perfectly even, its edge ragged; no sharp ridgelines.' },
   // (the pose a held climb settles in, flight.js: 26° up at 51 m/s; the camera sinks behind the bird, camera.js)
   { name: 'climb', params: { pose: '0,3200,0,0.45,0.45,0,51.4' }, brief: 'In a held climb, 2 km over the sea: the bird whole in the frame, not sunk to its bottom edge, the towers rising ahead far above it, the sea falling away below.',
-    crops: { bird: [0.42, 0.66, 0.16, 0.16] } },
+    crops: { bird: [0.36, 0.69, 0.28, 0.25] } },
   { name: 'high2', params: { preset: 'high2' }, brief: 'From 5 km up: the sea\'s swells and valleys, heaps and towers from above, never evenly spread; the farther, the hazier, paler and bluer.' },
   { name: 'tower', params: { preset: 'tower' }, brief: 'A big tower from 9 km or more, sunlit from the side: broad base swelling out of the sea, a few huge lobes carrying smaller ones, crisp cauliflower domes, shadowed folds kept luminous, sides that bulge and lean.',
     crops: { domes: [0.45, 0.02, 0.25, 0.25] } },
@@ -70,7 +71,7 @@ export const VIEWS = [
   { name: 'seed3', params: { seed: '3' }, brief: 'Another world\'s start: the generator, not just the piece\'s seed; towers in view, nothing placed, nothing repeating.' },
   // (the pose places the bird diving steeply at 8 km: the camera behind it looks almost straight down)
   { name: 'down', params: { pose: '0,8000,0,0.45,-1.5,0' }, brief: 'Straight down from 8 km over the start: the sea as a map, heaps and billows at every size, towers in clusters, walls, lone giants and open stretches, never evenly spread, nothing repeating.',
-    crops: { billows: [0.62, 0.05, 0.25, 0.25], bird: [0.42, 0.43, 0.16, 0.16] } },
+    crops: { billows: [0.62, 0.05, 0.25, 0.25], bird: [0.42, 0.47, 0.16, 0.16] } },
 ];
 
 export function findView(name) {

@@ -87,7 +87,7 @@ What the author keeps coming back to (what the result should be; how to get ther
 |---|---|
 | `npm install` | Installs the dev dependencies (Vite, Playwright) and Playwright's Chromium, the only browser the tools use, always headless (`tools/install-chromium.js`): on Windows the full build, whose Dawn compiles the shaders with DXC as visitors' Chrome does; elsewhere the headless shell. |
 | `npm run dev` | Vite's dev server: the sources as ES modules, reloading on every edit. |
-| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator and the flight model (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the bakes' scale (`render/bakescale.js`), whether the GPU's timestamps may steer (`render/gputrust.js`), the screenshot tool's arguments and compares, the cost tool's runs, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
+| `npm test` | Tests, `tests/*.test.js` (Node's built-in runner): the world generator, the flight model and the chase camera (§5), the URL parameters and the views, the detail volume's turn, the sun map's grid, the light's reference and the trace's light against it, the shaders' includes, the bakes' scale (`render/bakescale.js`), whether the GPU's timestamps may steer (`render/gputrust.js`), the screenshot tool's arguments and compares, the cost tool's runs, the image measurements, the build check, the PNG codec, the site's folders, the repo's layout. ~15 s. |
 | `npm run build` | `dist/index.html`. Fails on any other output, or a module from outside `src/`. |
 | `npm run check` | `tools/check-build.js`: one self-contained file within the size budget, and the `src/` lint. |
 | `npm run shot -- [args]` | Builds, then `tools/screenshot.js`: a PNG per view of `tools/views.js`, `contact-sheet.png` and `info.json` in `screenshots/<label>/`, and per view its measurements in `<label>/<view>/` (`tools/measure.js`): `banding.png` and the share of the frame in visible bands, zoomed `crop-*.png`, `shimmer.png` and the share that flickers while nothing moves, `grain.png` and the share where the flight (the motion strip's frames) differs from itself rendered with other jitter (the grain the history can't average in motion, over the frame and each crop), `motion.png` (the flight on from the still, a strip of frames) and the share of pixels that change along it; the still's tone (the share under luma 96 and over 200, the colour of its darkest third and its brightest tenth) and each crop's texture (its contrast octave by octave). Measurements past their limits warn (the tone, the texture and the motion have none yet: they guard, from rows the author has approved). Fails on any console, page or WebGPU error, network request or timeout. |
@@ -198,6 +198,9 @@ For every change that can affect pixels:
   it to its promises (top speed, the floor under the sea, the ceiling, climbs trading speed for height,
   stability at a coarse time step, the first tower's rising air within three minutes, still air away
   from towers). The flights in the page are `tools/flights.js`'s and the flight check's.
+- The chase camera follows it in Node (`src/flight/camera.js`): `tests/camera.test.js` holds it to
+  where the bird sits in the frame on a wide screen, a tablet and a phone (low, in the middle), and
+  to keeping it whole through a held climb, a held dive and turns at full bank.
 - The light has a reference: `tests/light.test.js` holds the Monte Carlo (`tools/light/mc.js`, of
   the medium in `constants.js`: its extinction and profile) to closed forms, the trace's light
   within a factor two of it and independent of the outline's width, and its shade under a sky near
@@ -232,7 +235,7 @@ src/
                       page's side (world.js), the test mode (capture.js), the readout (readout.js, ?debug), the
                       benchmark (benchmark.js, ?bench)
   flight/             the glider (flight.js, needs only the world), the chase camera (camera.js; the start's heading
-                      by the screen's shape), where the bird starts (presets.js: the test views, ?preset, ?pose)
+                      and the bird's place in the frame by the screen's shape), where the bird starts (presets.js: the test views, ?preset, ?pose)
   world/              the CPU world generator: the air, thermals, cells (and the spawn draw: where the weather lies
                       against the start), shapes, what the GPU and the flight get. No DOM, no GPU
   render/             WebGPU: the device and pipelines (gpu.js), static resources (setup.js), streamed volumes (stream.js),
